@@ -1,5 +1,5 @@
-# HiSNN
-Hybrid Spiking Neural Networks (HiSNN) for Intrusion Detection Systems.
+# HiFi-SNN
+Hybrid Spiking Neural Networks for High Fidelity Intrustion Detection (HiFi-SNN).
 
 ---
 
