@@ -1,159 +1,123 @@
 # HiSNN
 Hybrid Spiking Neural Networks (HiSNN) for Intrusion Detection Systems.
 
+---
 
-# Project Architecture
-1. Propose 2 hybrid approaches with SNN: one with **KAN** and one with **AutoEncoder + Energy-Based Model Head**
-2. SNN Ablation Study — different rate encodings, different neuron models
-3. 6 different datasets — various sizes, partial vs. full data, binary vs. multi-class classification
-4. Use datasets and models from prior surveys for benchmarking and comparison
-5. Baselines: SNN, KAN, Deep Neural Network, RNN
-6. Metrics: Accuracy, Neuron Firing Rate, Energy Consumption, F1, Precision, Recall, ROC-AUC
-7. Mathematical formulation of model complexity and hardness
-8. Trade-off analysis: training time, computational overhead, inference time
-9. Attack robustness: Membership Inference, Model Stealing, FGSM, PGD, C&W, BIM, MIM
+# Project Roadmap
 
+The project is split into two phases. Phase 1 is the focus of the current
+codebase; Phase 2 will be opened up once Phase 1 results are in.
+
+### Phase 1 — Comprehensive SNN Evaluation *(current)*
+
+Identify which **(neuron model, spike encoding)** combinations train and
+generalise best on cybersecurity intrusion-detection traffic.
+
+- **9 neuron models** from `snntorch`: Alpha, Lapicque, Leaky, LeakyParallel,
+  RLeaky, RSynaptic, SConv2dLSTM, SLSTM, Synaptic
+- **3 spike encodings**: rate coding, latency coding, delta modulation
+- **6 datasets**: KDDCup99, NSL-KDD, CTU-13, ISCXIDS2012, CIC-IDS2017, CSE-CIC-IDS2018
+- **Total: 9 × 3 × 6 = 162 runs** — one script + one config + one results
+  directory per run
+
+Each run reports the same metric set so the resulting `summary.csv` is directly
+sortable across all 162 rows.
+
+### Phase 2 — Baselines, Hybrids, and Adversarial Robustness *(deferred)*
+
+Built on top of the Phase 1 winners.
+
+- DNN, RNN, and KAN baselines for non-SNN comparison
+- Hybrid SNN architectures (e.g. SNN + KAN head, SNN + AutoEncoder + EBM head)
+- Adversarial robustness: FGSM, PGD, C&W, BIM, MIM, plus Membership Inference
+  and Model Stealing
+
+The directory layout and shared library are designed so Phase 2 plugs in
+without disturbing Phase 1 results.
 
 ---
 
-# Project Structure
+# Phase 1 Design
 
-## Organizing Philosophy
+### What varies, what doesn't
 
-Code is organized **by concern, not by dataset**. With 6 datasets, 3+ neuron models, 3+
-encoding strategies, and 5+ model types, organizing by dataset would duplicate every model
-~6 times — a bug fix or architecture change would need to be applied to each copy
-independently.
+The only things that differ across the 162 runs are:
 
-The solution is to isolate what actually *differs* between datasets — loading and
-preprocessing — in `src/data/`, and keep everything else (neurons, encodings, models,
-attacks) shared and dataset-agnostic. Once data leaves `src/data/`, all downstream
-components receive a uniform tensor interface and never need to know which dataset they came from.
+1. **Dataset** — different feature dimensionality, class count, scale.
+2. **Neuron model** — a one-line swap in the SNN definition.
+3. **Encoding** — the function that maps a `[batch, features]` tensor to a
+   `[timesteps, batch, features]` spike train.
 
-**Experiment configs** (`configs/`) are the glue: a single YAML file binds a dataset, model,
-neuron type, and encoding together for one reproducible run.
+Everything else — training loop, optimiser, loss, metrics, logging — is shared.
 
-## Directory Overview
+### Dataset split (NSL-KDD)
 
-```
-HiSNN/
-├── dataset/          raw data files (gitignored — see Datasets section)
-├── src/              all source code, organized by concern
-├── configs/          YAML experiment definitions (one file = one reproducible run)
-├── experiments/      entry-point scripts that read a config and execute a run
-├── results/          all outputs (gitignored except summary.csv)
-└── notebooks/        dataset exploration and results-analysis notebooks
-```
+Splits follow `notebooks/exploration/02_nslkdd_exploration.ipynb`:
 
----
+| Split | Source | Use | Size |
+|---|---|---|---|
+| train | KDDTrain+.txt → stratified 90% | gradient updates | ~113 k |
+| val | KDDTrain+.txt → stratified 10% | per-epoch monitoring | ~12.6 k |
+| test+ | KDDTest+.txt | **challenging** (includes novel attack types) | 22 544 |
+| test-21 | KDDTest-21.txt | **standard** (excludes difficulty-21 trivial records) | 11 850 |
 
-## `src/` — Source Code
+Preprocessing pipeline (in [src/data/nslkdd.py](src/data/nslkdd.py)):
+1. Drop `difficulty` metadata column.
+2. `log1p` on heavy-tailed numerics (`duration`, `src_bytes`, `dst_bytes`,
+   the byte / count columns) — without this, MinMax collapses 99% of mass
+   to ~0 because `src_bytes` spans 0 → 1.4 B.
+3. One-hot `{protocol_type, service, flag}` against the union of all splits.
+4. Map labels → 5-class taxonomy `{normal, dos, probe, r2l, u2r}` (all 17
+   novel KDDTest+ attack types are placed into the existing 4 attack buckets
+   per standard NSL-KDD literature).
+5. MinMax scale to [0, 1] — fit on train, transform-and-clip val / test+ / test-21.
 
-```
-src/
-├── data/             one module per dataset: loading, cleaning, normalization
-├── encoding/         spike encoding strategies (rate, temporal, population)
-├── neurons/          neuron model definitions (LIF, IF, AdLIF, ...)
-├── models/           SNN and hybrid model architectures
-│   └── baselines/    non-SNN baselines: DNN, RNN, KAN
-├── attacks/          adversarial and membership-inference attack implementations
-└── metrics.py        unified metrics computation shared across all experiments
-```
+### Metrics (computed on both test sets per run)
 
-### `src/data/`
-
-The **only** place dataset names appear in source code. Each module exposes a consistent
-interface: given a file path and a split (`"train"` or `"test"`), return a normalized
-PyTorch `DataLoader`. Input dimensionality and class count are exposed as properties so
-models can be configured dynamically from the loader rather than from hardcoded constants.
-`base.py` defines the abstract interface that every loader must implement.
-
-### `src/encoding/`
-
-Converts a continuous feature vector into a spike train consumed by the SNN. Each module
-is a standalone function that takes a `[batch, features]` tensor and returns a spike tensor
-of shape `[timesteps, batch, features]`. The three strategies covered:
-
-| Module | Strategy | Description |
+| Category | Metric | Notes |
 |---|---|---|
-| `rate.py` | Rate encoding | Spike probability ∝ input magnitude over T timesteps |
-| `temporal.py` | Temporal / latency | Earlier spike = stronger input; single spike per neuron |
-| `population.py` | Population encoding | Input represented by a bank of Gaussian receptive fields |
+| Accuracy | `accuracy`, `balanced_accuracy` | balanced accuracy is the imbalance-robust pair |
+| F1 | `f1_macro`, `f1_weighted` | plus `per_class[*].f1` |
+| Precision / Recall | `precision_macro`, `recall_macro` | plus `per_class[*].precision` / `.recall` |
+| Multi-class agreement | `matthews_corrcoef`, `cohen_kappa` | MCC = gold-standard for imbalanced multi-class |
+| Ranking | `roc_auc_weighted` | one-vs-rest, weighted by support, softmax-normalised spike counts |
+| Confusion | `confusion_matrix` | as 2-D list |
+| **IDS-canonical (binary normal-vs-attack)** | `detection_rate`, `false_alarm_rate`, `binary_accuracy`, `binary_f1`, `binary_confusion_matrix` | DR = TP/(TP+FN); FAR = FP/(FP+TN). The IDS literature treats these as the *primary* report-card metrics. |
+| Energy / efficiency | `energy_spikes_per_sample`, `spike_sparsity`, `total_spikes` | sparsity = 1 − (spikes / sites) |
+| Cost | `trainable_parameters`, `train_time_s`, `inference_ms_per_sample` | |
+| Per-epoch | `training_curve[t] = {train_loss, val_loss, val_accuracy}` | for diagnostic plots |
 
-### `src/neurons/`
+All produced by [src/metrics.py](src/metrics.py) so cross-run comparison is apples-to-apples.
 
-Neuron models are used directly from the `snntorch` library — no custom wrappers needed.
-See the **Neuron models** table in the Unified Experiment Hierarchy section for the full
-list. Swapping neuron models in any architecture is a one-line change in the config or
-experiment script.
+### Alignment with prior NSL-KDD work
 
-### `src/models/`
+Our setup is deliberately compatible with the dominant evaluation conventions in
+the NSL-KDD literature, so headline numbers from this sweep can be placed
+directly alongside published baselines:
 
-All models accept spike tensors from `src/encoding/` and produce logits, so they are
-fully interchangeable in the experiment runner.
+| Aspect | Our choice | Aligns with |
+|---|---|---|
+| Class taxonomy | 5-class {normal, dos, probe, r2l, u2r} | Zhou et al. 2020 (arXiv:2010.07803); TASNN 2025 (PMC12920788); community baselines |
+| Feature dim | 41 → 122 (one-hot of `protocol_type`/`service`/`flag`) | matches Zhou et al. 2020 *exactly* |
+| Test sets | Both KDDTest+ (challenging) and KDDTest-21 (standard) | Zhou et al. 2020 reports both |
+| Numeric scaling | `log1p` on heavy-tailed columns → MinMax to [0,1] | log1p per our own exploration notebook; MinMax required by spike encoders |
+| IDS binary metrics | `detection_rate` + `false_alarm_rate` | thinline72 community baseline flags these as "most important"; ubiquitous in IDS papers |
 
-| Module | Description |
-|---|---|
-| `snn.py` | Baseline SNN (fully configurable neuron type) |
-| `hybrid_kan.py` | SNN encoder + KAN classifier head |
-| `hybrid_ae_ebm.py` | SNN encoder + AutoEncoder + Energy-Based Model head |
-| `baselines/dnn.py` | Standard feedforward DNN |
-| `baselines/rnn.py` | Recurrent baseline (LSTM / GRU) |
-| `baselines/kan.py` | Pure Kolmogorov–Arnold Network |
+Two deliberate departures, with rationale:
 
-### `src/attacks/`
+| | Common in prior work | Our choice | Rationale |
+|---|---|---|---|
+| Train/val split | 80/20 (community) or KDDTrain+ entire with internal CV (Zhou et al.) | 90/10 stratified | More training data for the heavily-minority R2L (~900 samples) and U2R (~50 samples) classes; the 10 % val is still ~12 600 samples for monitoring. |
+| Seeds | 1 (Zhou) or 5 (TASNN) | 1 (single seed=0) | Single seed keeps the 162-run sweep tractable; once promising (neuron, encoding) combinations are identified, we'll re-run those with 3–5 seeds for variance reporting. |
 
-Each attack module takes a model and a batch of inputs and returns adversarial examples.
-White-box attacks (FGSM, PGD, C&W, BIM, MIM) and black-box attacks
-(Membership Inference, Model Stealing) are kept separate.
+Things we **add** beyond prior work: 9-neuron × 3-encoding ablation grid;
+spike energy proxy + sparsity (rare in IDS papers but essential for the SNN
+efficiency claim); MCC + Cohen's Kappa (gold-standard imbalanced-multi-class
+metrics that most prior IDS papers omit).
 
-### `src/metrics.py`
+### Neuron models *(directory name → `snntorch` class)*
 
-Single shared module for all metrics: Accuracy, F1, Precision, Recall, ROC-AUC,
-an energy proxy (total spike count), and wall-clock inference time. Every experiment
-script calls this module — never inline — to guarantee consistency across comparisons.
-
----
-
-## Unified Experiment Hierarchy
-
-The entire experiment lifecycle — configuration, execution, and results — follows the
-same dataset-first directory structure. For any given combination the config, the
-training script, and the saved results all live under the same relative path:
-
-```
-configs/nslkdd/snn/Leaky/rate/     ← hyperparameters (config.yaml)
-experiments/nslkdd/snn/Leaky/rate/ ← training & evaluation script
-results/nslkdd/snn/Leaky/rate/     ← metrics.json, plots, checkpoints
-```
-
-The shared shape across all three trees is:
-
-```
-{configs | experiments | results}/
-└── {dataset}/
-    ├── snn/
-    │   ├── {neuron}/          one directory per snntorch neuron model (9 total)
-    │   │   ├── rate/
-    │   │   ├── latency/
-    │   │   └── delta/
-    │   └── ...
-    ├── hybrid_kan/
-    │   └── {neuron}/ {rate, latency, delta}
-    ├── hybrid_ae_ebm/
-    │   └── {neuron}/ {rate, latency, delta}
-    ├── dnn/
-    ├── rnn/
-    └── kan/
-```
-
-SNN-based models (`snn`, `hybrid_kan`, `hybrid_ae_ebm`) have four levels because their
-behaviour depends on both the neuron model and the encoding strategy. Baselines (`dnn`,
-`rnn`, `kan`) are flat at the model level — they use neither.
-
-**Neuron models** (all from the `snntorch` library):
-
-| Directory name | snntorch class | Description |
+| Directory | snntorch class | Description |
 |---|---|---|
 | `Alpha` | `snn.Alpha` | Double-exponential (alpha) synaptic conductance |
 | `Lapicque` | `snn.Lapicque` | RC-circuit LIF with explicit membrane time constant |
@@ -165,43 +129,44 @@ behaviour depends on both the neuron model and the encoding strategy. Baselines 
 | `SLSTM` | `snn.SLSTM` | Spiking LSTM cell |
 | `Synaptic` | `snn.Synaptic` | First-order synaptic current model |
 
-**Spike encodings:**
+### Spike encodings
 
-| Directory name | Strategy | Description |
+| Directory | Strategy | Description |
 |---|---|---|
 | `rate` | Rate coding | Spike probability ∝ input magnitude over T timesteps |
 | `latency` | Latency coding | Stronger input → earlier spike; one spike per neuron per sample |
 | `delta` | Delta modulation | Spike on significant change in input value (temporal contrast) |
 
-Datasets: `kddcup99`, `nslkdd`, `ctu13`, `cicids2017`, `cse-cic-ids2018`, `iscxids2012`.
+---
 
-### `configs/`
+# Project Structure
 
-Each leaf directory holds a `config.yaml` with all hyperparameters for that run
-(learning rate, batch size, timesteps, neuron-specific constants, etc.). The path itself
-encodes what is being run, so there is no ambiguity about what a config produces.
+## Organising Philosophy
 
-### `experiments/`
+Code is organised **by concern, not by dataset**. With 6 datasets, 9 neuron
+models, and 3 encoding strategies the alternative would be 162 near-duplicate
+copies of the same training loop — a bug fix would need to be applied 162
+times.
 
-Each leaf directory holds the training and evaluation script for that combination. A
-single shared library (`src/`) provides all reusable components; the per-experiment
-script is only responsible for wiring them together, running the loop, and writing
-outputs to the matching `results/` path.
+The solution is to isolate what actually *differs* between datasets — loading
+and preprocessing — in `src/data/`, and keep everything else (neurons,
+encodings, model wiring, metrics) shared and dataset-agnostic. Once data
+leaves `src/data/`, all downstream components receive a uniform tensor
+interface and never need to know which dataset they came from.
 
-### `results/`
+**Experiment configs** (`configs/`) are the glue: a single YAML file binds a
+dataset, neuron model, and encoding together for one reproducible run.
 
-Each leaf directory receives the outputs of one completed run: `metrics.json`,
-`confusion_matrix.png`, `roc_curve.png`, and model checkpoints. All of these are
-gitignored. The **only** results artifact tracked in git is `results/summary.csv` — one
-row appended per completed run — which is the direct source for every comparison table
-and figure in the paper:
+## Directory Overview
 
 ```
-dataset, model,  neuron, encoding, accuracy, f1,    precision, recall, roc_auc, energy, train_time_s, inference_ms
-nslkdd,  snn,    Leaky,  rate,     0.982,    0.978, 0.981,     0.975,  0.997,   4.2e-4, 312.4,        1.7
-nslkdd,  snn,    Alpha,  rate,     0.985,    0.981, 0.984,     0.979,  0.998,   4.5e-4, 318.1,        1.8
-nslkdd,  snn,    Leaky,  delta,    0.979,    0.974, 0.977,     0.971,  0.996,   3.8e-4, 309.2,        1.6
-nslkdd,  dnn,    -,      -,        0.976,    0.971, 0.974,     0.968,  0.995,   -,      145.3,        0.4
+HiSNN/
+├── dataset/          raw data files (gitignored — see Datasets section)
+├── src/              all source code, organised by concern
+├── configs/          YAML experiment definitions (one file = one reproducible run)
+├── experiments/      entry-point scripts that read a config and execute a run
+├── results/          all outputs (gitignored except summary.csv)
+└── notebooks/        dataset exploration and results-analysis notebooks
 ```
 
 ---
@@ -210,20 +175,186 @@ nslkdd,  dnn,    -,      -,        0.976,    0.971, 0.974,     0.968,  0.995,   
 
 ```
 src/
-├── data/             one module per dataset: loading, cleaning, normalization
-├── encoding/         spike encoding strategies (rate, temporal, population)
-├── neurons/          neuron model definitions (LIF, IF, AdLIF, ...)
-├── models/           SNN and hybrid model architectures
-│   └── baselines/    non-SNN baselines: DNN, RNN, KAN
-├── attacks/          adversarial and membership-inference attack implementations
-└── metrics.py        unified metrics computation shared across all experiments
+├── data/         one module per dataset: loading, cleaning, normalisation
+├── encoding/     spike encoding strategies (rate, latency, delta)
+├── neurons/      thin wrappers / factory around snntorch neuron classes
+├── models/       SNN architecture(s) that consume spike tensors
+└── metrics.py    unified metrics computation shared across all experiments
 ```
 
-`src/` is organized by concern rather than by dataset because the neuron models,
-encoders, and architectures are identical regardless of which dataset is used — only the
-data loading differs. One implementation of each component means a fix or improvement
-applies to every experiment automatically. It is the reusable foundation that the
-dataset-centric experiment layer (`configs/`, `experiments/`, `results/`) is built on.
+### `src/data/`
+
+The **only** place dataset names appear in source code. Each module exposes a
+consistent interface: given a file path and a split (`"train"` or `"test"`),
+return a normalised PyTorch `DataLoader`. Input dimensionality and class count
+are exposed as properties so models can be configured dynamically from the
+loader rather than from hardcoded constants. `base.py` defines the abstract
+interface that every loader must implement.
+
+### `src/encoding/`
+
+Converts a continuous feature vector into a spike train consumed by the SNN.
+Each module is a standalone function that takes a `[batch, features]` tensor
+and returns a spike tensor of shape `[timesteps, batch, features]`.
+
+| Module | Strategy |
+|---|---|
+| `rate.py` | Rate coding |
+| `latency.py` | Latency coding |
+| `delta.py` | Delta modulation |
+
+### `src/neurons/`
+
+Neuron models are used directly from the `snntorch` library. This module is a
+thin factory mapping a directory name (e.g. `"Leaky"`) to the corresponding
+`snn.<Class>` constructor with the right defaults, so swapping neuron models
+is a one-line change driven by the config.
+
+### `src/models/`
+
+The shared SNN architecture that all 162 runs share. The neuron type is a
+constructor argument, not a hardcoded class, so the same model definition
+covers all nine variants.
+
+### `src/metrics.py`
+
+Single shared module for all metrics: Accuracy, F1, Precision, Recall,
+ROC-AUC, an energy proxy (total spike count), and wall-clock inference time.
+Every experiment script calls this module — never inline — to guarantee
+consistency across the 162 comparison rows.
+
+---
+
+## Unified Experiment Hierarchy
+
+The entire experiment lifecycle — configuration, execution, results — follows
+the same directory structure. For any combination, the config, the training
+script, and the saved results all live under the same relative path:
+
+```
+configs/nslkdd/SNN_Leaky/rate/      ← hyperparameters (config.yaml)
+experiments/nslkdd/SNN_Leaky/rate/  ← run.py (thin wrapper)
+results/nslkdd/SNN_Leaky/rate/      ← results.json, checkpoint.pt
+```
+
+The full shape:
+
+```
+{configs | experiments | results}/
+└── {dataset}/
+    └── SNN_{neuron}/              9 directories: one per snntorch neuron
+        ├── rate/                  → config.yaml | run.py | results.json
+        ├── latency/
+        └── delta/
+```
+
+Datasets: `kddcup99`, `nslkdd`, `ctu13`, `iscxids2012`, `cicids2017`, `cse-cic-ids2018`.
+
+> The `SNN_<neuron>` naming intentionally leaves room for Phase 2 siblings
+> (`DNN`, `RNN`, `KAN`, `HybridKAN_<neuron>`, `HybridAEEBM_<neuron>`) under the
+> same `{dataset}/` parent — Phase 2 plugs in without renaming any Phase 1
+> directories.
+
+### `configs/`
+
+Each leaf directory holds a `config.yaml` with all hyperparameters for that
+run (learning rate, batch size, timesteps, neuron-specific constants, etc.).
+The path itself encodes what is being run, so there is no ambiguity about
+what a config produces.
+
+### `experiments/`
+
+Each leaf directory holds the training and evaluation script for that
+combination. The shared library (`src/`) provides all reusable components; the
+per-experiment script is only responsible for wiring them together, running
+the loop, and writing outputs to the matching `results/` path.
+
+### `results/`
+
+Each leaf directory receives two artifacts per completed run:
+
+- `results.json` — the full record (config, data-split sizes, model size,
+  training curve, full metric set for **both** test sets, confusion matrices,
+  per-class breakdown, energy, sparsity, timing). Top-level schema:
+
+```json
+{
+  "dataset": "nslkdd",
+  "neuron": "Leaky",
+  "encoding": "rate",
+  "config":  { "num_steps": 25, "hidden_size": 128, "batch_size": 256,
+               "epochs": 5, "lr": 0.001, "val_fraction": 0.1, "seed": 0,
+               "device": "cuda" },
+  "data":    { "num_features": 122, "num_classes": 5,
+               "class_names": ["normal", "dos", "probe", "r2l", "u2r"],
+               "class_counts_train": { "normal": 60608, "dos": 41334, ... },
+               "splits": { "train": 113375, "val": 12598,
+                           "test_plus": 22544, "test_minus_21": 11850 } },
+  "model_size":    { "total_parameters": 16389, "trainable_parameters": 16389 },
+  "training":      { "train_time_s": 11.7,
+                     "training_curve": [
+                       { "epoch": 1, "train_loss": 0.110,
+                         "val_loss": 0.025, "val_accuracy": 0.991 }, ... ] },
+  "test_plus":     { "n_samples": 22544,
+                     "metrics": { "accuracy": ..., "balanced_accuracy": ...,
+                                  "f1_macro": ..., "f1_weighted": ...,
+                                  "precision_macro": ..., "recall_macro": ...,
+                                  "matthews_corrcoef": ..., "cohen_kappa": ...,
+                                  "roc_auc_weighted": ...,
+                                  "per_class": { "normal": { "precision":...,
+                                                  "recall":..., "f1":...,
+                                                  "support":... }, ... },
+                                  "confusion_matrix": [[...]],
+                                  "class_names": [...] },
+                     "spike_stats":  { "energy_spikes_per_sample": 301.5,
+                                       "total_spikes": ..., "spike_density": 0.091,
+                                       "spike_sparsity": 0.909 },
+                     "inference_time_s": 0.54,
+                     "inference_ms_per_sample": 0.024,
+                     "test_loss": 0.094 },
+  "test_minus_21": { ... same shape as test_plus, for KDDTest-21 ... }
+}
+```
+
+- `checkpoint.pt` — the trained model state dict.
+
+Both are gitignored. The **only** results artifact tracked in git is
+`results/summary.csv` — one row appended per completed run, written by
+[src.training.run_experiment](src/training.py). Schema:
+
+```
+dataset, neuron, encoding,
+accuracy, balanced_accuracy, f1_macro, f1_weighted,
+precision_macro, recall_macro, roc_auc_weighted,
+matthews_corrcoef, cohen_kappa,
+test21_accuracy, test21_f1_macro, test21_matthews_corrcoef,
+energy_spikes_per_sample, spike_sparsity, trainable_parameters,
+train_time_s, inference_ms_per_sample,
+epochs, num_steps, hidden_size, batch_size, lr, seed
+```
+
+This CSV is the direct source for every comparison table and figure across
+the 162 runs.
+
+---
+
+## Running an experiment
+
+Each leaf script is a thin self-contained wrapper:
+
+```bash
+# Run one combination
+python experiments/nslkdd/SNN_Leaky/rate/run.py
+
+# Run the whole NSL-KDD sweep (27 combinations)
+for f in experiments/nslkdd/SNN_*/*/run.py; do python "$f"; done
+```
+
+Each script:
+1. Reads `configs/{dataset}/SNN_{neuron}/{encoding}/config.yaml`
+2. Calls `src.training.run_experiment(cfg)`
+3. Writes `results/{dataset}/SNN_{neuron}/{encoding}/{results.json, checkpoint.pt}`
+4. Appends one row to `results/summary.csv`
 
 ---
 
@@ -267,12 +398,12 @@ Network traffic with labeled normal and attack flows across multiple attack type
 
 ### 5. CIC-IDS2017
 Machine-learning-focused IDS dataset covering DoS, DDoS, port scanning, and more.
-- Source: [UNB CIC](https://www.unb.ca/cic/datasets/ids-2017.html) · [Kaggle](https://www.kaggle.com/datasets/cicdataset/cicids2017)
+- Source: [UNB CIC](https://www.unb.ca/cic/datasets/ids-2017.html) · [Kaggle](https://www.kaggle.com/datasets/chethuhn/network-intrusion-dataset)
 - Local path: `dataset/cicids2017/`
 - Format: CSV (one file per day of the week)
 
 ### 6. CSE-CIC-IDS2018
 CSE–CIC joint dataset extending CIC-IDS2017 with additional attack scenarios.
-- Source: [UNB CIC](https://www.unb.ca/cic/datasets/ids-2018.html)
+- Source: [UNB CIC](https://www.unb.ca/cic/datasets/ids-2018.html) · [Kaggle](https://www.kaggle.com/datasets/solarmainframe/ids-intrusion-csv)
 - Local path: `dataset/cse-cic-ids2018/`
 - Format: CSV (one file per date)
