@@ -54,13 +54,17 @@ from src.models import SNN
 DEFAULTS = {
     "num_steps": 25,
     "hidden_size": 128,
-    "batch_size": 256,
-    "epochs": 5,
+    # batch_size=128 + epochs=10 + lr=1e-3 + Adam matches the dominant
+    # NSL-KDD baseline (Attention-CNN-LSTM, Nature 2025) and Zhou 2020 (SNN)
+    # so headline numbers are directly comparable to prior work.
+    "batch_size": 128,
+    "epochs": 10,
     "lr": 1e-3,
     "val_fraction": 0.1,
-    "seed": 0,
+    "seed": 42,            # fixed for reproducibility — overridable per-run for multi-seed sweeps
     "device": None,
     "summary_csv": "results/summary.csv",
+    "force": False,        # if True, re-run and overwrite results.json/checkpoint.pt even if present
 }
 
 SUMMARY_HEADER = [
@@ -90,18 +94,34 @@ def _set_seed(seed: int):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+    # Deterministic CUDNN (small perf cost; required for bit-identical reruns)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def _resolve(cfg: Dict) -> Dict:
     merged = {**DEFAULTS, **cfg}
     if merged.get("device") is None:
         merged["device"] = "cuda" if torch.cuda.is_available() else "cpu"
+    # Orchestrator env-var overrides — keep the 27 configs untouched while
+    # sweeping seeds or force-rerunning.
+    if os.environ.get("HISNN_FORCE", "").lower() in {"1", "true", "yes"}:
+        merged["force"] = True
+    if "HISNN_SEED" in os.environ:
+        try:
+            merged["seed"] = int(os.environ["HISNN_SEED"])
+        except ValueError:
+            pass
     return merged
 
 
 def _eval(model, loader, encoder, num_steps, device, loss_fn=None):
     """Single-pass evaluation. Returns predictions, targets, scores, mean loss,
-    spike count, spike sites, sample count, and wall-clock inference time."""
+    spike count, spike sites, sample count, and wall-clock inference time.
+
+    Timing brackets ``torch.cuda.synchronize()`` so it reflects compute, not
+    async queue depth — important when the GPU is shared with another process.
+    """
     model.eval()
     all_pred, all_true, all_score = [], [], []
     total_spikes = 0.0
@@ -109,6 +129,9 @@ def _eval(model, loader, encoder, num_steps, device, loss_fn=None):
     n_samples = 0
     running_loss = 0.0
     n_batches = 0
+    cuda = device.type == "cuda"
+    if cuda:
+        torch.cuda.synchronize()
     start = time.time()
     with torch.no_grad():
         for X, y in loader:
@@ -124,6 +147,8 @@ def _eval(model, loader, encoder, num_steps, device, loss_fn=None):
             total_spikes += float(spike_count.item())
             total_sites += int(spike_sites)
             n_samples += X.shape[0]
+    if cuda:
+        torch.cuda.synchronize()
     infer_time_s = time.time() - start
     y_pred = np.concatenate(all_pred)
     y_true = np.concatenate(all_true)
@@ -154,8 +179,21 @@ def _build_record_for_split(eval_out: Dict, class_names: List[str]) -> Dict:
 
 def run_experiment(cfg: Dict) -> Dict:
     cfg = _resolve(cfg)
-    results_dir = Path(cfg["results_dir"])
+    # Multi-seed-safe leaf path:  results/{dataset}/SNN_{N}/{enc}/seed_{S}/
+    # so re-running with a different seed never overwrites a prior run.
+    base_results_dir = Path(cfg["results_dir"])
+    results_dir = base_results_dir / f"seed_{cfg['seed']}"
     results_dir.mkdir(parents=True, exist_ok=True)
+
+    # ---------- skip if already done (unless force=True) ----------
+    results_json = results_dir / "results.json"
+    if results_json.exists() and not cfg.get("force", False):
+        with open(results_json) as f:
+            existing = json.load(f)
+        print(f"[skip] {cfg['dataset']}/{cfg['neuron']}/{cfg['encoding']} "
+              f"already has results.json — pass force=True to re-run.")
+        return existing
+
     _set_seed(cfg["seed"])
 
     device = torch.device(cfg["device"])
@@ -220,6 +258,18 @@ def run_experiment(cfg: Dict) -> Dict:
 
     # ---------- compile and persist ----------
     param_info = count_parameters(model)
+    # Hardware provenance so train_time_s rows can be filtered by GPU later.
+    hw = {"device": str(device)}
+    if device.type == "cuda":
+        try:
+            idx = torch.cuda.current_device()
+            hw["gpu_name"] = torch.cuda.get_device_name(idx)
+            hw["cuda_index"] = idx
+            hw["cuda_visible_devices"] = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+        except Exception:
+            pass
+    hw["hostname"] = os.uname().nodename if hasattr(os, "uname") else ""
+
     record = {
         "dataset": cfg["dataset"],
         "neuron": cfg["neuron"],
@@ -227,6 +277,7 @@ def run_experiment(cfg: Dict) -> Dict:
         "config": {k: cfg[k] for k in
                    ["num_steps", "hidden_size", "batch_size", "epochs", "lr",
                     "val_fraction", "seed", "device"]},
+        "hardware": hw,
         "data": {
             "num_features": bundle.num_features,
             "num_classes": bundle.num_classes,
@@ -259,7 +310,25 @@ def run_experiment(cfg: Dict) -> Dict:
 def _append_summary(csv_path: str, cfg: Dict, record: Dict):
     p = Path(csv_path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    new = not p.exists() or p.stat().st_size == 0
+    # Read any existing rows and drop the previous entry for this
+    # (dataset, neuron, encoding, seed) — that way a re-run replaces rather
+    # than duplicates. This makes summary.csv stable under repeated invocations.
+    existing_rows = []
+    if p.exists() and p.stat().st_size > 0:
+        with open(p, newline="") as f:
+            reader = csv.DictReader(f)
+            if set(reader.fieldnames or []) == set(SUMMARY_HEADER):
+                existing_rows = [
+                    r for r in reader
+                    if not (r.get("dataset") == cfg["dataset"]
+                            and r.get("neuron") == cfg["neuron"]
+                            and r.get("encoding") == cfg["encoding"]
+                            and str(r.get("seed")) == str(cfg["seed"]))
+                ]
+            else:
+                # Schema mismatch (stale file) — drop and start fresh
+                existing_rows = []
+    new = True
     tp = record["test_plus"]
     tp_m = tp["metrics"]
     tp_bin = tp["binary_ids_metrics"]
@@ -300,8 +369,9 @@ def _append_summary(csv_path: str, cfg: Dict, record: Dict):
         "lr": cfg["lr"],
         "seed": cfg["seed"],
     }
-    with open(p, "a", newline="") as f:
+    with open(p, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=SUMMARY_HEADER)
-        if new:
-            w.writeheader()
+        w.writeheader()
+        for r in existing_rows:
+            w.writerow(r)
         w.writerow(row)

@@ -340,21 +340,141 @@ the 162 runs.
 
 ## Running an experiment
 
+### Single combination
 Each leaf script is a thin self-contained wrapper:
 
 ```bash
-# Run one combination
 python experiments/nslkdd/SNN_Leaky/rate/run.py
-
-# Run the whole NSL-KDD sweep (27 combinations)
-for f in experiments/nslkdd/SNN_*/*/run.py; do python "$f"; done
 ```
 
-Each script:
+### Full sweep — use the orchestrator
+[scripts/run_sweep.py](scripts/run_sweep.py) discovers every script for a dataset, runs them
+sequentially, and prints per-run status:
+
+```bash
+# All 27 NSL-KDD combinations
+python scripts/run_sweep.py nslkdd
+
+# Subset (by neuron and/or encoding)
+python scripts/run_sweep.py nslkdd --only Leaky Alpha --encodings rate latency
+
+# Re-run everything from scratch (ignore skip-guard)
+python scripts/run_sweep.py nslkdd --force
+
+# Just print the plan
+python scripts/run_sweep.py nslkdd --dry-run
+```
+
+### Training hyperparameters (and prior-work alignment)
+
+| Parameter | Our setting | Source |
+|---|---|---|
+| Optimiser | Adam | matches Zhou 2020 (arXiv:2010.07803), TASNN 2025, Attention-CNN-LSTM (Nature 2025) |
+| Learning rate | 1e-3 | identical to all three |
+| **Batch size** | **128** | identical to Zhou 2020 and Attention-CNN-LSTM |
+| **Epochs** | **10** | identical to Attention-CNN-LSTM; within the 10–50 range typical for SNNs |
+| Training mode | mini-batch SGD (Adam) | identical to all SNN prior work — no full-batch GD |
+| Hidden size | 128 | our choice; not standardised across papers |
+| Timesteps T | 25 | mid-range for snntorch defaults |
+
+### Reproducibility
+- Every config sets `seed: 42`. [src/training.py](src/training.py) seeds `numpy`, `torch`,
+  CUDA, and forces `torch.backends.cudnn.deterministic = True`. Two runs of
+  the same script with the same code produce identical numbers.
+- **Multi-seed runs do not overwrite each other.** Each run writes to
+  `results/{dataset}/SNN_{neuron}/{encoding}/seed_{N}/`, so seeds 42, 43, 44 all
+  coexist. `results/summary.csv` keys on `(dataset, neuron, encoding, seed)`
+  for dedup, so each seed contributes its own row.
+- The orchestrator's `--seeds` flag fans out the grid over multiple seeds in
+  one invocation:
+  ```bash
+  python scripts/run_sweep.py nslkdd --seeds 42 43 44   # 27 × 3 = 81 runs
+  ```
+- For variance reporting, the plotting script auto-detects multi-seed runs
+  and produces `ranked_by_f1_macro_multiseed.csv` with mean ± std per combo.
+
+### GPU contention — how to make training-time comparable
+
+Wall-clock training time is the **one** metric in our sweep that's sensitive
+to GPU sharing. Accuracy, F1, MCC, AUC, DR/FAR, spike sparsity, parameter
+count — all of those are bit-deterministic regardless of GPU contention.
+Inference-per-sample timing is bracketed with `torch.cuda.synchronize()` so
+it reflects compute rather than queue depth, but it can still drift on a
+busy GPU.
+
+[scripts/run_sweep.py](scripts/run_sweep.py) prints an `nvidia-smi` snapshot at the start of
+every sweep so you can see the GPU state before committing.
+
+**Recommendations, in order of preference:**
+
+1. **Best — exclusive GPU.** Wait for the GPU to idle, then run the whole
+   162-combo sweep in one go (~30–90 min depending on neuron mix). All
+   `train_time_s` values are then mutually comparable.
+2. **Good — pin to an idle GPU.** If the host has multiple GPUs and one is
+   free, pin to it:
+   ```bash
+   CUDA_VISIBLE_DEVICES=1 python scripts/run_sweep.py nslkdd
+   ```
+   The orchestrator records `cuda_visible_devices` and `gpu_name` in every
+   `results.json` so post-hoc you can confirm all rows used the same device.
+3. **Acceptable — shared GPU, single sweep, single sitting.** All 27 runs
+   under the same contention level → training times are noisy but
+   *internally* comparable (the ordering between neurons is preserved, the
+   absolute seconds aren't). The 1-epoch smoke test showed a 7.5 s → 16.4 s
+   slowdown for SNN_Leaky/rate when the GPU went from idle to 100 %
+   utilisation, i.e. roughly 2× under heavy contention.
+4. **Worst — shared GPU, run interleaved with other workloads.** The
+   contention level changes between runs so `train_time_s` becomes
+   uninterpretable. Avoid.
+
+If you cannot get exclusive access for the full sweep, our recommendation is
+to **report model-quality metrics from the contested run** (those are
+deterministic) and **defer the training-time analysis** until you can re-run
+the few top performers on an idle GPU.
+
+### No silent overwrites
+- A run that finds an existing `results.json` in its leaf directory **skips**
+  (returns the existing record). Pass `--force` (or set `force: true` in the
+  config) to re-run.
+- `results/summary.csv` dedups on `(dataset, neuron, encoding, seed)`: a re-run
+  *replaces* its previous row rather than appending a duplicate.
+- Each leaf writes its own `results.json` + `checkpoint.pt` under
+  `results/{dataset}/SNN_{neuron}/{encoding}/` — combinations never overwrite
+  each other.
+
+Each script (and the orchestrator):
 1. Reads `configs/{dataset}/SNN_{neuron}/{encoding}/config.yaml`
 2. Calls `src.training.run_experiment(cfg)`
 3. Writes `results/{dataset}/SNN_{neuron}/{encoding}/{results.json, checkpoint.pt}`
-4. Appends one row to `results/summary.csv`
+4. Updates the row for this combination in `results/summary.csv`
+
+## Result figures and tables
+
+After a sweep completes, generate the analysis figures with one command:
+
+```bash
+python scripts/make_plots.py nslkdd
+```
+
+Outputs land in `results/{dataset}/figures/` as both **PDF** (vector,
+paper-ready) and PNG (preview). Styling uses an IEEE-compatible
+**colorblind-safe palette** — the Wong 2011 8-colour set for categorical
+data and `viridis` for sequential / heatmap data (both perceptually uniform,
+readable in greyscale, and accepted in IEEE accessibility guidelines).
+
+| File | What it shows |
+|---|---|
+| `01_accuracy_heatmap.pdf` | Accuracy across 9 neurons × 3 encodings |
+| `02_f1_macro_heatmap.pdf` | Macro-F1 same grid |
+| `03_mcc_heatmap.pdf` | MCC same grid |
+| `04_detection_rate_heatmap.pdf` | IDS detection rate (binary) |
+| `05_far_heatmap.pdf` | IDS false alarm rate (binary) |
+| `06_spike_sparsity_heatmap.pdf` | Spike sparsity (efficiency) |
+| `07_per_class_f1.pdf` | Per-class F1 bars, 3×3 grid by neuron, grouped by encoding |
+| `08_dr_vs_far.pdf` | Detection Rate vs False Alarm Rate scatter (IDS ROC view) |
+| `09_accuracy_vs_energy.pdf` | Accuracy vs energy proxy (Pareto trade-off) |
+| `10_training_curves.pdf` | Per-epoch validation loss, 3×3 grid by neuron |
+| `ranked_by_f1_macro.csv` | Top-to-bottom ranking of all 27 combinations |
 
 ---
 
