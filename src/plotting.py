@@ -138,7 +138,14 @@ def plot_per_class_f1(records: List[Dict], out_path: Path):
     if not rows:
         return
     df = pd.DataFrame(rows)
-    classes = ["normal", "dos", "probe", "r2l", "u2r"]
+    # Multi-seed safety: average f1 across seeds for each (neuron, encoding, class)
+    # so .loc[class, 'f1'] returns a scalar, not a Series of per-seed values.
+    df = df.groupby(["neuron", "encoding", "class"], as_index=False)["f1"].mean()
+
+    # Class list comes from the actual records so binary (normal/attack)
+    # datasets like ISCXIDS2012 work alongside 5-class ones.
+    classes = list(records[0]["test_plus"]["metrics"].get("class_names",
+                                                            sorted(df["class"].unique())))
     encodings = ["rate", "latency", "delta"]
     neurons = sorted(df["neuron"].unique())
 
@@ -153,8 +160,10 @@ def plot_per_class_f1(records: List[Dict], out_path: Path):
         width = 0.27
         for i, enc in enumerate(encodings):
             ssub = sub[sub["encoding"] == enc].set_index("class")
-            vals = [ssub.loc[c, "f1"] if c in ssub.index else 0 for c in classes]
-            ax.bar(x + (i - 1) * width, vals, width, label=enc, color=color_for_enc[enc])
+            vals = [float(ssub.loc[c, "f1"]) if c in ssub.index else 0.0
+                    for c in classes]
+            ax.bar(x + (i - 1) * width, vals, width, label=enc,
+                   color=color_for_enc[enc])
         ax.set_title(n)
         ax.set_xticks(x); ax.set_xticklabels(classes, rotation=30, ha="right")
         ax.set_ylim(0, 1.0)

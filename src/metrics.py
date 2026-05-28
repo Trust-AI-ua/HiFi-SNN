@@ -65,23 +65,31 @@ def compute_metrics(
     }
     out["class_names"] = names
 
-    # ROC-AUC weighted (one-vs-rest), only over classes actually present in y_true.
-    # sklearn requires the score matrix to sum to exactly 1 per row, so we
-    # softmax-normalise the score subset rather than min-max-normalise, which
-    # also handles the case where every output spike count was zero.
+    # ROC-AUC, weighted one-vs-rest. sklearn has separate signatures for
+    # binary vs multi-class: binary wants y_score as a 1-D array of positive-
+    # class probabilities; multi-class wants a 2-D (n, k) matrix that sums to
+    # 1 per row. We softmax-normalise the score subset so the multi-class
+    # branch satisfies sklearn's sum-to-1 requirement even when every output
+    # spike count was zero.
     if y_score is not None:
         try:
             present = np.unique(y_true)
             if y_score.ndim == 2 and y_score.shape[1] >= 2 and present.size >= 2:
                 score_subset = y_score[:, present].astype(np.float64)
-                # Stable softmax over the per-row subset
                 shift = score_subset - score_subset.max(axis=1, keepdims=True)
                 e = np.exp(shift)
                 prob = e / e.sum(axis=1, keepdims=True)
-                out["roc_auc_weighted"] = float(
-                    roc_auc_score(y_true, prob, multi_class="ovr",
-                                  average="weighted", labels=present)
-                )
+                if present.size == 2:
+                    # Binary: feed only the positive-class column (last in
+                    # `present`, i.e. the higher-index class).
+                    out["roc_auc_weighted"] = float(
+                        roc_auc_score(y_true, prob[:, 1])
+                    )
+                else:
+                    out["roc_auc_weighted"] = float(
+                        roc_auc_score(y_true, prob, multi_class="ovr",
+                                      average="weighted", labels=present)
+                    )
             else:
                 out["roc_auc_weighted"] = None
         except Exception as e:

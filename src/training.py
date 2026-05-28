@@ -197,10 +197,21 @@ def run_experiment(cfg: Dict) -> Dict:
     _set_seed(cfg["seed"])
 
     device = torch.device(cfg["device"])
-    bundle = get_dataset(cfg["dataset"],
-                          batch_size=cfg["batch_size"],
-                          val_fraction=cfg["val_fraction"],
-                          seed=cfg["seed"])
+    # Forward dataset-loader-specific kwargs the config sets — but only those
+    # the target loader's signature accepts (NSL-KDD and KDDCup99 don't have
+    # subsample_fraction/test_fraction; CIC-IDS2017 and CSE-CIC-IDS2018 do).
+    import inspect
+    from src.data import DATASET_LOADERS
+    loader_params = inspect.signature(DATASET_LOADERS[cfg["dataset"]]).parameters
+    dataset_kwargs = dict(
+        batch_size=cfg["batch_size"],
+        val_fraction=cfg["val_fraction"],
+        seed=cfg["seed"],
+    )
+    for opt in ("subsample_fraction", "test_fraction"):
+        if opt in cfg and opt in loader_params:
+            dataset_kwargs[opt] = cfg[opt]
+    bundle = get_dataset(cfg["dataset"], **dataset_kwargs)
     encoder = get_encoder(cfg["encoding"])
     num_steps = cfg["num_steps"]
 
