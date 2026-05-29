@@ -1,0 +1,32 @@
+% Requires: \usepackage[table]{xcolor}
+\definecolor{paretogreen}{RGB}{168,219,140}
+\definecolor{paretoyellow}{RGB}{252,237,140}
+\begin{table*}[t]
+\centering
+\renewcommand{\arraystretch}{1.2}
+\setlength{\tabcolsep}{3pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l|cccc|cccc|cccc|c}
+\toprule
+\textbf{Variant} & \multicolumn{4}{c|}{\textbf{Accuracy $\uparrow$}} & \multicolumn{4}{c|}{\textbf{Spikes/sample $\downarrow$}} & \multicolumn{4}{c|}{\textbf{Inference (ms) $\downarrow$}} & \multirow{2}{*}{\textbf{Score}} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}
+ & NSL-KDD & KDDCup99 & CIC-IDS2017 & CTU-13 & NSL-KDD & KDDCup99 & CIC-IDS2017 & CTU-13 & NSL-KDD & KDDCup99 & CIC-IDS2017 & CTU-13 & \\
+\midrule
+\rowcolor{paretogreen!40}\textbf{LeakyParallel/latency} & 0.7611 & \cellcolor{paretoyellow}\textbf{0.9257} & \cellcolor{paretogreen}\textbf{0.9976} & \cellcolor{paretogreen}\textbf{1.0000} & 359.1 & 236.8 & 353.1 & 368.1 & \cellcolor{paretoyellow}\textbf{0.0269} & \cellcolor{paretoyellow}\textbf{0.0688} & \cellcolor{paretogreen}\textbf{0.0730} & \cellcolor{paretoyellow}\textbf{0.1242} & \textbf{7/12} \\
+\rowcolor{paretoyellow!40}LeakyParallel/delta & 0.7503 & 0.9232 & 0.9430 & 0.7681 & 144.1 & \cellcolor{paretoyellow}\textbf{105.2} & \cellcolor{paretoyellow}\textbf{81.9} & \cellcolor{paretoyellow}\textbf{69.9} & \cellcolor{paretoyellow}\textbf{0.0317} & 0.0730 & 0.0860 & \cellcolor{paretoyellow}\textbf{0.1284} & \textbf{5/12} \\
+\rowcolor{paretoyellow!40}LeakyParallel/rate & 0.7596 & \cellcolor{paretogreen}\textbf{0.9260} & 0.9907 & 0.9971 & 426.8 & 394.2 & 343.1 & 282.9 & \cellcolor{paretogreen}\textbf{0.0258} & \cellcolor{paretogreen}\textbf{0.0622} & \cellcolor{paretoyellow}\textbf{0.0779} & \cellcolor{paretogreen}\textbf{0.1147} & \textbf{5/12} \\
+Leaky/delta & 0.7502 & 0.9219 & 0.9416 & 0.7676 & \cellcolor{paretoyellow}\textbf{132.2} & \cellcolor{paretoyellow}\textbf{103.3} & \cellcolor{paretoyellow}\textbf{110.7} & 124.7 & 0.0514 & 0.1004 & 0.1026 & 0.1547 & \textbf{3/12} \\
+Leaky/rate & \cellcolor{paretoyellow}\textbf{0.7635} & \cellcolor{paretoyellow}\textbf{0.9258} & 0.9917 & 0.9970 & 219.8 & 198.9 & 205.2 & 267.0 & 0.0441 & 0.0917 & \cellcolor{paretoyellow}\textbf{0.0826} & 0.1450 & \textbf{3/12} \\
+SLSTM/delta & 0.7467 & 0.9238 & 0.9413 & 0.7682 & 202.4 & \cellcolor{paretogreen}\textbf{82.4} & \cellcolor{paretogreen}\textbf{68.8} & \cellcolor{paretogreen}\textbf{66.3} & 0.0693 & 0.0711 & 0.1439 & 0.1478 & \textbf{3/12} \\
+Alpha/delta & 0.7382 & 0.9216 & 0.9395 & 0.7666 & \cellcolor{paretogreen}\textbf{80.6} & 114.3 & 161.1 & \cellcolor{paretoyellow}\textbf{81.0} & 0.1140 & 0.1844 & 0.1491 & 0.2202 & \textbf{2/12} \\
+Leaky/latency & 0.7609 & 0.9244 & \cellcolor{paretoyellow}\textbf{0.9976} & \cellcolor{paretoyellow}\textbf{1.0000} & 225.0 & 194.4 & 258.5 & 156.4 & 0.0459 & 0.0970 & 0.1004 & 0.1473 & \textbf{2/12} \\
+SLSTM/latency & \cellcolor{paretoyellow}\textbf{0.7659} & 0.9252 & 0.9968 & 1.0000 & 351.2 & 219.1 & 445.3 & 382.9 & 0.0612 & \cellcolor{paretoyellow}\textbf{0.0680} & 0.1144 & 0.1416 & \textbf{2/12} \\
+Synaptic/latency & \cellcolor{paretogreen}\textbf{0.7676} & 0.9234 & 0.9971 & \cellcolor{paretoyellow}\textbf{1.0000} & 149.5 & 121.2 & 167.6 & 183.5 & 0.0830 & 0.1059 & 0.1235 & 0.1359 & \textbf{2/12} \\
+Alpha/latency & 0.7310 & 0.9233 & 0.9954 & 0.9999 & \cellcolor{paretoyellow}\textbf{108.7} & 124.5 & 154.7 & 137.5 & 0.1085 & 0.1795 & 0.1363 & 0.2214 & \textbf{1/12} \\
+SConv2dLSTM/latency & 0.7561 & 0.9250 & \cellcolor{paretoyellow}\textbf{0.9974} & 1.0000 & 795.1 & 1180.2 & 2062.9 & 1298.0 & 0.0897 & 0.0962 & 0.1219 & 0.1501 & \textbf{1/12} \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Per-dataset consistency of the 12 SNN variants drawn from the union of the three top-5 lists (F1 macro, energy, inference time). Each numeric cell is the cross-seed mean of that variant on that dataset (5 seeds). Within each column, the single best variant is highlighted \colorbox{paretogreen}{green}; 2nd and 3rd are \colorbox{paretoyellow}{yellow}. The \textbf{Score} column counts the number of (dataset, metric) cells (out of 12) in which the variant ranks in the top-3 within this universe. Rows with Score $\geq 6$ are shaded \colorbox{paretogreen!40}{green} (consistently strong across criteria); rows with Score $\geq 4$ are shaded \colorbox{paretoyellow!40}{yellow}.}
+\label{tab:consistency}
+\end{table*}

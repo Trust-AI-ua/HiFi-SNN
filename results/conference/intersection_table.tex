@@ -1,0 +1,24 @@
+% Requires: \usepackage[table]{xcolor}
+\definecolor{paretogreen}{RGB}{168,219,140}
+\definecolor{paretoyellow}{RGB}{252,237,140}
+\begin{table*}[t]
+\centering
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c|ll|ll|ll}
+\toprule
+ & \multicolumn{2}{c|}{\textbf{Top-5 by F1 macro}} & \multicolumn{2}{c|}{\textbf{Top-5 by energy (spikes/sample)}} & \multicolumn{2}{c}{\textbf{Top-5 by inference (ms/sample)}} \\
+\textbf{Rank} & \textbf{Variant} & \textbf{F1 macro} & \textbf{Variant} & \textbf{Energy} & \textbf{Variant} & \textbf{Inference} \\
+\midrule
+1 & \cellcolor{paretoyellow}\textbf{LeakyParallel/latency} & 0.7998 & \cellcolor{paretoyellow}\textbf{LeakyParallel/delta} & 100.3 & LeakyParallel/rate & 0.0702 \\
+2 & Leaky/latency & 0.7982 & SLSTM/delta & 105.0 & \cellcolor{paretoyellow}\textbf{LeakyParallel/latency} & 0.0732 \\
+3 & SConv2dLSTM/latency & 0.7938 & Alpha/delta & 109.3 & \cellcolor{paretoyellow}\textbf{LeakyParallel/delta} & 0.0797 \\
+4 & \cellcolor{paretoyellow}\textbf{SLSTM/latency} & 0.7925 & Leaky/delta & 117.7 & Leaky/rate & 0.0909 \\
+5 & Synaptic/latency & 0.7921 & Alpha/latency & 131.3 & \cellcolor{paretoyellow}\textbf{SLSTM/latency} & 0.0963 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Top-5 SNN variants under three different ranking criteria (quality, energy, inference speed) — each computed as the cross-dataset mean over 4 datasets $\times$ 5 seeds = 20 measurements per variant. No single variant appears in all three top-5 lists, reflecting the quality-vs-efficiency trade-off. Variants appearing in \emph{two} of the three lists (highlighted \colorbox{paretoyellow}{yellow}): \texttt{LeakyParallel/delta}, \texttt{LeakyParallel/latency}, \texttt{SLSTM/latency}.}
+\label{tab:top5_intersection}
+\end{table*}
