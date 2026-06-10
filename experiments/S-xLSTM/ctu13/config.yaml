@@ -1,0 +1,29 @@
+# S-xLSTM (hybrid: mLSTM selective recurrence + LeakyParallel spiking readout)
+# Dataset: ctu13
+# Only LeakyParallel (neuron) + latency (encoding) are used, per design.
+dataset: ctu13
+
+# --- architecture ---
+num_steps: 25        # latency window T (also the mLSTM recurrence length)
+d_model: 64
+num_blocks: 2
+beta: 0.9            # LeakyParallel initial membrane decay (learned)
+
+# --- training ---
+batch_size: 128
+epochs: 10
+lr: 0.001
+weight_decay: 0.0001
+class_weighted: false   # off by default -> comparable to the unweighted SNN ablation
+val_fraction: 0.1
+seed: 42
+
+# --- inference ---
+early_exit_conf: 0.9
+
+# --- data (large dataset; honoured by this loader) ---
+subsample_fraction: 1.0
+
+# --- output (results stored separately from the SNN sweep) ---
+results_dir: results/S-xLSTM/ctu13
+summary_csv: results/summary_sxlstm.csv
