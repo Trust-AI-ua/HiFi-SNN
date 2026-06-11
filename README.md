@@ -527,3 +527,107 @@ CSE–CIC joint dataset extending CIC-IDS2017 with additional attack scenarios.
 - Source: [UNB CIC](https://www.unb.ca/cic/datasets/ids-2018.html) · [Kaggle](https://www.kaggle.com/datasets/solarmainframe/ids-intrusion-csv)
 - Local path: `dataset/cse-cic-ids2018/`
 - Format: CSV (one file per date)
+
+
+# Additional Datasets
+# Tier 1 Datasets — SNN vs DNN Energy Consumption Benchmarking
+
+> **Strongly Recommended.** Large, well-established, and widely cited benchmarks ideal for energy benchmarking, enabling direct comparison with existing literature.
+
+---
+
+## 1. KDD Cup '99
+
+**Why Applicable:** Historical standard; large scale; enables comparison with decades of IDS literature.
+
+---
+
+## 2. NSL-KDD
+
+**Why Applicable:** Improved KDD; balanced classes; very commonly used ML baseline.
+
+---
+
+## 3. UNSW-NB15
+
+**Why Applicable:** Modern, realistic, 9 attack families; widely used in recent DNN/ML IDS papers.
+
+---
+
+## 4. CIC-IDS2017
+
+**Why Applicable:** De facto modern benchmark; 5-day simulation; high feature richness.
+
+---
+
+## 5. CSE-CIC-IDS2018
+
+**Why Applicable:** Expanded CIC benchmark; larger testbed; good for scaling energy tests.
+
+---
+
+## 6. Improved CIC-IDS2017 / CSE-CIC-IDS2018
+
+**Why Applicable:** Corrected labeling; more trustworthy for performance-energy tradeoff analysis.
+
+---
+
+## 7. LYCOS-IDS2017
+
+**Why Applicable:** Corrected feature extraction; cleaner for fair algorithmic comparison.
+
+---
+
+## 8. BoT-IoT
+
+**Why Applicable:** 72M+ records; massive scale ideal for energy cost measurement.
+
+---
+
+## 9. ToN-IoT
+
+**Why Applicable:** Multi-modal telemetry; large and diverse; commonly used in recent SNN/IDS work.
+
+---
+
+## 10. N-BaIoT
+
+**Why Applicable:** NetFlow-based; IoT botnet focus; well-structured for ML pipelines.
+
+---
+
+## 11. NF-UQ-NIDS / NF-UQ-NIDS-v2
+
+**Why Applicable:** NetFlow standardized; re-generated from multiple benchmarks; great for cross-dataset comparison.
+
+---
+
+## 12. CTU-13
+
+**Why Applicable:** 13 real-world botnet scenarios; temporal flow data favorable for SNNs.
+
+---
+
+## 13. ISCX-IDS-2012
+
+**Why Applicable:** One of the earliest realistic IDS datasets; still widely used as a baseline.
+
+---
+
+## Summary Table
+
+| # | Dataset | Why Applicable |
+|---|---------|---------------|
+| 1 | KDD Cup '99 | Historical standard; large scale; enables comparison with decades of IDS literature |
+| 2 | NSL-KDD | Improved KDD; balanced classes; very commonly used ML baseline |
+| 3 | UNSW-NB15 | Modern, realistic, 9 attack families; widely used in recent DNN/ML IDS papers |
+| 4 | CIC-IDS2017 | De facto modern benchmark; 5-day simulation; high feature richness |
+| 5 | CSE-CIC-IDS2018 | Expanded CIC benchmark; larger testbed; good for scaling energy tests |
+| 6 | Improved CIC-IDS2017 / CSE-CIC-IDS2018 | Corrected labeling; more trustworthy for performance-energy tradeoff analysis |
+| 7 | LYCOS-IDS2017 | Corrected feature extraction; cleaner for fair algorithmic comparison |
+| 8 | BoT-IoT | 72M+ records; massive scale ideal for energy cost measurement |
+| 9 | ToN-IoT | Multi-modal telemetry; large and diverse; commonly used in recent SNN/IDS work |
+| 10 | N-BaIoT | NetFlow-based; IoT botnet focus; well-structured for ML pipelines |
+| 11 | NF-UQ-NIDS / NF-UQ-NIDS-v2 | NetFlow standardized; re-generated from multiple benchmarks; great for cross-dataset comparison |
+| 12 | CTU-13 | 13 real-world botnet scenarios; temporal flow data favorable for SNNs |
+| 13 | ISCX-IDS-2012 | One of the earliest realistic IDS datasets; still widely used as a baseline |
