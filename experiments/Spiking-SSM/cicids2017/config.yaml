@@ -1,0 +1,43 @@
+# Spiking-SSM (Design A): event-driven spiking state-space sequence model
+# Dataset: cicids2017
+# Consumes flow-window sequences [B, L, F].
+# CIC-IDS2017 (CICFlowMeter) carries no Source IP / timestamp columns, so
+# windows are L consecutive flows in file (Mon..Fri) order; label = last flow.
+# Native design: learned spiking front-end (no latency/rate/delta encoder),
+# snn.Leaky neurons, selective spiking SSM blocks, supervised + self-supervised
+# heads, confidence-triggered early exit.
+dataset: cicids2017
+
+# --- sequence windowing ---
+seq_len: 16          # window length L
+stride: 16           # window stride (16 = non-overlapping; lower = more overlap/data)
+
+# --- architecture ---
+d_model: 32
+d_state: 8
+n_blocks: 2
+beta: 0.9            # LIF membrane decay
+
+# --- multi-task loss ---
+a_pred: 0.3          # next-window prediction (self-supervised) loss weight
+a_sparse: 0.001      # spike-sparsity (energy) loss weight
+
+# --- training ---
+batch_size: 128
+epochs: 10
+lr: 0.002
+weight_decay: 0.0
+class_weighted: true    # inverse-frequency CE (Design A's native choice for imbalance)
+val_fraction: 0.1
+seed: 42
+
+# --- early exit (inference) ---
+theta_exit: 0.9      # confidence threshold to stop reading the sequence early
+theta_uncertain: 0.5 # below this final confidence -> flag as uncertain
+
+# --- data (large dataset; subsample_fraction honoured by this seq loader) ---
+subsample_fraction: 1.0
+
+# --- output (results stored separately from SNN / S-xLSTM / Spiking-Griffin) ---
+results_dir: results/Spiking-SSM/cicids2017
+summary_csv: results/summary_ssm.csv

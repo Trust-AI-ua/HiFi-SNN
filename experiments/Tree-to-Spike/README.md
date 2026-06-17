@@ -8,6 +8,12 @@ and a compact LIF MLP student trained by distillation. At deployment **only the
 encoder + SNN student run** (no tree), int8-quantized, with confidence-triggered
 early exit.
 
+## Architecture
+
+![Tree-to-Spike (Design C) two-phase architecture. Training: network flow features feed a GBDT teacher and a tree-guided spike encoder, which feed a compact SNN student trained with CE+KD+ranking+sparsity+FP. Deployment: the fixed encoder and the quantized spiking network with early exit produce a decision, with no tree at runtime.](architecture.svg)
+
+Two phases. **Training** (top): the GBDT teacher (amber, train-time only) supplies soft labels, split thresholds, and feature importances; the tree-guided spike encoder turns those into the spike representation; the compact SNN student is distilled with `CE + KD + ranking + spike-sparsity + FP-aware` loss. **Deployment** (bottom): only the fixed encoder + int8-quantized SNN run — no tree at runtime — with a confidence-triggered early exit. Teal = spiking/SNN, amber = teacher (training only), grey = I/O.
+
 ## Pipeline
 
 ```

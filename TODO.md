@@ -84,25 +84,54 @@ The SNN ablation originally recorded energy/sparsity/params/timing but not
 
 ---
 
-## 3. Extend the hybrid SNN models to all datasets  ⬜
+## 3. Extend the hybrid SNN models to all datasets  🟡
 
-The four hybrids currently have **KDDCup99 only**. Extend each to the other
-in-scope datasets so they can be compared against the SNN ablation everywhere.
+Scope: kddcup99, **nslkdd, cicids2017, ctu13, iscxids2012** at full data, **plus
+cse-cic-ids2018 capped at `subsample_fraction: 0.5`** (the vanilla SNN sweep
+`hisnn-sweep-cse-cic-ids2018` has been running since Jun 4, so the hybrids use only half
+to limit load/contention). iscxids2012 uses `subsample_fraction: 1.0` to match the SNN
+ablation. The orchestrators (`scripts/run_<model>.py`) auto-discover datasets from the
+`experiments/<Model>/<dataset>/` dirs, so no orchestrator changes were needed.
 
-- ⬜ For each hybrid (S-xLSTM, Spiking-Griffin, Spiking-SSM, Tree-to-Spike), add
-  `experiments/<Model>/<dataset>/{config.yaml, run.py}` for **nslkdd, cicids2017, ctu13**
-  (and cse-cic-ids2018 if in scope). One-directory copy of the KDDCup99 dir; change
-  `dataset:` and `results_dir:`, add `subsample_fraction:` for the large datasets.
-- ⬜ **Spiking-SSM caveat:** it consumes *sequence windows* via
-  `src/data/sequence_windows.py`, which currently only registers `kddcup99`
-  (`SEQ_DATASET_LOADERS`). Add consecutive-record window loaders for the other datasets
-  (NSL-KDD shares the schema; CIC/CTU need their own windowing over the cached arrays).
-  Note CTU-13 *does* have SrcAddr/timestamps (raw `.binetflow`) so genuine per-host
-  windows are possible there — see `dataset/ctu13/DOWNLOAD_SOURCES.md`.
-- ⬜ **Tree-to-Spike caveat:** retrains an XGBoost teacher per run; budget extra wall-clock
-  on the large datasets (CIC-IDS2017 ~1.78 M train rows).
-- ⬜ Run multi-seed sweeps (`scripts/run_<model>.py <dataset> --seeds 42 43 44 45 46`)
-  and confirm each writes to its own `results/<Model>/<dataset>/seed_<N>/` tree.
+**Bugfix (latency encoder):** S-xLSTM and Spiking-Griffin called `spikegen.latency`
+directly without clamping; MinMax `fit_transform` emits a tiny float32 overshoot
+(1.0000001) on ctu13's train set, which `spikegen.latency` rejects (it needs strict
+[0, 1]). Both `_encode` methods now `x.clamp(0.0, 1.0)` first, matching the shared SNN
+encoders in `src/encoding/`. Spiking-SSM (learned front-end) and Tree-to-Spike (own
+encoder) were unaffected.
+
+- ✅ **Experiment dirs generated** for all four hybrids on nslkdd/cicids2017/ctu13/
+  iscxids2012/cse-cic-ids2018 (`experiments/<Model>/<dataset>/{config.yaml, run.py}`);
+  kddcup99 already existed. cicids2017/ctu13/iscxids2012 carry `subsample_fraction: 1.0`,
+  cse-cic carries `0.5` (nslkdd omits it).
+- ✅ **Spiking-SSM sequence loaders added** in `src/data/sequence_windows.py`
+  (`SEQ_DATASET_LOADERS` now registers kddcup99/nslkdd/cicids2017/ctu13):
+  - **nslkdd** — consecutive-record windows over the official KDDTrain+/KDDTest+ files
+    (KDDTest-21 → `test21_loader`), same preprocessing as the tabular loader.
+  - **cicids2017** — consecutive-flow windows in file (Mon..Fri) order (no IP/time
+    columns exist); windows split stratified 70/30 + 90/10, MinMax fit on train windows.
+  - **cse-cic-ids2018** — same record-order windowing as cicids2017 (Timestamp dropped,
+    no Source IP); reuses the existing 1.1 GB `_preprocessed_cache.npz` (no raw re-parse,
+    so no contention with the live sweep). Loader default `subsample_fraction=0.5`.
+    Memory note: the full cache is ~5 GB (16.2 M flows x 82 feats); building all windows
+    is a ~10 GB transient peak before the 0.5 subsample is applied.
+  - **iscxids2012** — same record-order windowing (source/destination IP dropped); binary
+    (normal/attack); reuses the existing ~1 GB `_preprocessed_cache.npz`.
+  - **ctu13** — genuine **per-host temporal windows**: L consecutive flows per
+    (scenario, SrcAddr) from the raw `.binetflow`, same host-context features as the
+    tabular CTU-13 loader. Cached separately as `dataset/ctu13/_seq_cache.npz`.
+  - `src/training_ssm.py` now forwards `subsample_fraction`/`test_fraction` from cfg
+    when present (no-op for the official-split datasets).
+- ✅ **Smoke-tested** (1 epoch): Griffin/{nslkdd,ctu13}, Tree-to-Spike/nslkdd,
+  SSM/{nslkdd,cicids2017(sub),ctu13(sub, per-host)}, S-xLSTM/{ctu13,iscxids2012(sub)},
+  SSM/iscxids2012(sub) all run end-to-end; SSM/cse-cic-ids2018 + iscxids2012 loaders
+  validated against their existing caches (read-only).
+- ⬜ **Run the multi-seed sweeps** (deferred to the user — heavy):
+  `scripts/run_<model>.py <dataset> --seeds 42 43 44 45 46`; each writes to its own
+  `results/<Model>/<dataset>/seed_<N>/` tree. **Tree-to-Spike caveat:** retrains an
+  XGBoost teacher per run — budget extra wall-clock on CIC-IDS2017 (~1.78 M train rows).
+  **First CTU-13 SSM run** re-reads the 2.6 GB raw `.binetflow` to build `_seq_cache.npz`
+  (~5-10 min, one-time).
 
 ---
 
@@ -127,6 +156,73 @@ benchmarks referenced in `README.md` / the reference designs.
 - ⬜ Update the `# Datasets` section of `README.md` with source URLs, local paths, and
   formats for the added datasets (mirror the existing entries; record exact download
   URLs like `dataset/ctu13/DOWNLOAD_SOURCES.md` did for CTU-13).
+
+---
+
+## 5. NSL-KDD evaluation protocol — why we cap at ~76%, and optional comparison modes  ⬜
+
+**Context / question raised:** our NSL-KDD accuracy (~0.75-0.77, macro-F1 ~0.58-0.60)
+looks low next to Kaggle/blog notebooks that report ~99% (e.g. the eneskosar19
+"Intrusion Detection System [NSL-KDD]" notebook). This section records *why* that gap
+exists and what would be needed to report comparable numbers, so we can implement it
+later if a reviewer asks for a head-to-head.
+
+### Why our methodology never surpasses ~76% accuracy (and that is correct)
+
+Our loader (`src/data/nslkdd.py`) trains on **KDDTrain+** and tests on the **official
+KDDTest+** file. This is the *honest, hard* protocol the NSL-KDD authors designed:
+
+1. **Train/test distribution shift by design.** KDDTest+ deliberately contains **17
+   attack signatures that never appear in KDDTrain+** and a re-balanced class mix, so a
+   model cannot win by memorising training patterns — it must *generalise* to unseen
+   attacks. This is the entire reason NSL-KDD exists (it fixed KDDCup99's redundancy).
+2. **The ceiling is a property of the split, not the model.** We verified this directly:
+   the *same* features + a tuned `RandomForestClassifier(n_estimators=200)` give
+
+   | Protocol | Accuracy | Macro-F1 |
+   |---|---|---|
+   | train KDDTrain+ -> test **official KDDTest+** (5-class) | **0.754** | 0.493 |
+   | random 80/20 split of KDDTrain+ (**IID**, what 99% notebooks do) | **0.999** | 0.960 |
+   | **binary** (normal vs attack) on official KDDTest+ | 0.777 | 0.776 |
+
+   So a RandomForest scores **0.754** on our protocol — *below* our SNN (0.769) and
+   S-xLSTM (~0.74-0.78). Model choice barely moves the headline; the ~75-80% ceiling is
+   the distribution shift, and it caps every classifier (RF, XGBoost, DNN, SNN alike).
+3. **Two minority classes do the damage** (per-class F1 on KDDTest+, SNN Synaptic/latency):
+   `normal` 0.79, `dos` 0.89, `probe` 0.70, but **`r2l` 0.26 (recall 0.15)** and
+   **`u2r` 0.34 (recall 0.22)**. KDDTest+ is dominated by *novel* R2L/U2R attacks
+   (r2l support 2885, u2r 67 with ~1 training example), so recall on them is intrinsically
+   low. This is why macro-F1 (~0.60) sits far below weighted-F1 (~0.74).
+4. **KDDTest-21 is even harder** (acc ~0.56): it keeps only the records that *all* 21
+   baseline learners misclassified, i.e. the hardest tail.
+
+### What the ~99% papers/notebooks actually do (none of these are wrong, just different)
+
+- **IID random split** of KDDTrain+ (or concatenate KDDTrain+ + KDDTest+ then split) ->
+  train and test are the same distribution -> ~99% (row 2 above). This measures
+  memorisation, not intrusion-detection generalisation. **This is "Suggested Step 1".**
+- **Binary** task (normal vs attack) instead of 5-class -> easier boundary (row 3, ~0.78
+  honest; ~0.99 if also IID-split).
+- **Preprocessing leakage:** fitting the scaler / one-hot / feature selector on the full
+  dataset (train+test) before splitting.
+- Honest KDDTest+ numbers in the literature for strong models land at **~76-82%
+  (multiclass)** / ~80-83% (binary) — exactly our range (see thinline72/nsl-kdd, and
+  arXiv:1904.01352, arXiv:2512.03200).
+
+### Deferred implementation options (only if we need comparable headline numbers)
+
+- ⬜ **Add an opt-in IID / binary eval mode** to `src/data/nslkdd.py` (e.g.
+  `split="official" | "iid"`, `task="multiclass" | "binary"`), reported as a clearly
+  labelled *secondary* table — never replacing the official KDDTest+ headline, which is
+  what keeps our cross-dataset story scientifically honest.
+- ⬜ **Legitimately lift macro-F1 on the official split** (the real, defensible
+  improvement): our SNN runs are **unweighted** — try `class_weighted: true` (flag already
+  in the hybrids), focal loss, or train-side oversampling/SMOTE to raise R2L/U2R recall.
+  Accuracy will stay ~80% (the shift), but macro-F1 should rise; our 0.60 already beats
+  RF's 0.49, so there is headroom.
+- ⬜ **Paper framing:** state the protocol explicitly in Methodology and note that
+  headline gaps vs Kaggle-style reports are a train/test-split artefact, with the RF
+  table above as the one-line evidence.
 
 ---
 

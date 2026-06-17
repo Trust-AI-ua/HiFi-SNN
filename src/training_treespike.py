@@ -166,19 +166,40 @@ def _arrays_from_bundle(bundle):
 
 
 def _fit_teacher(Xtr, ytr, num_classes, cfg):
+    """Fit the cost-sensitive XGBoost teacher.
+
+    XGBoost's sklearn wrapper requires the training labels to be a contiguous
+    0..k-1 set, but some datasets do not exhibit every global class (e.g.
+    cse-cic-ids2018 has no `probe`, so ytr is {0,1,3,4}). We therefore train on
+    locally-remapped labels and return ``local_to_global`` so the caller can
+    scatter the teacher's [N, k] probabilities/predictions back into the global
+    ``num_classes`` space the student is trained against.
+    """
     from xgboost import XGBClassifier
     import pandas as pd
-    counts = np.bincount(ytr, minlength=num_classes).astype(np.float32)
+    present = np.unique(ytr)                          # global ids actually present
+    remap = np.full(num_classes, -1, dtype=np.int64)
+    remap[present] = np.arange(len(present))          # global -> local (contiguous)
+    ytr_local = remap[ytr]
+    counts = np.bincount(ytr_local, minlength=len(present)).astype(np.float32)
     cls_w = counts.sum() / (counts + 1e-6)
-    sample_w = cls_w[ytr]
+    sample_w = cls_w[ytr_local]
     Xdf = pd.DataFrame(Xtr, columns=[f"f{i}" for i in range(Xtr.shape[1])])
     teacher = XGBClassifier(
         n_estimators=cfg["teacher_n_estimators"], max_depth=cfg["teacher_max_depth"],
         learning_rate=cfg["teacher_lr"], subsample=0.9, colsample_bytree=0.8,
         importance_type="gain", tree_method="hist", n_jobs=4,
         eval_metric="mlogloss", random_state=cfg["seed"])
-    teacher.fit(Xdf, ytr, sample_weight=sample_w)
-    return teacher, Xdf
+    teacher.fit(Xdf, ytr_local, sample_weight=sample_w)
+    return teacher, Xdf, present
+
+
+def _teacher_proba_global(teacher, Xdf, local_to_global, num_classes):
+    """teacher.predict_proba in the global num_classes space (absent classes -> 0)."""
+    p_local = teacher.predict_proba(Xdf)
+    P = np.zeros((p_local.shape[0], num_classes), dtype=np.float32)
+    P[:, local_to_global] = p_local
+    return P
 
 
 @torch.no_grad()
@@ -232,7 +253,7 @@ def run_experiment(cfg: Dict) -> Dict:
     train_start = time.time()
 
     # ---------- 1) cost-sensitive XGBoost teacher ----------
-    teacher, Xtr_df = _fit_teacher(Xtr, ytr, num_classes, cfg)
+    teacher, Xtr_df, teacher_classes = _fit_teacher(Xtr, ytr, num_classes, cfg)
 
     # ---------- 2) tree-guided spike encoder ----------
     encoder = TreeGuidedSpikeEncoder(
@@ -245,7 +266,9 @@ def run_experiment(cfg: Dict) -> Dict:
                          beta=cfg["beta"], leaky=cfg["leaky"]).to(device)
     optim = torch.optim.Adam(student.parameters(), lr=cfg["lr"],
                              weight_decay=cfg["weight_decay"])
-    teacher_proba_all = torch.tensor(teacher.predict_proba(Xtr_df), dtype=torch.float32)
+    teacher_proba_all = torch.tensor(
+        _teacher_proba_global(teacher, Xtr_df, teacher_classes, num_classes),
+        dtype=torch.float32)
     yt = torch.tensor(ytr, dtype=torch.long)
     N = len(Xtr)
     bs = cfg["batch_size"]
@@ -309,7 +332,7 @@ def run_experiment(cfg: Dict) -> Dict:
     # teacher upper bound on test
     import pandas as pd
     Xte_df = pd.DataFrame(Xte, columns=[f"f{i}" for i in range(Xte.shape[1])])
-    t_pred = teacher.predict(Xte_df)
+    t_pred = teacher_classes[teacher.predict(Xte_df)]   # local -> global labels
     t_m = compute_metrics(yte, t_pred, y_score=None, class_names=bundle.class_names)
 
     test_record = {

@@ -6,6 +6,12 @@ SNN ablation. It pairs the ablation's two winning ingredients — **latency
 xLSTM **mLSTM** selective linear recurrence. Only these two snntorch components
 are used; no other neuron model or encoding is instantiated.
 
+## Architecture
+
+![S-xLSTM (revised Design A, LRAM) architecture: windowed traffic into per-modality encoders, latency spike encoding, stacked mLSTM selective linear recurrence with a LeakyParallel spiking readout, and a readout-with-early-exit head.](architecture.svg)
+
+The implemented path (grey/coral/teal) is: latency (TTFS) spike encoding → `N` stacked mLSTM blocks, each a **selective linear recurrence** (input-dependent gates, kept linear so it stays parallelisable) followed by a reset-free **`LeakyParallel`** spiking readout → readout + early exit. **The pink blocks (ICL support, per-modality encoders, dual parallel-train / recurrent-infer mode) are LRAM design extensions and are *not* in the current implementation** — see the caveat at the bottom of this file.
+
 ## Pipeline
 
 ```

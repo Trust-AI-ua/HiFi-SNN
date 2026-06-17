@@ -173,6 +173,10 @@ class SpikingGriffin(nn.Module):
         self.readout = nn.Linear(d_model, num_classes)
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
+        # clamp first: spikegen.latency requires [0, 1] and MinMax fit_transform can
+        # emit a tiny float32 overshoot (e.g. 1.0000001) on some datasets (matches
+        # the shared SNN encoders in src/encoding/).
+        x = x.clamp(0.0, 1.0)
         return spikegen.latency(x, num_steps=self.num_steps,
                                 normalize=True, linear=True, clip=True)   # [T, B, F]
 

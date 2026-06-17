@@ -1,0 +1,49 @@
+# Tree-to-Spike (Design C): GBDT-guided spike encoder + compact SNN student
+# Dataset: cse-cic-ids2018
+# Train-time: cost-sensitive XGBoost teacher -> tree-guided spike encoder ->
+#   SNN student via distillation (CE + KD + ranking + spike-sparsity + FP-aware).
+# Deploy-time: encoder + SNN student only (no tree), int8-quantized, early-exit.
+dataset: cse-cic-ids2018
+
+# --- tree-guided spike encoder ---
+T: 20                # latency time window (encoder spike steps)
+pop_max: 3           # max channels for the most important feature (population coding)
+prune_quantile: 0.20 # prune features below this importance quantile
+jitter: 0.12         # latency spread within a feature's population
+
+# --- SNN student ---
+hidden: [64, 64]     # 3-layer LIF MLP hidden sizes
+beta: 0.9            # LIF membrane decay
+leaky: true          # false -> non-leaky IF ablation (beta=1)
+
+# --- XGBoost teacher (train-time only) ---
+teacher_n_estimators: 200
+teacher_max_depth: 6
+teacher_lr: 0.1
+
+# --- distillation loss weights ---
+tau: 2.0             # KD temperature
+a_kd: 1.0            # knowledge-distillation weight
+a_rank: 0.3          # teacher attack-ranking weight
+a_sparse: 0.001      # spike-sparsity (energy) weight
+a_fp: 0.5            # false-positive-aware weight (confident on benign)
+
+# --- training ---
+epochs: 10
+batch_size: 128
+lr: 0.002
+weight_decay: 0.0
+val_fraction: 0.1
+seed: 42
+
+# --- deploy / inference ---
+quantize: true       # int8 fake-quant of the student before eval (deploy scenario)
+theta_exit: 0.9      # early-exit confidence threshold
+theta_uncertain: 0.5 # below this final confidence -> flag uncertain
+
+# --- data (very large; vanilla SNN sweep still running -> use half) ---
+subsample_fraction: 0.5
+
+# --- output (separate from SNN / S-xLSTM / Spiking-Griffin / Spiking-SSM) ---
+results_dir: results/Tree-to-Spike/cse-cic-ids2018
+summary_csv: results/summary_treespike.csv

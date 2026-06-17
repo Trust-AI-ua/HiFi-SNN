@@ -301,11 +301,13 @@ def run_experiment(cfg: Dict) -> Dict:
     _set_seed(cfg["seed"])
     device = torch.device(cfg["device"])
 
+    # forward optional loader knobs (no-op for kddcup99/nslkdd official splits)
+    seq_extra = {k: cfg[k] for k in ("subsample_fraction", "test_fraction") if k in cfg}
     bundle = get_sequence_dataset(
         cfg["dataset"],
         seq_len=cfg["seq_len"], stride=cfg["stride"],
         batch_size=cfg["batch_size"], val_fraction=cfg["val_fraction"],
-        seed=cfg["seed"],
+        seed=cfg["seed"], **seq_extra,
     )
 
     model = SpikingSSM(

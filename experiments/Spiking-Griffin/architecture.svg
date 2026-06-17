@@ -1,0 +1,48 @@
+<svg viewBox="0 0 660 776" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<title>Spiking-Griffin end-to-end pipeline for NIDS</title><desc>Windowed traffic -> per-modality encoders -> latency spike encoding -> Spiking-Griffin backbone interleaving (×N) a gated linear recurrence (RG-LRU) and a windowed spike-driven local-attention block, each with a LeakyParallel spike readout -> readout + early exit -> attack class / alert. Purple local attention is the new component vs S-xLSTM.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#9c9a92" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect x="0" y="0" width="660" height="776" fill="#1a1a18"/>
+<rect x="200" y="30" width="280" height="54" rx="8" fill="#444441" stroke="#b4b2a9" stroke-width="1"/>
+<text x="340.0" y="50.0" text-anchor="middle" fill="#d3d1c7" font-size="13" font-weight="600">Network traffic</text>
+<text x="340.0" y="68.0" text-anchor="middle" fill="#b4b2a9" font-size="11">windowed flow sequence</text>
+<line x1="340" y1="84" x2="340" y2="110" stroke="#9c9a92" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="200" y="110" width="280" height="54" rx="8" fill="#444441" stroke="#b4b2a9" stroke-width="1"/>
+<text x="340.0" y="130.0" text-anchor="middle" fill="#d3d1c7" font-size="13" font-weight="600">Per-modality encoders</text>
+<text x="340.0" y="148.0" text-anchor="middle" fill="#b4b2a9" font-size="11">categorical + continuous</text>
+<line x1="340" y1="164" x2="340" y2="190" stroke="#9c9a92" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="200" y="190" width="280" height="54" rx="8" fill="#712b13" stroke="#f0997b" stroke-width="1"/>
+<text x="340.0" y="210.0" text-anchor="middle" fill="#f5c4b3" font-size="13" font-weight="600">Latency encoding</text>
+<text x="340.0" y="228.0" text-anchor="middle" fill="#f0997b" font-size="11">TTFS → sparse spikes</text>
+<line x1="340" y1="244" x2="340" y2="270" stroke="#9c9a92" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="160" y="270" width="360" height="286" rx="12" fill="#262624" stroke="#888780" stroke-width="0.6" stroke-dasharray="5 4"/>
+<text x="176" y="290" fill="#faf9f5" font-size="13" font-weight="600">Spiking-Griffin · ×N interleaved</text>
+<rect x="188" y="306" width="304" height="50" rx="8" fill="#085041" stroke="#5dcaa5" stroke-width="1"/>
+<text x="340.0" y="324.0" text-anchor="middle" fill="#9fe1cb" font-size="13" font-weight="600">Gated linear recurrence</text>
+<text x="340.0" y="342.0" text-anchor="middle" fill="#5dcaa5" font-size="11">RG-LRU gating</text>
+<line x1="340" y1="356" x2="340" y2="370" stroke="#9c9a92" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="188" y="370" width="304" height="38" rx="8" fill="#712b13" stroke="#f0997b" stroke-width="1"/>
+<text x="340.0" y="390.0" text-anchor="middle" dominant-baseline="middle" fill="#f5c4b3" font-size="13" font-weight="600">Spike readout (LeakyParallel)</text>
+<line x1="340" y1="408" x2="340" y2="422" stroke="#9c9a92" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="188" y="422" width="304" height="50" rx="8" fill="#3c3489" stroke="#afa9ec" stroke-width="1"/>
+<text x="340.0" y="440.0" text-anchor="middle" fill="#cecbf6" font-size="13" font-weight="600">Windowed local attention</text>
+<text x="340.0" y="458.0" text-anchor="middle" fill="#afa9ec" font-size="11">spike-driven · local mask</text>
+<line x1="340" y1="472" x2="340" y2="486" stroke="#9c9a92" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="188" y="486" width="304" height="38" rx="8" fill="#712b13" stroke="#f0997b" stroke-width="1"/>
+<text x="340.0" y="506.0" text-anchor="middle" dominant-baseline="middle" fill="#f5c4b3" font-size="13" font-weight="600">Spike readout (LeakyParallel)</text>
+<line x1="340" y1="556" x2="340" y2="582" stroke="#9c9a92" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="200" y="582" width="280" height="54" rx="8" fill="#444441" stroke="#b4b2a9" stroke-width="1"/>
+<text x="340.0" y="602.0" text-anchor="middle" fill="#d3d1c7" font-size="13" font-weight="600">Readout + early-exit</text>
+<text x="340.0" y="620.0" text-anchor="middle" fill="#b4b2a9" font-size="11">accumulate spikes, decide</text>
+<line x1="340" y1="636" x2="340" y2="662" stroke="#9c9a92" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="200" y="662" width="280" height="54" rx="8" fill="#444441" stroke="#b4b2a9" stroke-width="1"/>
+<text x="340.0" y="682.0" text-anchor="middle" fill="#d3d1c7" font-size="13" font-weight="600">Attack class / alert</text>
+<text x="340.0" y="700.0" text-anchor="middle" fill="#b4b2a9" font-size="11">benign vs attack types</text>
+<rect x="40" y="744" width="12" height="12" rx="3" fill="#444441" stroke="#b4b2a9" stroke-width="1"/>
+<text x="58" y="754" fill="#c2c0b6" font-size="11">data / structural</text>
+<rect x="212" y="744" width="12" height="12" rx="3" fill="#712b13" stroke="#f0997b" stroke-width="1"/>
+<text x="230" y="754" fill="#c2c0b6" font-size="11">spiking</text>
+<rect x="304" y="744" width="12" height="12" rx="3" fill="#085041" stroke="#5dcaa5" stroke-width="1"/>
+<text x="322" y="754" fill="#c2c0b6" font-size="11">gated recurrence</text>
+<rect x="468" y="744" width="12" height="12" rx="3" fill="#3c3489" stroke="#afa9ec" stroke-width="1"/>
+<text x="486" y="754" fill="#c2c0b6" font-size="11">local attention (new)</text>
+</svg>

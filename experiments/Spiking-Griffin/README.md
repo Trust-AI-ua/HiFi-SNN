@@ -8,6 +8,12 @@ same `LeakyParallel` readout, and the **same training loop** as S-xLSTM, so the
 two hybrids differ only in the backbone and can be compared head-to-head with
 everything else held constant.
 
+## Architecture
+
+![Spiking-Griffin end-to-end pipeline: windowed traffic into per-modality encoders, latency spike encoding, an N-times interleaved backbone of a gated linear recurrence (RG-LRU) and a windowed spike-driven local-attention block each with a LeakyParallel readout, then a readout-with-early-exit head and an attack-class / alert output.](architecture.svg)
+
+The backbone interleaves, `N` times: a **gated linear recurrence** (RG-LRU gating, teal) → `LeakyParallel` readout, then a **windowed spike-driven local attention** block (purple, `|i-j| <= window`) → `LeakyParallel` readout. The purple local-attention block is the one component that is **new relative to S-xLSTM**; everything else (latency front-end, `LeakyParallel` readout, training loop) is shared so the two hybrids are directly comparable. Coral = spiking readouts, teal = gated recurrence, purple = local attention, grey = I/O.
+
 ## Pipeline
 
 ```

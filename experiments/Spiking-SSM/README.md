@@ -7,6 +7,12 @@ windows and keeps its native design — a learned spiking front-end, selective
 spiking state-space blocks (Mamba-style, spike-gated), and supervised +
 self-supervised heads with confidence-triggered early exit.
 
+## Architecture
+
+![Spiking-SSM (Design A) architecture: spike-encoded traffic sequence into a spiking front-end, a stack of selective spiking state-space blocks (input-dependent A/B/C, spike-triggered scan, LIF membrane memory), an anomaly head, energy-aware early exit, and a decision.](architecture.svg)
+
+A single forward pipeline: the flow-window sequence is spike-encoded, passed through a spiking front-end, then through `n_blocks` stacked spiking state-space blocks (Mamba-style input-dependent selectivity, spike-gated event-driven state updates, LIF membrane memory in linear time), into the anomaly head (supervised classifier and self-supervised next-window predictor) and a confidence-triggered early exit. Purple = the spiking state-space core; teal = the other spiking components; grey = I/O.
+
 ## Pipeline
 
 ```

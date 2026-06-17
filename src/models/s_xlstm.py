@@ -158,6 +158,10 @@ class SxLSTM(nn.Module):
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         """Latency (TTFS) encoding -> [T, B, F]. Non-differentiable; the first
         learnable projection lives in the first mLSTM block, after this."""
+        # spikegen.latency strictly requires inputs in [0, 1]; clamp first because
+        # MinMax fit_transform can emit a tiny float32 overshoot (e.g. 1.0000001)
+        # on some datasets (matches the shared SNN encoders in src/encoding/).
+        x = x.clamp(0.0, 1.0)
         return spikegen.latency(
             x, num_steps=self.num_steps,
             normalize=True, linear=True, clip=True,
