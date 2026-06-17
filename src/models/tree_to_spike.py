@@ -97,14 +97,27 @@ class TreeGuidedSpikeEncoder:
                 lvl[j] = np.searchsorted(e, X[:, j], side="right") / float(len(e))
         return lvl
 
-    def encode(self, X) -> torch.Tensor:
-        """X: np.ndarray [B, F]  ->  spikes torch.FloatTensor [T, B, out_dim]."""
+    def _level_channels(self, X) -> np.ndarray:
+        """Map [B, F] -> [B, out_dim] continuous bin levels in [0, 1] (the dense,
+        pre-spike representation shared by ``encode`` and ``encode_dense``)."""
         X = np.asarray(X, dtype=np.float32)
         B = X.shape[0]
         lvl = self._levels(X)
         level_ch = np.empty((B, self.out_dim), dtype=np.float32)
         for c, (j, o) in enumerate(self.channels_):
             level_ch[:, c] = np.clip(lvl[j] + o, 0.0, 1.0)
+        return level_ch
+
+    def encode_dense(self, X) -> torch.Tensor:
+        """Dense one-shot analog of ``encode``: returns the [B, out_dim] bin-level
+        matrix in [0, 1] with no temporal dimension. This is the input the
+        iso-architecture DNN twin consumes (same channels as the SNN student sees,
+        but processed in a single forward pass instead of as a T-step spike train)."""
+        return torch.from_numpy(self._level_channels(X))
+
+    def encode(self, X) -> torch.Tensor:
+        """X: np.ndarray [B, F]  ->  spikes torch.FloatTensor [T, B, out_dim]."""
+        level_ch = self._level_channels(X)
         spike_time = np.round((1.0 - level_ch) * (self.T - 1)).astype(np.int64)  # [B, C]
         st = torch.from_numpy(spike_time)
         grid = torch.arange(self.T).view(self.T, 1, 1)
