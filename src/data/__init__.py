@@ -4,6 +4,7 @@ from src.data.cicids2017 import load_cicids2017
 from src.data.cseids2018 import load_cseids2018
 from src.data.iscxids2012 import load_iscxids2012
 from src.data.ctu13 import load_ctu13
+from src.data.edgeiiot import load_edgeiiot
 
 DATASET_LOADERS = {
     "nslkdd": load_nslkdd,
@@ -12,6 +13,7 @@ DATASET_LOADERS = {
     "cse-cic-ids2018": load_cseids2018,
     "iscxids2012": load_iscxids2012,
     "ctu13": load_ctu13,
+    "edgeiiot": load_edgeiiot,
 }
 
 
