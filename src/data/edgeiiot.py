@@ -38,6 +38,24 @@ from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.data.nslkdd import DatasetBundle
+from src.data._label_modes import apply_label_mode
+
+BENIGN_FINE = "Normal"
+_INFO_GATHER = {"Port_Scanning", "Fingerprinting", "Vulnerability_scanner"}
+_INJECTION = {"SQL_injection", "XSS", "Uploading"}
+_MALWARE = {"Password", "Backdoor", "Ransomware"}
+
+
+def _category(t: str) -> str:
+    """Edge-IIoTset Attack_type -> the paper's 5 threat groups (Ferrag et al. 2022)."""
+    if t == "Normal":            return "Normal"
+    if t.startswith("DDoS_"):    return "DDoS"
+    if t in _INFO_GATHER:        return "Information_Gathering"
+    if t == "MITM":              return "MITM"
+    if t in _INJECTION:          return "Injection"
+    if t in _MALWARE:            return "Malware"
+    raise ValueError(f"unmapped Edge-IIoTset type: {t}")
+
 
 CSV_REL = "Selected dataset for ML and DL/DNN-EdgeIIoT-dataset.csv"
 
@@ -100,16 +118,18 @@ def _build_full_arrays(data_dir: Path):
 
 
 def load_edgeiiot(
-    data_dir: str = "dataset/Edge-IIoTset",
+    data_dir: str = "dataset/edge-iiotset",
     batch_size: int = 128,
     val_fraction: float = 0.1,
-    test_fraction: float = 0.3,
+    test_fraction: float = 0.2,   # common Edge-IIoTset convention
     subsample_fraction: float = 1.0,
+    label_mode: str = "category",  # "binary" | "category" (6) | "full" (15)
     num_workers: int = 0,
     seed: int = 0,
 ) -> DatasetBundle:
     data_dir = Path(data_dir)
-    X, y, class_names = _build_full_arrays(data_dir)
+    X, y_fine, fine_names = _build_full_arrays(data_dir)
+    y, class_names = apply_label_mode(label_mode, y_fine, fine_names, _category, BENIGN_FINE)
 
     if subsample_fraction < 1.0:
         rng = np.random.RandomState(seed)

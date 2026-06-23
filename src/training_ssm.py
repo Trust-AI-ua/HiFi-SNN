@@ -302,7 +302,7 @@ def run_experiment(cfg: Dict) -> Dict:
     device = torch.device(cfg["device"])
 
     # forward optional loader knobs (no-op for kddcup99/nslkdd official splits)
-    seq_extra = {k: cfg[k] for k in ("subsample_fraction", "test_fraction") if k in cfg}
+    seq_extra = {k: cfg[k] for k in ("subsample_fraction", "test_fraction", "label_mode") if k in cfg}
     bundle = get_sequence_dataset(
         cfg["dataset"],
         seq_len=cfg["seq_len"], stride=cfg["stride"],

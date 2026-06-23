@@ -239,6 +239,25 @@ KDDTest+** file. This is the *honest, hard* protocol the NSL-KDD authors designe
   headline gaps vs Kaggle-style reports are a train/test-split artefact, with the RF
   table above as the one-line evidence.
 
+### UNSW-NB15 — the same official-split distribution shift (~0.76 is honest)
+
+Our UNSW-NB15 10-class results (**Vanilla SNN acc ≈ 0.76 / macro-F1 ≈ 0.44**, **Tree-to-Spike
+acc ≈ 0.745**) sit in the band reported for the **official 175,341/82,332 partition with no
+resampling**. The low macro-F1 is the near-zero recall on the tiny classes (Worms, Shellcode,
+Analysis) — the same imbalance story as NSL-KDD's R2L/U2R.
+
+- ⬜ **Note in Methodology (same paragraph as NSL-KDD):** the widely-quoted **97–99%**
+  UNSW-NB15 multiclass numbers are *not* apples-to-apples — they come from (a) **merging** the
+  two files into a fresh **IID random split**, and/or (b) **SMOTE/ADASYN oversampling**. On the
+  official split this is unreachable without resampling because of a documented **train/test
+  distribution shift** — Normal is **31.94%** of train but **44.94%** of test
+  ([PMC8221886](https://pmc.ncbi.nlm.nih.gov/articles/PMC8221886/), which reaches 98.43% only
+  *after* SMOTE). Recorded in `SOTA_DATASETS.md` §8.
+- ⬜ **Cross-verify before the paper table** (owner: us): pull each competitor's *own* reported
+  official-split UNSW-NB15 figure directly rather than relying on secondary summaries; the
+  band above is gathered from review-style sources. Same `class_weighted: true` / focal-loss
+  headroom for macro-F1 applies here as for NSL-KDD.
+
 ---
 
 ## 6. SOTA comparison vs prior hybrid SNN-NIDS + bulletproof energy methodology  ⬜

@@ -528,6 +528,32 @@ CSE–CIC joint dataset extending CIC-IDS2017 with additional attack scenarios.
 - Local path: `dataset/cse-cic-ids2018/`
 - Format: CSV (one file per date)
 
+---
+
+## SOTA-comparison datasets (added) — sources & taxonomy verification
+
+Five modern IoT/IIoT/IoMT benchmarks added for the head-to-head against recent hybrid
+SNN-NIDS work. **The class taxonomies and evaluation config of each loader were verified
+against the dataset's source paper** (label scenarios, train/test split, preprocessing,
+metrics). The per-dataset alignment table — including the deliberate, documented deviations
+(MinMax instead of StandardScaler, required by the spike encoders) — is in
+[SOTA_DATASETS.md](SOTA_DATASETS.md). Each loader exposes a `label_mode`
+(`binary` | `category` | `full`) switch so we can match whatever a given competitor reports.
+
+| Dataset | Loader key / path | Class taxonomy (verified vs paper) | Source paper |
+|---|---|---|---|
+| **CICIoT2023** | `ciciot2023` · `dataset/cic-iot2023/` | binary / **8-category** / 34-fine (Benign + DDoS, DoS, Mirai, Recon, Spoofing, Web, BruteForce) | Neto, Dadkhah, Ferreira, Zohourian, Lu, Ghorbani, *"CICIoT2023: A Real-Time Dataset and Benchmark for Large-Scale Attacks in IoT Environment,"* **Sensors** 23(13):5941, 2023 — [paper](https://www.mdpi.com/1424-8220/23/13/5941) · [UNB CIC](https://www.unb.ca/cic/datasets/iotdataset-2023.html) |
+| **CICIoMT2024** | `ciciomt2024` · `dataset/cic-iomt-2024/` | binary / **6-category** / 19-fine (Benign + DDoS, DoS, Recon, MQTT, Spoofing) | Dadkhah, Neto, et al., *"CICIoMT2024: A benchmark dataset for multi-protocol security assessment in IoMT,"* **Internet of Things**, 2024 — [paper](https://www.sciencedirect.com/science/article/pii/S2542660524002920) · [UNB CIC](https://www.unb.ca/cic/datasets/iomt-dataset-2024.html) |
+| **Edge-IIoTset** | `edgeiiot` · `dataset/Edge-IIoTset/` | binary / **6-category** / 15-fine (Normal + DDoS, Information-Gathering, Injection, MITM, Malware) | Ferrag, Friha, Hamouda, Maglaras, Janicke, *"Edge-IIoTset: A New Comprehensive Realistic Cyber Security Dataset of IoT and IIoT Applications for Centralized and Federated Learning,"* **IEEE Access**, 2022, DOI [10.1109/ACCESS.2022.3165809](https://ieeexplore.ieee.org/document/9751703) · [Kaggle](https://www.kaggle.com/datasets/mohamedamineferrag/edgeiiotset-cyber-security-dataset-of-iot-iiot) |
+| **UNSW-NB15** | `unswnb15` · `dataset/unsw-nb15/` | 10-class `attack_cat` (Normal + 9 attacks); official train/test split | Moustafa & Slay, *"UNSW-NB15: a comprehensive data set for network intrusion detection systems,"* **MilCIS**, 2015 — [project](https://research.unsw.edu.au/projects/unsw-nb15-dataset) |
+| **TON-IoT** (Network) | `toniot` · `dataset/ton-iot/` | binary / **10-class `type`** (normal + backdoor, ddos, dos, injection, mitm, password, ransomware, scanning, xss); Zeek/Bro flow features | Moustafa, *"A new distributed architecture for evaluating AI-based security systems ... Network TON_IoT datasets,"* **Sustainable Cities and Society**, 2021 — [project](https://research.unsw.edu.au/projects/toniot-datasets) |
+
+The category mappings (e.g. CICIoT2023 *VulnerabilityScan → Recon*; the six web attacks →
+*Web*) were taken directly from each paper, not assumed. Splits follow the source where one
+is provided (CICIoMT2024 ships `csv/train`/`csv/test`; UNSW-NB15 ships training/testing files)
+and the paper's ratio otherwise (80/20). See [SOTA_DATASETS.md](SOTA_DATASETS.md) for full detail.
+
+---
 
 # Additional Datasets
 # Tier 1 Datasets — SNN vs DNN Energy Consumption Benchmarking

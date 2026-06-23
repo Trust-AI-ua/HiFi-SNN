@@ -136,7 +136,7 @@ def run_experiment(cfg: Dict) -> Dict:
     import inspect
     lp = inspect.signature(DATASET_LOADERS[cfg["dataset"]]).parameters
     dk = dict(batch_size=cfg["batch_size"], val_fraction=cfg["val_fraction"], seed=cfg["seed"])
-    for opt in ("subsample_fraction", "test_fraction"):
+    for opt in ("subsample_fraction", "test_fraction", "label_mode"):
         if opt in cfg and opt in lp:
             dk[opt] = cfg[opt]
     bundle = get_dataset(cfg["dataset"], **dk)

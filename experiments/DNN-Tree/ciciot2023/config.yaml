@@ -1,0 +1,43 @@
+# DNN-Tree -- iso-architecture dense ANN twin of Tree-to-Spike (Design C)
+# Same XGBoost teacher + tree-guided encoder + distillation as Tree-to-Spike;
+# the ONLY difference is the student is a dense one-shot MLP (ReLU) instead of a
+# spiking LIF MLP. Identical Linear topology -> identical parameter count, so the
+# accuracy gap reflects the paradigm and the energy gap is MACs (x4.6pJ) vs SOPs.
+dataset: ciciot2023
+
+# --- student (iso-architecture twin: same hidden as the SNN student) ---
+hidden: [64, 64]
+clip_relu: null          # set e.g. 1.0 for clipped-ReLU (closer to a saturating IF)
+
+# --- tree-guided encoder (identical to Tree-to-Spike) ---
+T: 20
+pop_max: 3
+prune_quantile: 0.20
+jitter: 0.12
+
+# --- XGBoost teacher (identical to Tree-to-Spike) ---
+teacher_n_estimators: 200
+teacher_max_depth: 6
+teacher_lr: 0.1
+
+# --- distillation loss (CE + KD + ranking + FP-aware; no spike-sparsity term) ---
+tau: 2.0
+a_kd: 1.0
+a_rank: 0.3
+a_fp: 0.5
+
+# --- training ---
+epochs: 10
+batch_size: 128
+lr: 0.002
+weight_decay: 0.0
+val_fraction: 0.1
+seed: 42
+
+# --- data (matches the Tree-to-Spike run for this dataset) ---
+subsample_fraction: 0.05
+label_mode: category     # CICIoT2023: 8-category (Benign + DDoS/DoS/Mirai/Recon/Spoofing/Web/BruteForce)
+
+# --- output ---
+results_dir: results/DNN-Tree/ciciot2023
+summary_csv: results/summary_dnn.csv

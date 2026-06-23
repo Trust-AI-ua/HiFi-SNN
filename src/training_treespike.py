@@ -183,6 +183,11 @@ def _fit_teacher(Xtr, ytr, num_classes, cfg):
     ytr_local = remap[ytr]
     counts = np.bincount(ytr_local, minlength=len(present)).astype(np.float32)
     cls_w = counts.sum() / (counts + 1e-6)
+    # cost-sensitivity strength: 1.0 = full inverse-frequency (default), 0.0 = uniform
+    # (accuracy-optimal). Softening (e.g. 0.5 = sqrt) trades macro-F1 for accuracy.
+    power = float(cfg.get("teacher_cost_power", 1.0))
+    if power != 1.0:
+        cls_w = cls_w ** power
     sample_w = cls_w[ytr_local]
     Xdf = pd.DataFrame(Xtr, columns=[f"f{i}" for i in range(Xtr.shape[1])])
     teacher = XGBClassifier(
@@ -243,7 +248,7 @@ def run_experiment(cfg: Dict) -> Dict:
     loader_params = __import__("inspect").signature(DATASET_LOADERS[cfg["dataset"]]).parameters
     dataset_kwargs = dict(batch_size=cfg["batch_size"], val_fraction=cfg["val_fraction"],
                           seed=cfg["seed"])
-    for opt in ("subsample_fraction", "test_fraction"):
+    for opt in ("subsample_fraction", "test_fraction", "label_mode"):
         if opt in cfg and opt in loader_params:
             dataset_kwargs[opt] = cfg[opt]
     bundle = get_dataset(cfg["dataset"], **dataset_kwargs)

@@ -208,7 +208,7 @@ def run_experiment(cfg: Dict) -> Dict:
         val_fraction=cfg["val_fraction"],
         seed=cfg["seed"],
     )
-    for opt in ("subsample_fraction", "test_fraction"):
+    for opt in ("subsample_fraction", "test_fraction", "label_mode"):
         if opt in cfg and opt in loader_params:
             dataset_kwargs[opt] = cfg[opt]
     bundle = get_dataset(cfg["dataset"], **dataset_kwargs)
