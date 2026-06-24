@@ -270,20 +270,44 @@ so the energy comparison must survive a hostile reviewer. We already have the is
 batch-1 latency/ELP re-measure — this item lists what is still needed to make it bulletproof
 and who to benchmark against.
 
-### 6a. Hybrid SNN-NIDS baseline set (2024-2026) to position against
-- ⬜ **TASNN** — transformer-augmented SNN for IDS (Sci Rep 2026); energy + rare-class focus
-  on **CICIoT2023, Edge-IIoTset, CICIoMT2024**. **Primary head-to-head** (positioning
-  overlaps ours most).
-- ⬜ **Hybrid spiking-conv + ELM** (Li, Sci Rep 2026) — itself benchmarks vs **Mehrabi &
-  Van Schaik 2024** (neuromorphic IDS, industrial) and **spiking residual ShuffleNet for
-  IoT** (Jacob & Sultana, IEEE Access 2025) — useful secondary baselines.
-- ⬜ **Hybrid recurrent + spiking** (Frontiers in AI 2025) — CICIoT2023, TON-IoT.
-- ⬜ **Feature-optimised hybrid SNN for IoT IDS** (J. AI & Technology 2026).
-- ⬜ **Convolutional-SNN NIDS** (Wang et al., Sci Rep 2024); **IDS-SNNDT** (decision-tree +
-  SNN — our **nearest conceptual neighbour**, cite/differentiate explicitly); **SURFS**
-  (hierarchical federated SNN IDS); spiking energy-efficient NIDS for medical-IoT.
-- ⬜ Build a baseline comparison table keyed to these papers **and** the dataset they each
-  use (resolve the feature-set incomparability per item 4).
+### 6a. Literature to measure against — tiered (refreshed 2026-06)
+
+**Tier 1 — Primary head-to-head (same problem, our exact datasets):**
+- ⬜ **TASNN** — Energy-efficient IDS with a **protocol-aware transformer–spiking hybrid**,
+  *Scientific Reports*, Feb 2026 (s41598-026-37367-4 / PMC12920788). Tested on **CICIoT2023,
+  Edge-IIoTset, CICIoMT2024** — the closest positioning to ours (energy + rare-class focus).
+  Match its exact `label_mode` per dataset before tabulating. **Must show comparable accuracy
+  at lower/known energy.**
+
+**Tier 2 — Hybrid / efficient SNN-NIDS peers (2024-2026):**
+- ⬜ **Hybrid spiking-conv + ELM** (*Sci Rep* 2026, s41598-026-46811-4) — anomaly detection;
+  itself benchmarks vs Mehrabi & Van Schaik 2024 and spiking-ShuffleNet (Jacob & Sultana,
+  IEEE Access 2025).
+- ⬜ **Convolutional-SNN NIDS** (Wang et al., *Sci Rep* 2024, s41598-024-57691-x; PMC10963367).
+- ⬜ **Feature-Optimized Hybrid SNN for IoT IDS** (*J. AI & Technology* 2026, ojs.istp-press 848).
+- ⬜ **Event-Driven IDS using SNNs for Edge/IoT** (2025) and **Surrogate-Gradient SNN IDS for
+  edge devices** (Springer 2026) — efficiency/latency-focused peers.
+
+**Tier 3 — Nearest conceptual neighbour (tree + SNN) — cite & DIFFERENTIATE explicitly:**
+- ⬜ **IDS-SNNDT** (Zarzoor et al., *IJECE* 2023) — a **decision tree selects samples** fed to
+  an NLIF SNN with rand-order-code. *Differentiator:* ours uses a **GBDT feature-importance-
+  guided latency encoder + knowledge distillation** (the tree shapes the *encoding*, not the
+  sample set). Our search found **no prior GBDT-guided spike-encoding + KD for tabular IDS** →
+  foreground this as a contribution.
+
+**Tier 4 — KD-for-SNN method precedents (justify the distillation design; not NIDS):**
+- ⬜ **Joint A-SNN** (self-distillation, arXiv:2305.02099); **BKDSNN** (ECCV 2024);
+  **"A Closer Look at KD in SNN Training"** (arXiv:2511.06902, 2025). Cite to ground our
+  teacher→student distillation choices.
+
+**Tier 5 — Non-SNN SOTA on OUR datasets (the accuracy bar a reviewer will demand):**
+- ⬜ Transformer/DL NIDS on the same data: **TNN-IDS** (transformer, MQTT-IoT,
+  *Computer Networks* 2023); multi-class **Transformer DDoS IDS** (PMC12349258); **ConvNeXt-Tiny
+  IoT IDS** (arXiv:2509.06202); **TCN-based NIDS** (arXiv:2412.17452). We need not *beat* these
+  on accuracy — report the gap + our energy/latency advantage (the Pareto framing).
+
+- ⬜ Build the master comparison table keyed to (paper × dataset × label granularity × metric),
+  resolving the NetFlow-vs-raw feature-set incomparability per item 4.
 
 ### 6b. Energy claim — make it survive the skeptics (this is where the paper lives or dies)
 A reviewer will almost certainly cite the recent "SNNs aren't as efficient as claimed" wave:

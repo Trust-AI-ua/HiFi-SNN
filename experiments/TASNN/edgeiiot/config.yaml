@@ -1,0 +1,31 @@
+# TASNN -- Transformer-Augmented Spiking Neural Network (competitor baseline)
+# Faithful reimplementation of the TASNN architecture (Sci Rep 2026) fed on OUR
+# shared features (one-hot + log1p + MinMax->[0,1], NO PAAN / Port-Role embeddings /
+# CPSMOT-Tomek rebalancing) and OUR latency spike encoding -- so it competes on
+# architecture, not on a privileged preprocessing pipeline. See src/models/tasnn.py.
+dataset: edgeiiot
+
+# --- model (TASNN paper defaults: d_model=128, heads=4, layers=3, T=16) ---
+num_steps: 16        # T (TASNN native; spike-path/loss-suite defaults in src/training_tasnn.py)
+d_model: 128
+n_heads: 4
+n_layers: 3
+ff: 256
+
+# --- training (identical footing to our models) ---
+epochs: 10
+batch_size: 128
+lr: 0.001
+weight_decay: 0.0001
+class_weighted: false   # NO resampling/weighting -- same as our models (no CPSMOT-Tomek)
+early_exit_conf: 0.9
+val_fraction: 0.1
+seed: 42
+
+# --- data (matches the Tree-to-Spike / DNN-Tree run for this dataset) ---
+subsample_fraction: 1.0
+label_mode: full        # Edge-IIoTset: 15-class Attack_type (the recognized benchmark)
+
+# --- output ---
+results_dir: results/TASNN/edgeiiot
+summary_csv: results/summary_tasnn.csv
