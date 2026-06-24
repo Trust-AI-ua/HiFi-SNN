@@ -5,35 +5,100 @@ Hybrid Spiking Neural Networks for High Fidelity Intrustion Detection (HiFi-SNN)
 
 # Project Roadmap
 
-The project is split into two phases. Phase 1 is the focus of the current
-codebase; Phase 2 will be opened up once Phase 1 results are in.
+The project runs in three phases. **Phase 1** (the 162-run SNN ablation) is
+complete; **Phase 2** (modern datasets, hybrids, the iso-architecture DNN twin,
+and the TASNN SOTA comparison) is in progress; **Phase 3** (adversarial
+robustness) is deferred.
 
-### Phase 1 — Comprehensive SNN Evaluation *(current)*
+### Phase 1 — Comprehensive SNN ablation *(complete)*
 
-Identify which **(neuron model, spike encoding)** combinations train and
-generalise best on cybersecurity intrusion-detection traffic.
+Identify which **(neuron model, spike encoding)** combination trains and
+generalises best on intrusion-detection traffic.
 
 - **9 neuron models** from `snntorch`: Alpha, Lapicque, Leaky, LeakyParallel,
   RLeaky, RSynaptic, SConv2dLSTM, SLSTM, Synaptic
 - **3 spike encodings**: rate coding, latency coding, delta modulation
-- **6 datasets**: KDDCup99, NSL-KDD, CTU-13, ISCXIDS2012, CIC-IDS2017, CSE-CIC-IDS2018
-- **Total: 9 × 3 × 6 = 162 runs** — one script + one config + one results
-  directory per run
+- **6 classic IDS datasets**: KDDCup99, NSL-KDD, CTU-13, ISCXIDS2012,
+  CIC-IDS2017, CSE-CIC-IDS2018
+- **9 × 3 × 6 = 162 runs** — one script + one config + one results directory per run
 
-Each run reports the same metric set so the resulting `summary.csv` is directly
-sortable across all 162 rows.
+Winning operating point: **`LeakyParallel` neuron + `latency` (TTFS) encoding**,
+carried forward as the SNN backbone for everything below.
 
-### Phase 2 — Baselines, Hybrids, and Adversarial Robustness *(deferred)*
+### Phase 2 — Modern datasets, hybrids, and a fair DNN / SOTA comparison *(in progress)*
 
-Built on top of the Phase 1 winners.
+Built on the Phase-1 winner.
 
-- DNN, RNN, and KAN baselines for non-SNN comparison
-- Hybrid SNN architectures (e.g. SNN + KAN head, SNN + AutoEncoder + EBM head)
-- Adversarial robustness: FGSM, PGD, C&W, BIM, MIM, plus Membership Inference
-  and Model Stealing
+- **5 modern IoT / IIoT / IoMT datasets** at the winning operating point:
+  **UNSW-NB15, CICIoT2023, CICIoMT2024, Edge-IIoTset, TON-IoT** — taxonomy /
+  split / preprocessing matched to each source paper (see
+  [SOTA_DATASETS.md](SOTA_DATASETS.md)).
+- **Hybrid SNNs**: **Tree-to-Spike** (GBDT-guided spike encoder + distilled,
+  int8 + early-exit SNN student — our headline model), plus **S-xLSTM**,
+  **Spiking-Griffin**, **Spiking-SSM**.
+- **Iso-architecture DNN twin** (`DNN-Tree`): a dense ReLU MLP with the *identical*
+  topology and parameter count as the Tree-to-Spike student, for a fair
+  SNN-vs-DNN energy comparison (SOPs × 0.9 pJ vs MACs × 4.6 pJ, Horowitz 45 nm).
+- **SOTA competitor** (`TASNN`): faithful reimplementation of the transformer–
+  spiking hybrid (Sci. Rep. 2026) run on our *shared* features (no privileged
+  preprocessing) for a fair head-to-head — see [experiments/TASNN/README.md](experiments/TASNN/README.md).
 
-The directory layout and shared library are designed so Phase 2 plugs in
-without disturbing Phase 1 results.
+All models share one metric set, so `results/summary*.csv` are directly comparable.
+
+### Phase 3 — Adversarial robustness *(deferred)*
+
+FGSM, PGD, C&W, BIM, MIM, plus Membership Inference and Model Stealing. The
+directory layout and shared library are designed so this plugs in without
+disturbing earlier results.
+
+---
+
+# Model Comparison (4-way)
+
+Phase 2's headline result is a **4-way comparison on identical data**, run across the
+datasets (6 classic + 5 modern — see [SOTA_DATASETS.md](SOTA_DATASETS.md)):
+
+| Model | What it is | Params* | Summary CSV |
+|---|---|--:|---|
+| **Vanilla SNN** | `LeakyParallel` neuron + `latency` (TTFS) encoding — the Phase-1 winner | ~16 k | `results/summary.csv` |
+| **Tree-to-Spike** | GBDT-guided spike encoder + distilled, int8 + early-exit SNN student (**headline model**) | ~15 k | `results/summary_treespike.csv` |
+| **DNN-Tree** | iso-architecture dense ReLU twin of Tree-to-Spike (**identical topology + param count**) | = Tree-to-Spike | `results/summary_dnn.csv` |
+| **TASNN** | transformer–spiking SOTA competitor (Sci. Rep. 2026), on our features, no privileged preprocessing | ~0.6 M | `results/summary_tasnn.csv` |
+
+*Per-dataset (varies with feature dimensionality); Tree-to-Spike and DNN-Tree are
+parameter-identical for a given dataset.
+
+**Fair-comparison basis.** Every model sees the *same* features (one-hot + log1p +
+MinMax→[0,1]), the *same* train/val/test splits, the *same* `subsample_fraction` /
+`label_mode`, **no resampling**, and **5 seeds (42–46)** — so differences reflect the model,
+not the pipeline. DNN-Tree is parameter-identical to Tree-to-Spike (only LIF→ReLU differs),
+isolating the spiking-vs-dense effect; TASNN is the heavyweight transformer baseline run on
+the same footing (its PAAN / Port-Role / CPSMOTE-Tomek preprocessing is deliberately
+excluded — see [experiments/TASNN/README.md](experiments/TASNN/README.md)).
+
+## Metrics reported for every model
+
+All produced by [src/metrics.py](src/metrics.py), so every row is apples-to-apples.
+
+**Detection quality** — `accuracy`, `balanced_accuracy`; `f1_macro`, `f1_weighted` (+ per-class F1);
+`precision_macro`, `recall_macro`; **`matthews_corrcoef` (MCC)** and `cohen_kappa`
+(gold-standard for imbalanced multi-class); `roc_auc_weighted` (one-vs-rest, support-weighted).
+
+**IDS-canonical (binary normal-vs-attack)** — **`detection_rate`** (DR = TP/(TP+FN)) and
+**`false_alarm_rate`** (FAR = FP/(FP+TN)), the primary report-card metrics in the IDS
+literature; plus `binary_accuracy`, `binary_f1`.
+
+**Efficiency / energy** — *the headline of the SNN-vs-DNN argument:*
+- `energy_spikes_per_sample`, `spike_sparsity` (spiking models) vs `macs_per_sample` (DNN)
+- **operation energy**: SOPs × 0.9 pJ (spiking) vs MACs × 4.6 pJ (dense) — Horowitz 45 nm
+- **memory-aware total energy** (batch-1 SRAM accounting) — built to survive a hostile reviewer
+- **early-exit** `mean_exit_step` (effective T ≪ T → where the SNN energy win comes from)
+- `trainable_parameters`, `inference_ms_per_sample` (batch-1 CPU latency)
+
+**The defensible claim:** *comparable detection quality at materially lower energy than the
+parameter-matched DNN-Tree twin* — **not** "higher accuracy." The accuracy–energy Pareto and
+the 3-/4-way radar are generated by [scripts/benchmark_3way.py](scripts/benchmark_3way.py)
+(TASNN folds in as the fourth model).
 
 ---
 
@@ -108,7 +173,7 @@ Two deliberate departures, with rationale:
 | | Common in prior work | Our choice | Rationale |
 |---|---|---|---|
 | Train/val split | 80/20 (community) or KDDTrain+ entire with internal CV (Zhou et al.) | 90/10 stratified | More training data for the heavily-minority R2L (~900 samples) and U2R (~50 samples) classes; the 10 % val is still ~12 600 samples for monitoring. |
-| Seeds | 1 (Zhou) or 5 (TASNN) | 1 (single seed=0) | Single seed keeps the 162-run sweep tractable; once promising (neuron, encoding) combinations are identified, we'll re-run those with 3–5 seeds for variance reporting. |
+| Seeds | 1 (Zhou) or 5 (TASNN) | 1 for the 162-run ablation; **5 seeds (42–46)** for the carried-forward models | Single seed keeps the full 9×3×6 ablation tractable; the winning combo, the hybrids, the DNN twin, and TASNN are each run over 5 seeds for mean ± std / CI reporting. |
 
 Things we **add** beyond prior work: 9-neuron × 3-encoding ablation grid;
 spike energy proxy + sparsity (rare in IDS papers but essential for the SNN
@@ -143,10 +208,11 @@ metrics that most prior IDS papers omit).
 
 ## Organising Philosophy
 
-Code is organised **by concern, not by dataset**. With 6 datasets, 9 neuron
-models, and 3 encoding strategies the alternative would be 162 near-duplicate
-copies of the same training loop — a bug fix would need to be applied 162
-times.
+Code is organised **by concern, not by dataset**. With 11 datasets, 9 neuron
+models, 3 encoding strategies, and several model families (SNN ablation,
+hybrids, the DNN twin, the TASNN competitor) the alternative would be hundreds
+of near-duplicate copies of the same training loop — a bug fix would need to be
+applied in every copy.
 
 The solution is to isolate what actually *differs* between datasets — loading
 and preprocessing — in `src/data/`, and keep everything else (neurons,
@@ -212,16 +278,18 @@ is a one-line change driven by the config.
 
 ### `src/models/`
 
-The shared SNN architecture that all 162 runs share. The neuron type is a
-constructor argument, not a hardcoded class, so the same model definition
-covers all nine variants.
+The shared SNN architecture that every SNN run uses, plus the hybrid models
+(`tree_to_spike.py`, `s_xlstm.py`, `spiking_griffin.py`, `spiking_ssm.py`), the
+iso-architecture DNN twin (`dnn_student.py`), and the TASNN competitor
+(`tasnn.py`). The neuron type is a constructor argument, not a hardcoded class,
+so one SNN definition covers all nine variants.
 
 ### `src/metrics.py`
 
 Single shared module for all metrics: Accuracy, F1, Precision, Recall,
 ROC-AUC, an energy proxy (total spike count), and wall-clock inference time.
 Every experiment script calls this module — never inline — to guarantee
-consistency across the 162 comparison rows.
+consistency across every comparison row.
 
 ---
 
@@ -240,20 +308,27 @@ results/nslkdd/SNN_Leaky/rate/      ← results.json, checkpoint.pt
 The full shape:
 
 ```
-{configs | experiments | results}/
-└── {dataset}/
-    └── SNN_{neuron}/              9 directories: one per snntorch neuron
-        ├── rate/                  → config.yaml | run.py | results.json
-        ├── latency/
-        └── delta/
+configs/   {dataset}/SNN_{neuron}/{rate|latency|delta}/   ← Phase-1 ablation grid
+experiments/
+└── {dataset}/SNN_{neuron}/{rate|latency|delta}/          Phase-1 SNN ablation
+└── Tree-to-Spike/{dataset}/        GBDT-guided hybrid (headline model)
+└── DNN-Tree/{dataset}/             iso-architecture dense ANN twin
+└── TASNN/{dataset}/                transformer-spiking SOTA competitor
+└── {S-xLSTM,Spiking-Griffin,Spiking-SSM}/{dataset}/      other hybrids
+results/   mirrors the above; per-model summary CSVs:
+           summary.csv (SNN) · summary_treespike.csv · summary_dnn.csv · summary_tasnn.csv · …
 ```
 
-Datasets: `kddcup99`, `nslkdd`, `ctu13`, `iscxids2012`, `cicids2017`, `cse-cic-ids2018`.
+**Datasets (11).** Classic IDS: `kddcup99`, `nslkdd`, `ctu13`, `iscxids2012`,
+`cicids2017`, `cse-cic-ids2018`. Modern IoT/IIoT/IoMT: `unswnb15`, `ciciot2023`,
+`ciciomt2024`, `edgeiiot`, `toniot`. The full 9×3 ablation grid is run on the 6
+classic datasets; the hybrids, DNN twin, and TASNN run on all 11 at the
+Phase-1 winning operating point (`LeakyParallel` + `latency`).
 
-> The `SNN_<neuron>` naming intentionally leaves room for Phase 2 siblings
-> (`DNN`, `RNN`, `KAN`, `HybridKAN_<neuron>`, `HybridAEEBM_<neuron>`) under the
-> same `{dataset}/` parent — Phase 2 plugs in without renaming any Phase 1
-> directories.
+> The per-model top-level directories (`SNN_<neuron>`, `Tree-to-Spike`,
+> `DNN-Tree`, `TASNN`, …) all sit under `experiments/` and share the same
+> `{dataset}/` leaves and metric set, so a new model family plugs in without
+> renaming anything.
 
 ### `configs/`
 

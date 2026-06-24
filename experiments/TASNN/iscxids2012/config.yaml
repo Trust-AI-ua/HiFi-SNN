@@ -1,0 +1,29 @@
+# TASNN -- Transformer-Augmented Spiking Neural Network (competitor baseline)
+# Faithful reimplementation of the TASNN learned core (Sci Rep 2026, 16:7095) fed on
+# OUR shared features (one-hot + log1p + MinMax->[0,1], NO PAAN / PRE / CPSMOTE-Tomek /
+# PFR) -- competes on architecture, not on a privileged pipeline. See README.md.
+dataset: iscxids2012
+
+# --- model (TASNN paper defaults: d_model=128, heads=4, layers=3, T=16) ---
+num_steps: 16        # T (TASNN native; spike-path/loss-suite defaults in src/training_tasnn.py)
+d_model: 128
+n_heads: 4
+n_layers: 3
+ff: 256
+
+# --- training (identical footing to our models) ---
+epochs: 10
+batch_size: 128
+lr: 0.001
+weight_decay: 0.0001
+class_weighted: false   # NO resampling/weighting -- same as our models (no CPSMOTE-Tomek)
+early_exit_conf: 0.9
+val_fraction: 0.1
+seed: 42
+
+# --- data (matches the Tree-to-Spike run for this dataset) ---
+subsample_fraction: 1.0
+
+# --- output ---
+results_dir: results/TASNN/iscxids2012
+summary_csv: results/summary_tasnn.csv
