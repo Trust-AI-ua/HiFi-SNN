@@ -33,9 +33,10 @@ TASNN uses its native `T=16` spike window, the others `T=20–25`.)
 | **TON-IoT** (Network) | stratified 80/20 + 90/10 val | 128 | 10 | 1.0 | 10 (`type`) | Moustafa, *Sustainable Cities & Society* 2021 |
 
 The **classic 6** (plain rows) are detailed in **§9**; the **modern 5** (bold rows) in
-§1–§8. `Epochs = 10` is the comparison config (Tree-to-Spike, DNN-Tree, TASNN, and the
-carried-forward Vanilla SNN); the original 162-run Phase-1 SNN ablation used a shorter
-schedule (see the main `README.md`).
+§1–§8. **`Epochs = 10` over 5 seeds (42–46) for all four models on every dataset** —
+Tree-to-Spike, DNN-Tree, TASNN, *and* the Vanilla SNN (LeakyParallel/latency), verified for
+the classic six as well — so the 4-way table is epoch- and seed-uniform. (The broader
+Phase-1 9×3 neuron×encoding ablation is a separate artifact and not part of this table.)
 
 ## 1. Label granularities (the `label_mode` switch)
 
