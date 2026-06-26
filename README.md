@@ -194,9 +194,8 @@ If you use this code or the comparison methodology, please cite the accompanying
 
 ```bibtex
 @misc{hisnn,
-  title  = {Tree-to-Spike: Energy-Efficient Intrusion Detection with a GBDT-Guided
-            Spiking Neural Network},
-  author = {<authors>},
+  title  = {HiFi-SNN: Hybrid Spiking Neural Networks for High Fidelity Intrusion Detection},
+  author = {Raj Patel, Tay Akinrele, David Amebley, Shaswata Mitra, Sayanton Dibbo, Shahram Rahimi},
   year   = {2026},
   note   = {Under submission}
 }
