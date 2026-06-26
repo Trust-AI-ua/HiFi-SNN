@@ -1,16 +1,18 @@
 \begin{table}[t]
 \centering
-\caption{Efficiency (mean across datasets). Compute energy: measured SOPs$\times$0.9\,pJ (spiking models) / measured MACs$\times$4.6\,pJ (DNN-Tree). TASNN$^{\dagger}$ is an analytic FLOP estimate (transformer MACs$\times$4.6\,pJ + spiking-core ACs$\times$0.9\,pJ). Latency is indicative (batching differs).}
+\caption{Efficiency (mean across datasets). Compute energy is reported at \textbf{matched precision}: 32-bit FP (MAC 4.6\,pJ / AC 0.9\,pJ) and int8 (MAC 0.23\,pJ / AC 0.03\,pJ), Horowitz 45\,nm. Spiking models pay ACs (SOPs \textbf{including the input$\to$layer-1 term}, consistent with the DNN's input-layer MACs), DNN-Tree MACs; TASNN$^{\dagger}$ is an analytic transformer-MAC + spike-AC estimate. Latency is indicative (batching differs).}
 \label{tab:efficiency}
 \footnotesize
-\begin{tabular}{lrrrr}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrr}
 \toprule
-Model & Params & Energy (pJ/sample) & Spike sparsity & Latency (ms) \\
+Model & Params & Energy@32b & Energy@int8 & Spike sparsity & Latency (ms) \\
+& & (pJ/sample) & (pJ/sample) & & \\
 \midrule
-Vanilla SNN & 14,028 & 3,551 & 0.925 & 0.060 \\
-Tree-to-Spike & 8,661 & 6,941 & 0.888 & 0.754 \\
-DNN-Tree & 8,661 & 39,225 & -- & 0.029 \\
-TASNN & 547,727 & 231,814,392$^{\dagger}$ & 0.995 & 0.247 \\
+Vanilla SNN & 14,028 & 15,321 & 511 & 0.925 & 0.060 \\
+Tree-to-Spike & 8,661 & 10,547 & 352 & 0.888 & 0.754 \\
+DNN-Tree & 8,661 & 39,225 & 1,961 & -- & 0.028 \\
+TASNN & 547,727 & 231,814,392$^{\dagger}$ & 11,565,239$^{\dagger}$ & 0.995 & 0.247 \\
 \bottomrule
 \end{tabular}
 \end{table}

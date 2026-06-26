@@ -45,11 +45,17 @@ class TreeGuidedSpikeEncoder:
     """
 
     def __init__(self, T: int = 20, pop_max: int = 3, prune_quantile: float = 0.20,
-                 jitter: float = 0.12):
+                 jitter: float = 0.12, encoder_mode: str = "tree"):
         self.T = T
         self.pop_max = pop_max          # max channels for the most important feature
         self.prune_quantile = prune_quantile
         self.jitter = jitter
+        # encoder_mode (ablation): "tree" = importance-pruned features + importance-weighted
+        # population (the contribution); "uniform" = every feature-with-edges, 1 channel each
+        # (no importance); "all" = every feature-with-edges, pop_max channels each (dense upper
+        # bound). uniform/all keep the same tree-threshold latency code, only the channel
+        # allocation differs — so the ablation isolates the importance-guided allocation.
+        self.encoder_mode = encoder_mode
         self.edges_ = {}                # feat_idx -> sorted unique split thresholds
         self.channels_ = []             # list of (feat_idx, level_offset)
         self.out_dim = 0
@@ -71,15 +77,25 @@ class TreeGuidedSpikeEncoder:
         keep_thr = np.quantile(imp[imp > 0], self.prune_quantile) if (imp > 0).any() else 0.0
         imp_max = imp.max() + 1e-9
 
-        self.channels_ = []
-        for j in range(n_features):
-            if imp[j] <= 0 or imp[j] < keep_thr or j not in self.edges_:
-                continue  # pruned
-            n_pop = max(1, int(np.ceil((imp[j] / imp_max) * self.pop_max)))
-            # spread the population's latency around the feature's bin level
+        def _add_population(j, n_pop):
             offsets = (np.arange(n_pop) - (n_pop - 1) / 2.0) * self.jitter
             for o in offsets:
                 self.channels_.append((j, float(o)))
+
+        self.channels_ = []
+        if self.encoder_mode == "all":          # ablation: every feature, full population
+            for j in range(n_features):
+                if j in self.edges_:
+                    _add_population(j, self.pop_max)
+        elif self.encoder_mode == "uniform":    # ablation: every feature, 1 channel (no importance)
+            for j in range(n_features):
+                if j in self.edges_:
+                    self.channels_.append((j, 0.0))
+        else:                                   # "tree" (default): importance-pruned + weighted
+            for j in range(n_features):
+                if imp[j] <= 0 or imp[j] < keep_thr or j not in self.edges_:
+                    continue  # pruned
+                _add_population(j, max(1, int(np.ceil((imp[j] / imp_max) * self.pop_max))))
         if not self.channels_:  # safety: keep everything if pruning removed all
             self.channels_ = [(j, 0.0) for j in self.edges_]
         self.out_dim = len(self.channels_)

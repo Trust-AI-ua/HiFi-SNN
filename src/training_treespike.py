@@ -48,6 +48,7 @@ DEFAULTS = {
     "pop_max": 3,
     "prune_quantile": 0.20,
     "jitter": 0.12,
+    "encoder_mode": "tree",   # "tree" | "uniform" | "all" (encoder ablation, §1)
     # student
     "hidden": [64, 64],
     "beta": 0.9,
@@ -262,8 +263,8 @@ def run_experiment(cfg: Dict) -> Dict:
 
     # ---------- 2) tree-guided spike encoder ----------
     encoder = TreeGuidedSpikeEncoder(
-        T=cfg["T"], pop_max=cfg["pop_max"],
-        prune_quantile=cfg["prune_quantile"], jitter=cfg["jitter"]).fit(teacher, Xtr.shape[1])
+        T=cfg["T"], pop_max=cfg["pop_max"], prune_quantile=cfg["prune_quantile"],
+        jitter=cfg["jitter"], encoder_mode=cfg["encoder_mode"]).fit(teacher, Xtr.shape[1])
     print(f"[encoder] kept {encoder.out_dim} spike channels from {Xtr.shape[1]} features")
 
     # ---------- 3) distillation training of the SNN student ----------
@@ -376,7 +377,7 @@ def run_experiment(cfg: Dict) -> Dict:
         "neuron": neuron_name,
         "encoding": ENCODING_NAME,
         "config": {k: cfg[k] for k in
-                   ["T", "pop_max", "prune_quantile", "jitter", "hidden", "beta",
+                   ["T", "pop_max", "prune_quantile", "jitter", "encoder_mode", "hidden", "beta",
                     "leaky", "teacher_n_estimators", "teacher_max_depth", "teacher_lr",
                     "tau", "a_kd", "a_rank", "a_sparse", "a_fp", "quantize",
                     "theta_exit", "theta_uncertain", "epochs", "batch_size", "lr",

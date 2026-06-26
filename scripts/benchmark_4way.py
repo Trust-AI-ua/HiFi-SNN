@@ -34,7 +34,8 @@ TAB = OUT / "tables"
 for d in (FIG, TAB):
     d.mkdir(parents=True, exist_ok=True)
 
-E_AC, E_MAC = 0.9, 4.6   # pJ per spiking op / dense MAC (Horowitz 45 nm)
+E_AC, E_MAC = 0.9, 4.6          # 32-bit FP (Horowitz 45nm): AC (add) 0.9 pJ, MAC (mult+add) 4.6 pJ
+E_AC_I8, E_MAC_I8 = 0.03, 0.23  # int8 (Horowitz 45nm): AC (8b add) 0.03 pJ, MAC (8b mult 0.2 + add 0.03) 0.23 pJ
 
 # (key, pretty, results-glob)
 MODELS = [
@@ -91,16 +92,37 @@ def _agg(recs, getter):
     return float(np.mean(vals)), float(np.std(vals))
 
 
+def _sops_total(r, key):
+    """Total SOPs/sample INCLUDING the input->layer-1 term, which the stored
+    synops_per_sample omits. Under latency/TTFS each input channel fires once and
+    drives hidden[0] synapses, so input SOPs = channels * hidden[0]. The DNN's MACs
+    already include its input layer, so counting this makes the comparison consistent."""
+    syn = (r["test_plus"].get("spike_stats") or {}).get("synops_per_sample")
+    if not isinstance(syn, (int, float)):
+        return None
+    cfg, data = r.get("config", {}), r.get("data", {})
+    if key == "tree":
+        ch = data.get("encoder_channels")
+        h = cfg.get("hidden"); h0 = h[0] if isinstance(h, (list, tuple)) else 64
+        inp = ch * h0 if ch else 0
+    elif key == "vanilla":
+        nf = data.get("num_features"); hs = cfg.get("hidden_size", 128)
+        inp = nf * hs if nf else 0
+    else:
+        inp = 0
+    return syn + inp
+
+
 def _energy_pj(recs, key):
-    """Compute energy pJ/sample (mean). Spiking: SOPs*E_AC; DNN: MACs*E_MAC."""
+    """Compute energy pJ/sample (mean). Spiking: total-SOPs (incl. input layer) * E_AC;
+    DNN: measured MACs * E_MAC (already includes the input layer)."""
     out = []
     for r in recs:
-        tp = r["test_plus"]
         if key == "dnn":
-            e = (tp.get("compute") or {}).get("energy_pj_horowitz")
+            e = (r["test_plus"].get("compute") or {}).get("energy_pj_horowitz")
         else:
-            sops = (tp.get("spike_stats") or {}).get("synops_per_sample")
-            e = sops * E_AC if isinstance(sops, (int, float)) else None
+            sops = _sops_total(r, key)
+            e = sops * E_AC if sops is not None else None
         if isinstance(e, (int, float)):
             out.append(e)
     return float(np.mean(out)) if out else None
@@ -133,12 +155,7 @@ def tasnn_energy_pj(rec):
           + h1 * h1 * T                                      # LIF1 lateral
           + h1 * h2 * T                                      # LIF2.fc (spike input)
           + h2 * h2 * T)                                     # LIF2 lateral
-    return mac * E_MAC + ac * E_AC
-
-
-def _tasnn_energy_mean(recs):
-    vals = [tasnn_energy_pj(r) for r in recs if r.get("config") and r.get("data")]
-    return float(np.mean(vals)) if vals else None
+    return mac * E_MAC + ac * E_AC, mac, ac                  # (32b energy, MAC count, AC count)
 
 
 # ---------------------------------------------------------------- load all
@@ -164,7 +181,20 @@ for ds in DS_KEYS:
                     return tp[key]
             return None
         cell["lat_ms"] = _agg(recs, _lat)[0]
-        cell["E_pj"] = _tasnn_energy_mean(recs) if mk == "tasnn" else _energy_pj(recs, mk)
+        # 32-bit energy + matched-precision int8 energy (B2: reviewer-proof "an int8 DNN
+        # is also cheap" — re-priced from the same op counts, no re-run).
+        if mk == "tasnn":
+            e32, ei8 = [], []
+            for r in recs:
+                if r.get("config") and r.get("data"):
+                    e, mac, ac = tasnn_energy_pj(r)
+                    e32.append(e); ei8.append(mac * E_MAC_I8 + ac * E_AC_I8)
+            cell["E_pj"] = float(np.mean(e32)) if e32 else None
+            cell["E_pj_i8"] = float(np.mean(ei8)) if ei8 else None
+        else:
+            cell["E_pj"] = _energy_pj(recs, mk)
+            scale = (E_MAC_I8 / E_MAC) if mk == "dnn" else (E_AC_I8 / E_AC)
+            cell["E_pj_i8"] = cell["E_pj"] * scale if cell["E_pj"] is not None else None
         DATA[ds][mk] = cell
 
 
@@ -242,31 +272,38 @@ def efficiency_table():
         spars = [DATA[ds][k]["sparsity"] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k]["sparsity"] is not None]
         lat = [DATA[ds][k]["lat_ms"] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k]["lat_ms"] is not None]
         epj = [DATA[ds][k]["E_pj"] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k]["E_pj"] is not None]
+        epj8 = [DATA[ds][k]["E_pj_i8"] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k].get("E_pj_i8") is not None]
         rows.append((k, MNAME[k],
                      int(np.mean(params)) if params else None,
                      np.mean(epj) if epj else None,
+                     np.mean(epj8) if epj8 else None,
                      np.mean(spars) if spars else None,
                      np.mean(lat) if lat else None))
     tex = [r"\begin{table}[t]", r"\centering",
-           r"\caption{Efficiency (mean across datasets). Compute energy: measured SOPs$\times$0.9\,pJ "
-           r"(spiking models) / measured MACs$\times$4.6\,pJ (DNN-Tree). TASNN$^{\dagger}$ is an "
-           r"analytic FLOP estimate (transformer MACs$\times$4.6\,pJ + spiking-core ACs$\times$0.9\,pJ). "
-           r"Latency is indicative (batching differs).}",
-           r"\label{tab:efficiency}", r"\footnotesize",
-           r"\begin{tabular}{lrrrr}", r"\toprule",
-           r"Model & Params & Energy (pJ/sample) & Spike sparsity & Latency (ms) \\", r"\midrule"]
-    md = ["| Model | Params | Energy (pJ/sample) | Spike sparsity | Latency (ms) |",
-          "|---|--:|--:|--:|--:|"]
-    for k, name, p, e, sp, l in rows:
+           r"\caption{Efficiency (mean across datasets). Compute energy is reported at "
+           r"\textbf{matched precision}: 32-bit FP (MAC 4.6\,pJ / AC 0.9\,pJ) and int8 "
+           r"(MAC 0.23\,pJ / AC 0.03\,pJ), Horowitz 45\,nm. Spiking models pay ACs (SOPs "
+           r"\textbf{including the input$\to$layer-1 term}, consistent with the DNN's input-layer "
+           r"MACs), DNN-Tree MACs; TASNN$^{\dagger}$ is an analytic transformer-MAC + spike-AC "
+           r"estimate. Latency is indicative (batching differs).}",
+           r"\label{tab:efficiency}", r"\footnotesize", r"\setlength{\tabcolsep}{4pt}",
+           r"\begin{tabular}{lrrrrr}", r"\toprule",
+           r"Model & Params & Energy@32b & Energy@int8 & Spike sparsity & Latency (ms) \\",
+           r"& & (pJ/sample) & (pJ/sample) & & \\", r"\midrule"]
+    md = ["| Model | Params | Energy@32b (pJ) | Energy@int8 (pJ) | Spike sparsity | Latency (ms) |",
+          "|---|--:|--:|--:|--:|--:|"]
+    for k, name, p, e, e8, sp, l in rows:
         ps = f"{p:,}" if p else "--"
         mark = r"$^{\dagger}$" if k == "tasnn" else ""
         mark_md = "†" if k == "tasnn" else ""
         es = (f"{e:,.0f}{mark}" if e else "--")
         es_md = (f"{e:,.0f}{mark_md}" if e else "--")
+        e8s = (f"{e8:,.0f}{mark}" if e8 else "--")
+        e8s_md = (f"{e8:,.0f}{mark_md}" if e8 else "--")
         sps = f"{sp:.3f}" if sp is not None else "--"
         ls = f"{l:.3f}" if l is not None else "--"
-        tex.append(f"{name} & {ps} & {es} & {sps} & {ls} " + r"\\")
-        md.append(f"| {name} | {ps} | {es_md} | {sps} | {ls} |")
+        tex.append(f"{name} & {ps} & {es} & {e8s} & {sps} & {ls} " + r"\\")
+        md.append(f"| {name} | {ps} | {es_md} | {e8s_md} | {sps} | {ls} |")
     tex += [r"\bottomrule", r"\end{tabular}", r"\end{table}", ""]
     (TAB / "table_efficiency.tex").write_text("\n".join(tex))
     md.append("\n† TASNN energy is an analytic FLOP estimate (transformer MACs×4.6pJ + spiking-core ACs×0.9pJ); the other models report measured SOPs/MACs.")
@@ -455,6 +492,31 @@ energy_4way()
 pareto_energy()
 
 
+def energy_precision():
+    """B2: 32-bit FP vs int8 compute energy per model (matched precision), log scale."""
+    e32, ei8 = {}, {}
+    for k in MKEYS:
+        a = [DATA[ds][k]["E_pj"] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k]["E_pj"] is not None]
+        b = [DATA[ds][k]["E_pj_i8"] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k].get("E_pj_i8") is not None]
+        e32[k] = float(np.mean(a)) if a else np.nan
+        ei8[k] = float(np.mean(b)) if b else np.nan
+    fig, ax = plt.subplots(figsize=(5.2, 3.2))
+    x = np.arange(len(MKEYS)); w = 0.38
+    ax.bar(x - w / 2, [e32[k] for k in MKEYS], w, label="32-bit FP",
+           color="#9e9e9e", edgecolor="black")
+    ax.bar(x + w / 2, [ei8[k] for k in MKEYS], w, label="int8",
+           color=[COLOR[k] for k in MKEYS], edgecolor="black", hatch="//")
+    ax.set_yscale("log"); ax.set_xticks(x)
+    ax.set_xticklabels([MNAME[k] for k in MKEYS], rotation=15)
+    ax.set_ylabel("Compute energy (pJ/sample, log)")
+    ax.set_title("Matched-precision compute energy (32-bit vs int8)")
+    ax.legend(frameon=False, ncol=2)
+    save(fig, "energy_precision")
+
+
+energy_precision()
+
+
 # ---- critical-difference / mean-rank across datasets ----
 _NEMENYI_Q05 = {2: 1.960, 3: 2.343, 4: 2.569, 5: 2.728, 6: 2.850}
 
@@ -568,3 +630,9 @@ print("\nMean Macro-F1 across datasets:")
 for k in MKEYS:
     vals = [DATA[ds][k]["f1_macro"][0] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k]["f1_macro"] and DATA[ds][k]["f1_macro"][0] is not None]
     print(f"   {MNAME[k]:16} {np.mean(vals)*100:.1f}%  (n_datasets={len(vals)})")
+
+print("\nB2 matched-precision compute energy — DNN-Tree / Tree-to-Spike ratio:")
+for prec, key in [("32-bit", "E_pj"), ("int8", "E_pj_i8")]:
+    dnn = np.mean([DATA[ds]["dnn"][key] for ds in DS_KEYS if DATA[ds]["dnn"] and DATA[ds]["dnn"].get(key) is not None])
+    tree = np.mean([DATA[ds]["tree"][key] for ds in DS_KEYS if DATA[ds]["tree"] and DATA[ds]["tree"].get(key) is not None])
+    print(f"   {prec:7} DNN-Tree={dnn:>10,.0f} pJ   Tree-to-Spike={tree:>9,.0f} pJ   -> {dnn/tree:.1f}x less")

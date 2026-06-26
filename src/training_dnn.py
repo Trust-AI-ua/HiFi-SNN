@@ -31,7 +31,7 @@ import torch.nn.functional as F
 
 from src.data import get_dataset, DATASET_LOADERS
 from src.metrics import (compute_metrics, compute_binary_ids_metrics, count_parameters)
-from src.models import TreeGuidedSpikeEncoder, DNNStudent
+from src.models import TreeGuidedSpikeEncoder, DNNStudent, quantize_int8_
 from src.training_treespike import (_fit_teacher, _teacher_proba_global,
                                     _arrays_from_bundle, distillation_loss)
 
@@ -50,6 +50,7 @@ DEFAULTS = {
     "results_dir": "results/DNN-Tree",
     "summary_csv": "results/summary_dnn.csv",
     "latency_samples": 1000,   # cap for the batch-1 latency probe on large test sets
+    "quantize": False,         # int8 fake-quant before eval (matched precision vs the SNN student)
 }
 
 SUMMARY_HEADER = [
@@ -181,6 +182,10 @@ def run_experiment(cfg: Dict) -> Dict:
               f"ce={parts.get('ce',0):.3f} kd={parts.get('kd',0):.3f} val_acc={val_acc:.4f}")
     train_time_s = time.time() - train_start
 
+    # ---------- deploy: int8 fake-quant (matched precision vs the int8 SNN student) ----------
+    if cfg.get("quantize"):
+        quantize_int8_(student)
+
     # ---------- eval (one-shot) ----------
     cuda = device.type == "cuda"
     if cuda: torch.cuda.synchronize()
@@ -201,7 +206,8 @@ def run_experiment(cfg: Dict) -> Dict:
         "metrics": m,
         "binary_ids_metrics": bin_m,
         "compute": {"macs_per_sample": macs, "energy_pj_horowitz": energy_pj,
-                    "e_mac_pj": E_MAC_PJ, "paradigm": "dense one-shot ANN (T=1)"},
+                    "e_mac_pj": E_MAC_PJ, "paradigm": "dense one-shot ANN (T=1)",
+                    "quantized_int8": bool(cfg.get("quantize"))},
         "teacher_upper_bound": {"accuracy": t_m["accuracy"], "f1_macro": t_m["f1_macro"],
                                 "matthews_corrcoef": t_m["matthews_corrcoef"]},
         "inference_ms_per_sample_batch1": bs1_ms,
@@ -223,7 +229,7 @@ def run_experiment(cfg: Dict) -> Dict:
                    ["T", "pop_max", "prune_quantile", "jitter", "hidden", "clip_relu",
                     "teacher_n_estimators", "teacher_max_depth", "teacher_lr",
                     "tau", "a_kd", "a_rank", "a_fp", "epochs", "batch_size", "lr",
-                    "weight_decay", "val_fraction", "seed", "device"]},
+                    "weight_decay", "quantize", "val_fraction", "seed", "device"]},
         "hardware": hw,
         "data": {"num_features": bundle.num_features, "num_classes": bundle.num_classes,
                  "class_names": bundle.class_names, "class_counts_train": bundle.class_counts_train,
