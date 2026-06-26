@@ -158,22 +158,39 @@ aligned with the SNN-NIDS literature: Zhou et al., *"Spiking neural networks for
 detection"* (arXiv:2010.07803, 2020); TASNN (2025); and the Attention-CNN-LSTM IoT-IDS work
 (*Nature Scientific Reports*, 2025).
 
-## 8. UNSW-NB15 accuracy sanity-check vs the literature
+## 8. Honest official-split protocol — the ~76% ceiling (NSL-KDD & UNSW-NB15)
 
-Our UNSW-NB15 10-class results — **Vanilla SNN acc ≈ 0.76 / F1-macro ≈ 0.44**, **Tree-to-Spike
-acc ≈ 0.745** — sit squarely in the band reported for the **official partition with no
-resampling**, and the low macro-F1 reflects the near-zero recall on the tiny classes (Worms,
-Shellcode, Analysis), exactly as the literature describes.
+NSL-KDD and UNSW-NB15 ship an **official train/test partition with a deliberate distribution
+shift** (novel attacks / a re-balanced class mix in the test file). We use those official splits
+with **no resampling**, so our ~76% accuracy is the *honest, hard* number — not an
+underperformance. The widely-quoted **97–99%** figures come from (a) **merging** the files into a
+fresh **IID random split**, and/or (b) **SMOTE/ADASYN oversampling** — neither tests
+generalisation to unseen attacks.
 
-The widely-quoted **97–99%** UNSW-NB15 multiclass numbers are **not apples-to-apples**: they
-come from (a) **merging** the two files and taking a fresh **IID random split**, and/or (b)
-**SMOTE/ADASYN oversampling** of minority classes. On the *official* split this is impossible
-to reach without resampling because of a documented **train/test distribution shift** —
-Normal traffic is **31.94%** of train but **44.94%** of test ([Kasongo & Sun / "Improving the
-Performance of ML-based NIDS on the UNSW-NB15 Dataset", PMC8221886](https://pmc.ncbi.nlm.nih.gov/articles/PMC8221886/),
-which itself only reaches 98.43% *after* SMOTE). This is the same effect that caps NSL-KDD at
-~76% on the official KDDTest+ (see TODO). We deliberately keep the official split and skip
-resampling, so ~0.76 is the honest, comparable number — not an underperformance.
+A tuned **RandomForest** (200 trees, same features) confirms the ceiling is a property of the
+**split, not the model** — on the official protocol it lands right where our SNN does, and only
+jumps under an IID re-split or the easier binary task:
+
+**NSL-KDD** (5-class)
+| Protocol | Accuracy | Macro-F1 |
+|---|--:|--:|
+| train KDDTrain+ → **official** KDDTest+ | 0.754 | 0.493 |
+| IID random 80/20 split | 0.999 | 0.960 |
+| binary (normal vs attack), official | 0.777 | 0.776 |
+
+**UNSW-NB15** (10-class `attack_cat`)
+| Protocol | Accuracy | Macro-F1 |
+|---|--:|--:|
+| **official** 175,341 / 82,332 partition | 0.756 | 0.463 |
+| IID random 80/20 split | 0.826 | 0.557 |
+| binary (normal vs attack), official | 0.871 | 0.865 |
+
+RF on the official split (NSL-KDD **0.754**, UNSW **0.756**) sits *at/below* our Vanilla SNN
+(0.769 / 0.760) — model choice barely moves the headline. The UNSW shift is documented
+quantitatively: Normal is **31.94%** of train but **44.94%** of test ([Kasongo & Sun, PMC8221886](https://pmc.ncbi.nlm.nih.gov/articles/PMC8221886/),
+which reaches 98.43% only *after* SMOTE). The low macro-F1 on both is near-zero recall on the
+tiny classes (NSL-KDD R2L/U2R; UNSW Worms/Shellcode/Analysis). **Methodology takeaway:** report
+the official split as the headline; any IID/SMOTE number is a clearly-labelled secondary result.
 
 ## 9. Classic Phase-1 datasets
 

@@ -53,18 +53,10 @@ Nice-to-haves; none block the core claims.
 
 ## Reference (kept — supports the writeup tasks)
 
-**NSL-KDD ~76% ceiling is correct, not a weakness.** Same features + tuned RandomForest:
-
-| Protocol | Accuracy | Macro-F1 |
-|---|---|---|
-| train KDDTrain+ → official KDDTest+ (5-class) | 0.754 | 0.493 |
-| random 80/20 IID split (what ~99% notebooks do) | 0.999 | 0.960 |
-| binary (normal vs attack), official KDDTest+ | 0.777 | 0.776 |
-
-RF scores 0.754 on our protocol — *below* our SNN (0.769); the ceiling is the train/test
-distribution shift, not the model. UNSW-NB15 is the same story (Normal 31.94%→44.94%
-train→test; the 97–99% literature numbers use an IID merge and/or SMOTE). Full detail in
-`SOTA_DATASETS.md` §8.
+**Honest-protocol controls live in `SOTA_DATASETS.md` §8.** RandomForest control tables for
+**both NSL-KDD and UNSW-NB15** (official / IID / binary protocols) show the ~76% ceiling is a
+property of the official-split distribution shift, *not* a model weakness (RF official: NSL-KDD
+0.754, UNSW 0.756 — at/below our SNN). Use that as the one-line evidence in Methodology.
 
 **Energy methodology (state precisely in limitations).** The **operation counts are empirical**:
 SOPs (spikes × fan-out) are *measured during evaluation* on the real test data, MACs are computed
