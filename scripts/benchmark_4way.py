@@ -412,14 +412,13 @@ def pareto():
         pr = [DATA[ds][k]["params"] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k]["params"]]
         if not f1 or not pr:
             continue
-        ax.scatter(np.mean(pr), np.mean(f1) * 100, s=90, marker=MARKER[k],
+        ax.scatter(np.mean(pr), np.mean(f1) * 100, s=110, marker=MARKER[k],
                    color=COLOR[k], edgecolor="black", zorder=3, label=MNAME[k])
-        ax.annotate(MNAME[k], (np.mean(pr), np.mean(f1) * 100),
-                    textcoords="offset points", xytext=(6, 5), fontsize=8)
     ax.set_xscale("log")
     ax.set_xlabel("Parameters (log) — fewer is better")
     ax.set_ylabel("Macro-F1 (%, mean over datasets)")
     ax.set_title("Accuracy–size Pareto (upper-left = better)")
+    ax.legend(loc="lower left", frameon=True, fontsize=8)
     save(fig, "pareto_f1_vs_params")
 
 
@@ -477,14 +476,13 @@ def pareto_energy():
         en = [DATA[ds][k]["E_pj"] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k]["E_pj"] is not None]
         if not f1 or not en:
             continue
-        ax.scatter(np.mean(en), np.mean(f1) * 100, s=90, marker=MARKER[k],
+        ax.scatter(np.mean(en), np.mean(f1) * 100, s=110, marker=MARKER[k],
                    color=COLOR[k], edgecolor="black", zorder=3, label=MNAME[k])
-        ax.annotate(MNAME[k], (np.mean(en), np.mean(f1) * 100),
-                    textcoords="offset points", xytext=(6, 5), fontsize=8)
     ax.set_xscale("log")
     ax.set_xlabel("Compute energy (pJ/sample, log) — lower is better")
     ax.set_ylabel("Macro-F1 (%, mean over datasets)")
     ax.set_title("Accuracy–energy Pareto (upper-left = better)")
+    ax.legend(loc="lower left", frameon=True, fontsize=8)
     save(fig, "pareto_f1_vs_energy")
 
 
