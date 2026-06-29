@@ -165,6 +165,8 @@ def main():
     ap.add_argument("--only", nargs="+", default=DATASETS, help="datasets to backfill")
     ap.add_argument("--force", action="store_true", help="recompute even if early_exit present")
     ap.add_argument("--eval-batch", type=int, default=1024)
+    ap.add_argument("--neuron", default=None, help="restrict to one neuron, e.g. LeakyParallel")
+    ap.add_argument("--encoding", default=None, help="restrict to one encoding, e.g. latency")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -176,6 +178,9 @@ def main():
     t0 = time.time()
     for ds in args.only:
         rjs = sorted((REPO_ROOT / "results" / ds).glob("SNN_*/*/seed_*/results.json"))
+        if args.neuron and args.encoding:
+            want = f"SNN_{args.neuron}/{args.encoding}/"
+            rjs = [rj for rj in rjs if want in str(rj)]
         if not rjs:
             continue
         # group by seed so the (dataset, seed) test bundle is built once and
