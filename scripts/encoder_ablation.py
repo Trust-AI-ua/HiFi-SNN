@@ -34,7 +34,8 @@ DS_NAME = {"nslkdd": "NSL-KDD", "unswnb15": "UNSW-NB15", "toniot": "TON-IoT",
 MODES = ["tree", "uniform", "all"]              # tree = production results (not re-run)
 RUN_MODES = ["uniform", "all"]
 SEEDS = [42, 43, 44, 45, 46]
-COLOR = {"tree": "#2CA02C", "uniform": "#DD8452", "all": "#9467BD"}
+# Paul Tol "bright" (matches benchmark_4way): tree=green, uniform=blue, all=red.
+COLOR = {"tree": "#228833", "uniform": "#4477AA", "all": "#EE6677"}
 OUT = REPO / "results" / "Journal_results"
 (OUT / "figures").mkdir(parents=True, exist_ok=True)
 (OUT / "tables").mkdir(parents=True, exist_ok=True)

@@ -68,7 +68,7 @@ def _dataset_kwargs_for(ds, neuron, enc, cfg):
     loader_params = inspect.signature(DATASET_LOADERS[ds]).parameters
     kw = dict(batch_size=cfg["batch_size"], val_fraction=cfg["val_fraction"],
               seed=cfg["seed"])
-    for opt in ("subsample_fraction", "test_fraction"):
+    for opt in ("subsample_fraction", "test_fraction", "label_mode"):
         if opt in file_cfg and opt in loader_params:
             kw[opt] = file_cfg[opt]
     return kw

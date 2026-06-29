@@ -137,13 +137,15 @@ def build():
         elif col == "lat":
             s = f"{v:.3f}"
         is_best = (best(dk, col, direction) == mk)
-        return rf"\cellcolor{{lightgray}}\textbf{{{s}}}" if is_best else s
+        return rf"\cellcolor{{bestcell}}\textbf{{{s}}}" if is_best else s
 
     lines = [
-        r"% Requires: \usepackage{multirow,booktabs,colortbl,xcolor}  \definecolor{lightgray}{gray}{0.85}",
+        r"% Requires: \usepackage{multirow,booktabs,colortbl,xcolor}",
+        r"% \definecolor{bestcell}{HTML}{C6EFCE}  % light forest-green; for light blue use {HTML}{BBDEFB}",
         r"\begin{table*}[!ht]", r"\centering", r"\renewcommand{\arraystretch}{1.1}",
         r"\caption{Classification, binary IDS, and energy-efficiency results across all datasets "
-        r"(mean over 5 seeds). Best per metric and dataset in \colorbox{lightgray}{\textbf{bold}}. "
+        r"(mean over 5 seeds). Best per metric and dataset in \colorbox{bestcell}{\textbf{bold}}; "
+        r"the arrow ($\uparrow$/$\downarrow$) next to each metric gives the better direction. "
         r"SNN/Tree-to-Spike energy = SOPs (incl.\ input layer) $\times$ 0.9\,pJ; DNN-Tree = MACs "
         r"$\times$ 4.6\,pJ (Horowitz 45\,nm). $^\dagger$TASNN energy is an analytic transformer-MAC "
         r"+ spike-AC estimate (its raw spike count excludes the dominant transformer). Latency is "
@@ -153,9 +155,10 @@ def build():
         r"& & \multicolumn{6}{c}{\textbf{Classification \& Detection}} & "
         r"\multicolumn{4}{c}{\textbf{Efficiency}} \\",
         r"\cmidrule(lr){3-8} \cmidrule(lr){9-12}",
-        r"\textbf{Dataset} & \textbf{Model} & \textbf{ACC} & \textbf{BACC} & \textbf{F1-M} & "
-        r"\textbf{MCC} & \textbf{DR} & \textbf{FAR} & \textbf{Sparsity} & \textbf{SOPs/MACs} & "
-        r"\textbf{Energy} & \textbf{Latency} \\",
+        r"\textbf{Dataset} & \textbf{Model} & \textbf{ACC}\,$\uparrow$ & \textbf{BACC}\,$\uparrow$ & "
+        r"\textbf{F1-M}\,$\uparrow$ & \textbf{MCC}\,$\uparrow$ & \textbf{DR}\,$\uparrow$ & "
+        r"\textbf{FAR}\,$\downarrow$ & \textbf{Sparsity}\,$\uparrow$ & \textbf{SOPs/MACs}\,$\downarrow$ & "
+        r"\textbf{Energy}\,$\downarrow$ & \textbf{Latency}\,$\downarrow$ \\",
         r"& & \textbf{(\%)} & \textbf{(\%)} & \textbf{(\%)} & & \textbf{(\%)} & \textbf{(\%)} & "
         r"\textbf{(\%)} & & \textbf{(pJ)} & \textbf{(ms)} \\", r"\midrule",
     ]

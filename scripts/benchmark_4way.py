@@ -46,7 +46,10 @@ MODELS = [
 ]
 MKEYS = [m[0] for m in MODELS]
 MNAME = {m[0]: m[1] for m in MODELS}
-COLOR = {"vanilla": "#4C72B0", "tree": "#2CA02C", "dnn": "#DD8452", "tasnn": "#9467BD"}
+# IEEE-friendly Paul Tol "bright" qualitative palette (bright + colorblind-safe):
+# IEEE/colorblind-safe qualitative set — blue / green / red / orange (Okabe-Ito amber for
+# TASNN, distinct from blue & red). Clean solid fills; scatter plots add distinct markers.
+COLOR = {"vanilla": "#4477AA", "tree": "#228833", "dnn": "#EE6677", "tasnn": "#E69F00"}
 HATCH = {"vanilla": "",        "tree": "//",      "dnn": "..",       "tasnn": "xx"}
 MARKER = {"vanilla": "o",      "tree": "s",       "dnn": "^",        "tasnn": "D"}
 
@@ -336,7 +339,7 @@ def grouped_bar(met, fname):
         es = [DATA[ds][k][met][1] if DATA[ds][k] and DATA[ds][k][met] else 0 for ds in DS_KEYS]
         ax.bar(x + (i - 1.5) * w, [v * 100 if v == v else 0 for v in ms], w,
                yerr=[e * 100 for e in es], capsize=2, label=MNAME[k],
-               color=COLOR[k], hatch=HATCH[k], edgecolor="black", linewidth=0.4, error_kw={"lw": 0.6})
+               color=COLOR[k], edgecolor="black", linewidth=0.4, error_kw={"lw": 0.6})
     ax.set_xticks(x); ax.set_xticklabels([DS_NAME[d] for d in DS_KEYS], rotation=40, ha="right")
     ax.set_ylabel(f"{pretty} (%)")
     ax.set_ylim(0, None if met == "FAR" else 100)
@@ -376,6 +379,42 @@ def radar():
 
 
 radar()
+
+
+def radar_grid():
+    """2x2 small-multiples: one radar per model (the other three shown faint grey for
+    context), so each model's profile is readable without the 4-way overlap."""
+    axes = ["accuracy", "f1_macro", "mcc", "DR", "FAR"]
+    labels = ["Accuracy", "Macro-F1", "MCC", "Detection", "Low FAR"]
+    agg = {k: [] for k in MKEYS}
+    for k in MKEYS:
+        for met in axes:
+            vals = [DATA[ds][k][met][0] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k][met] and DATA[ds][k][met][0] is not None]
+            v = float(np.mean(vals)) if vals else 0.0
+            if met == "FAR":
+                v = 1.0 - v
+            agg[k].append(v)
+    arr = np.array([agg[k] for k in MKEYS])
+    norm = arr / np.clip(arr.max(axis=0), 1e-9, None)        # best per axis = 1
+    ang = np.linspace(0, 2 * np.pi, len(axes), endpoint=False).tolist(); ang += ang[:1]
+    nm = {k: norm[i].tolist() + [norm[i][0]] for i, k in enumerate(MKEYS)}
+    fig, axs = plt.subplots(2, 2, figsize=(7.2, 7.8), subplot_kw=dict(polar=True))
+    for ax, k in zip(axs.ravel(), MKEYS):
+        for j in MKEYS:                                       # faint context = other models
+            if j != k:
+                ax.plot(ang, nm[j], lw=0.8, color="0.78", alpha=0.8, zorder=1)
+        ax.plot(ang, nm[k], marker=MARKER[k], ms=4, lw=2.2, color=COLOR[k], zorder=3)
+        ax.fill(ang, nm[k], alpha=0.25, color=COLOR[k], zorder=2)
+        ax.set_xticks(ang[:-1]); ax.set_xticklabels(labels, fontsize=8)
+        ax.set_ylim(0, 1.05); ax.set_yticklabels([])
+        ax.set_title(MNAME[k], color=COLOR[k], fontsize=11, fontweight="bold", pad=14)
+    fig.suptitle("Per-model aggregate profile (each axis normalised, best = 1; "
+                 "grey = the other three models)", fontsize=10, y=1.0)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    save(fig, "radar_grid_4way")
+
+
+radar_grid()
 
 
 def heatmap(met, fname):
@@ -435,7 +474,7 @@ def energy_bar():
     fig, ax = plt.subplots(figsize=(4.0, 3.0))
     xs = range(len(trio))
     ax.bar(xs, [vals[k] for k in trio], color=[COLOR[k] for k in trio],
-           hatch=[HATCH[k] for k in trio], edgecolor="black", width=0.6)
+           edgecolor="black", width=0.6)
     ax.set_yscale("log"); ax.set_xticks(list(xs)); ax.set_xticklabels([MNAME[k] for k in trio])
     ax.set_ylabel("Compute energy (pJ/sample, log)")
     ax.set_title("Operation energy — iso-architecture trio\n(SOPs$\\times$0.9pJ vs MACs$\\times$4.6pJ)")
@@ -457,7 +496,7 @@ def energy_4way():
     fig, ax = plt.subplots(figsize=(4.4, 3.2))
     xs = range(len(MKEYS))
     ax.bar(xs, [vals[k] for k in MKEYS], color=[COLOR[k] for k in MKEYS],
-           hatch=[HATCH[k] for k in MKEYS], edgecolor="black", width=0.62)
+           edgecolor="black", width=0.62)
     ax.set_yscale("log"); ax.set_xticks(list(xs))
     ax.set_xticklabels([MNAME[k] for k in MKEYS], rotation=15)
     ax.set_ylabel("Compute energy (pJ/sample, log)")
@@ -503,7 +542,7 @@ def energy_precision():
     ax.bar(x - w / 2, [e32[k] for k in MKEYS], w, label="32-bit FP",
            color="#9e9e9e", edgecolor="black")
     ax.bar(x + w / 2, [ei8[k] for k in MKEYS], w, label="int8",
-           color=[COLOR[k] for k in MKEYS], edgecolor="black", hatch="//")
+           color=[COLOR[k] for k in MKEYS], edgecolor="black")
     ax.set_yscale("log"); ax.set_xticks(x)
     ax.set_xticklabels([MNAME[k] for k in MKEYS], rotation=15)
     ax.set_ylabel("Compute energy (pJ/sample, log)")
@@ -556,7 +595,7 @@ def mean_rank_bar(met, fname):
     fig, ax = plt.subplots(figsize=(4.6, 2.6))
     ys = list(range(len(order)))
     ax.barh(ys, [avg[k] for k in order], color=[COLOR[k] for k in order],
-            hatch=[HATCH[k] for k in order], edgecolor="black")
+            edgecolor="black")
     ax.set_yticks(ys); ax.set_yticklabels([MNAME[k] for k in order]); ax.invert_yaxis()
     ax.set_xlabel("Mean rank across datasets (1 = best)")
     ax.set_title(f"{METRICS[met][2]} — mean rank (N={N}, CD={cd:.2f})")
