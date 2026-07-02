@@ -101,7 +101,7 @@ def build():
 
     # columns: (label, key, direction)  dir: +1 higher better, -1 lower better, 'E' by energy
     COLS = [("acc", +1), ("bacc", +1), ("f1", +1), ("mcc", +1), ("dr", +1),
-            ("far", -1), ("spar", +1), ("ops", "E"), ("energy", -1), ("lat", -1)]
+            ("far", -1), ("energy", -1), ("lat", -1)]
     mkeys = [m[0] for m in MODELS]; mnames = {m[0]: m[1] for m in MODELS}
 
     def best(dk, col, direction):
@@ -143,24 +143,26 @@ def build():
         r"% Requires: \usepackage{multirow,booktabs,colortbl,xcolor}",
         r"% \definecolor{bestcell}{HTML}{C6EFCE}  % light forest-green; for light blue use {HTML}{BBDEFB}",
         r"\begin{table*}[!ht]", r"\centering", r"\renewcommand{\arraystretch}{1.1}",
-        r"\caption{Classification, binary IDS, and energy-efficiency results across all datasets "
+        r"\caption{Classification, binary IDS, and absolute-energy results across all datasets "
         r"(mean over 5 seeds). Best per metric and dataset in \colorbox{bestcell}{\textbf{bold}}; "
         r"the arrow ($\uparrow$/$\downarrow$) next to each metric gives the better direction. "
-        r"SNN/Tree-to-Spike energy = SOPs (incl.\ input layer) $\times$ 0.9\,pJ; DNN-Tree = MACs "
-        r"$\times$ 4.6\,pJ (Horowitz 45\,nm). $^\dagger$TASNN energy is an analytic transformer-MAC "
-        r"+ spike-AC estimate (its raw spike count excludes the dominant transformer). Latency is "
-        r"wall-clock (batching differs: batch-1 for DNN-Tree, batched per-sample otherwise).}",
+        r"We report \emph{absolute} compute energy rather than spike sparsity: sparsity is a ratio "
+        r"that ignores network size and dense (non-spiking) components, whereas absolute energy "
+        r"counts every operation. SNN/Tree-to-Spike energy = SOPs (incl.\ input layer) $\times$ "
+        r"0.9\,pJ; DNN-Tree = MACs $\times$ 4.6\,pJ (Horowitz 45\,nm). $^\dagger$TASNN energy is an "
+        r"analytic transformer-MAC + spike-AC estimate (its raw spike count excludes the dominant "
+        r"dense transformer). Latency is wall-clock (batching differs: batch-1 for DNN-Tree, batched "
+        r"per-sample otherwise).}",
         r"\label{tab:results_full}", r"{\footnotesize",
-        r"\begin{tabular}{l l r r r r r r r r r r}", r"\toprule",
+        r"\begin{tabular}{l l r r r r r r r r}", r"\toprule",
         r"& & \multicolumn{6}{c}{\textbf{Classification \& Detection}} & "
-        r"\multicolumn{4}{c}{\textbf{Efficiency}} \\",
-        r"\cmidrule(lr){3-8} \cmidrule(lr){9-12}",
+        r"\multicolumn{2}{c}{\textbf{Efficiency}} \\",
+        r"\cmidrule(lr){3-8} \cmidrule(lr){9-10}",
         r"\textbf{Dataset} & \textbf{Model} & \textbf{ACC}\,$\uparrow$ & \textbf{BACC}\,$\uparrow$ & "
         r"\textbf{F1-M}\,$\uparrow$ & \textbf{MCC}\,$\uparrow$ & \textbf{DR}\,$\uparrow$ & "
-        r"\textbf{FAR}\,$\downarrow$ & \textbf{Sparsity}\,$\uparrow$ & \textbf{SOPs/MACs}\,$\downarrow$ & "
-        r"\textbf{Energy}\,$\downarrow$ & \textbf{Latency}\,$\downarrow$ \\",
+        r"\textbf{FAR}\,$\downarrow$ & \textbf{Energy}\,$\downarrow$ & \textbf{Latency}\,$\downarrow$ \\",
         r"& & \textbf{(\%)} & \textbf{(\%)} & \textbf{(\%)} & & \textbf{(\%)} & \textbf{(\%)} & "
-        r"\textbf{(\%)} & & \textbf{(pJ)} & \textbf{(ms)} \\", r"\midrule",
+        r"\textbf{(pJ)} & \textbf{(ms)} \\", r"\midrule",
     ]
     for dk, dn in DS:
         lines.append(rf"\multirow{{4}}{{*}}{{{dn}}}")

@@ -3,81 +3,81 @@
 \begin{table*}[!ht]
 \centering
 \renewcommand{\arraystretch}{1.1}
-\caption{Classification, binary IDS, and energy-efficiency results across all datasets (mean over 5 seeds). Best per metric and dataset in \colorbox{bestcell}{\textbf{bold}}; the arrow ($\uparrow$/$\downarrow$) next to each metric gives the better direction. SNN/Tree-to-Spike energy = SOPs (incl.\ input layer) $\times$ 0.9\,pJ; DNN-Tree = MACs $\times$ 4.6\,pJ (Horowitz 45\,nm). $^\dagger$TASNN energy is an analytic transformer-MAC + spike-AC estimate (its raw spike count excludes the dominant transformer). Latency is wall-clock (batching differs: batch-1 for DNN-Tree, batched per-sample otherwise).}
+\caption{Classification, binary IDS, and absolute-energy results across all datasets (mean over 5 seeds). Best per metric and dataset in \colorbox{bestcell}{\textbf{bold}}; the arrow ($\uparrow$/$\downarrow$) next to each metric gives the better direction. We report \emph{absolute} compute energy rather than spike sparsity: sparsity is a ratio that ignores network size and dense (non-spiking) components, whereas absolute energy counts every operation. SNN/Tree-to-Spike energy = SOPs (incl.\ input layer) $\times$ 0.9\,pJ; DNN-Tree = MACs $\times$ 4.6\,pJ (Horowitz 45\,nm). $^\dagger$TASNN energy is an analytic transformer-MAC + spike-AC estimate (its raw spike count excludes the dominant dense transformer). Latency is wall-clock (batching differs: batch-1 for DNN-Tree, batched per-sample otherwise).}
 \label{tab:results_full}
 {\footnotesize
-\begin{tabular}{l l r r r r r r r r r r}
+\begin{tabular}{l l r r r r r r r r}
 \toprule
-& & \multicolumn{6}{c}{\textbf{Classification \& Detection}} & \multicolumn{4}{c}{\textbf{Efficiency}} \\
-\cmidrule(lr){3-8} \cmidrule(lr){9-12}
-\textbf{Dataset} & \textbf{Model} & \textbf{ACC}\,$\uparrow$ & \textbf{BACC}\,$\uparrow$ & \textbf{F1-M}\,$\uparrow$ & \textbf{MCC}\,$\uparrow$ & \textbf{DR}\,$\uparrow$ & \textbf{FAR}\,$\downarrow$ & \textbf{Sparsity}\,$\uparrow$ & \textbf{SOPs/MACs}\,$\downarrow$ & \textbf{Energy}\,$\downarrow$ & \textbf{Latency}\,$\downarrow$ \\
-& & \textbf{(\%)} & \textbf{(\%)} & \textbf{(\%)} & & \textbf{(\%)} & \textbf{(\%)} & \textbf{(\%)} & & \textbf{(pJ)} & \textbf{(ms)} \\
+& & \multicolumn{6}{c}{\textbf{Classification \& Detection}} & \multicolumn{2}{c}{\textbf{Efficiency}} \\
+\cmidrule(lr){3-8} \cmidrule(lr){9-10}
+\textbf{Dataset} & \textbf{Model} & \textbf{ACC}\,$\uparrow$ & \textbf{BACC}\,$\uparrow$ & \textbf{F1-M}\,$\uparrow$ & \textbf{MCC}\,$\uparrow$ & \textbf{DR}\,$\uparrow$ & \textbf{FAR}\,$\downarrow$ & \textbf{Energy}\,$\downarrow$ & \textbf{Latency}\,$\downarrow$ \\
+& & \textbf{(\%)} & \textbf{(\%)} & \textbf{(\%)} & & \textbf{(\%)} & \textbf{(\%)} & \textbf{(pJ)} & \textbf{(ms)} \\
 \midrule
 \multirow{4}{*}{KDDCup99}
-& Vanilla SNN   & 92.57 & 62.89 & 61.99 & 0.8289 & 91.26 & 0.91 & 92.9 & 17,833 SOPs & 16,049 & 0.069 \\
-& Tree-to-Spike & \cellcolor{bestcell}\textbf{92.63} & \cellcolor{bestcell}\textbf{63.77} & 61.83 & \cellcolor{bestcell}\textbf{0.8306} & \cellcolor{bestcell}\textbf{91.47} & \cellcolor{bestcell}\textbf{0.54} & 93.4 & \cellcolor{bestcell}\textbf{8,407 SOPs} & \cellcolor{bestcell}\textbf{7,567} & 0.773 \\
-& DNN-Tree      & 92.54 & 63.73 & \cellcolor{bestcell}\textbf{63.35} & 0.8282 & 91.32 & 1.37 & --- & 8,909 MACs & 40,980 & \cellcolor{bestcell}\textbf{0.028} \\
-& TASNN         & 92.52 & 55.55 & 54.49 & 0.8278 & 91.18 & 0.84 & \cellcolor{bestcell}\textbf{99.7} & 60.3M MACs$^\dagger$ & 270.4M$^\dagger$ & 0.363 \\
+& Vanilla SNN   & 92.57 & 62.89 & 61.99 & 0.8289 & 91.26 & 0.91 & 16,049 & 0.069 \\
+& Tree-to-Spike & \cellcolor{bestcell}\textbf{92.63} & \cellcolor{bestcell}\textbf{63.77} & 61.83 & \cellcolor{bestcell}\textbf{0.8306} & \cellcolor{bestcell}\textbf{91.47} & \cellcolor{bestcell}\textbf{0.54} & \cellcolor{bestcell}\textbf{7,567} & 0.773 \\
+& DNN-Tree      & 92.54 & 63.73 & \cellcolor{bestcell}\textbf{63.35} & 0.8282 & 91.32 & 1.37 & 40,980 & \cellcolor{bestcell}\textbf{0.028} \\
+& TASNN         & 92.52 & 55.55 & 54.49 & 0.8278 & 91.18 & 0.84 & 270.4M$^\dagger$ & 0.363 \\
 \midrule
 \multirow{4}{*}{NSL-KDD}
-& Vanilla SNN   & 76.11 & 56.36 & 59.30 & 0.6490 & 66.06 & 7.02 & 89.2 & 19,017 SOPs & 17,115 & \cellcolor{bestcell}\textbf{0.027} \\
-& Tree-to-Spike & \cellcolor{bestcell}\textbf{77.35} & 55.82 & 58.48 & \cellcolor{bestcell}\textbf{0.6702} & \cellcolor{bestcell}\textbf{66.44} & \cellcolor{bestcell}\textbf{4.30} & 88.4 & \cellcolor{bestcell}\textbf{10,708 SOPs} & \cellcolor{bestcell}\textbf{9,637} & 1.686 \\
-& DNN-Tree      & 76.42 & \cellcolor{bestcell}\textbf{58.43} & \cellcolor{bestcell}\textbf{62.44} & 0.6555 & 65.87 & 6.15 & --- & 8,794 MACs & 40,451 & 0.027 \\
-& TASNN         & 76.06 & 51.61 & 50.41 & 0.6494 & 66.35 & 7.09 & \cellcolor{bestcell}\textbf{99.4} & 62.1M MACs$^\dagger$ & 278.4M$^\dagger$ & 0.451 \\
+& Vanilla SNN   & 76.11 & 56.36 & 59.30 & 0.6490 & 66.06 & 7.02 & 17,115 & \cellcolor{bestcell}\textbf{0.027} \\
+& Tree-to-Spike & \cellcolor{bestcell}\textbf{77.35} & 55.82 & 58.48 & \cellcolor{bestcell}\textbf{0.6702} & \cellcolor{bestcell}\textbf{66.44} & \cellcolor{bestcell}\textbf{4.30} & \cellcolor{bestcell}\textbf{9,637} & 1.686 \\
+& DNN-Tree      & 76.42 & \cellcolor{bestcell}\textbf{58.43} & \cellcolor{bestcell}\textbf{62.44} & 0.6555 & 65.87 & 6.15 & 40,451 & 0.027 \\
+& TASNN         & 76.06 & 51.61 & 50.41 & 0.6494 & 66.35 & 7.09 & 278.4M$^\dagger$ & 0.451 \\
 \midrule
 \multirow{4}{*}{CTU-13}
-& Vanilla SNN   & \cellcolor{bestcell}\textbf{100.00} & \cellcolor{bestcell}\textbf{100.00} & \cellcolor{bestcell}\textbf{100.00} & \cellcolor{bestcell}\textbf{1.0000} & \cellcolor{bestcell}\textbf{100.00} & 0.00 & 88.7 & 8,449 SOPs & 7,604 & 0.124 \\
-& Tree-to-Spike & 100.00 & 100.00 & 100.00 & 1.0000 & 100.00 & \cellcolor{bestcell}\textbf{0.00} & 97.2 & \cellcolor{bestcell}\textbf{2,922 SOPs} & \cellcolor{bestcell}\textbf{2,630} & 0.398 \\
-& DNN-Tree      & 100.00 & 100.00 & 100.00 & 1.0000 & 100.00 & 0.00 & --- & 5,760 MACs & 26,496 & \cellcolor{bestcell}\textbf{0.029} \\
-& TASNN         & 99.99 & 99.99 & 99.98 & 0.9997 & 99.98 & 0.01 & \cellcolor{bestcell}\textbf{99.6} & 17.1M MACs$^\dagger$ & 75.3M$^\dagger$ & 0.288 \\
+& Vanilla SNN   & \cellcolor{bestcell}\textbf{100.00} & \cellcolor{bestcell}\textbf{100.00} & \cellcolor{bestcell}\textbf{100.00} & \cellcolor{bestcell}\textbf{1.0000} & \cellcolor{bestcell}\textbf{100.00} & 0.00 & 7,604 & 0.124 \\
+& Tree-to-Spike & 100.00 & 100.00 & 100.00 & 1.0000 & 100.00 & \cellcolor{bestcell}\textbf{0.00} & \cellcolor{bestcell}\textbf{2,630} & 0.398 \\
+& DNN-Tree      & 100.00 & 100.00 & 100.00 & 1.0000 & 100.00 & 0.00 & 26,496 & \cellcolor{bestcell}\textbf{0.029} \\
+& TASNN         & 99.99 & 99.99 & 99.98 & 0.9997 & 99.98 & 0.01 & 75.3M$^\dagger$ & 0.288 \\
 \midrule
 \multirow{4}{*}{ISCX2012}
-& Vanilla SNN   & 99.61 & 98.42 & 97.04 & 0.9413 & 97.14 & 0.31 & 96.7 & 23,968 SOPs & 21,571 & 0.072 \\
-& Tree-to-Spike & 99.74 & 98.60 & 98.03 & 0.9607 & 97.37 & \cellcolor{bestcell}\textbf{0.18} & 95.0 & \cellcolor{bestcell}\textbf{7,810 SOPs} & \cellcolor{bestcell}\textbf{7,029} & 0.371 \\
-& DNN-Tree      & \cellcolor{bestcell}\textbf{99.76} & \cellcolor{bestcell}\textbf{98.90} & \cellcolor{bestcell}\textbf{98.18} & \cellcolor{bestcell}\textbf{0.9638} & 97.98 & 0.18 & --- & 7,578 MACs & 34,857 & \cellcolor{bestcell}\textbf{0.028} \\
-& TASNN         & 99.53 & 98.90 & 96.55 & 0.9323 & \cellcolor{bestcell}\textbf{98.22} & 0.42 & \cellcolor{bestcell}\textbf{99.9} & 95.8M MACs$^\dagger$ & 430.9M$^\dagger$ & 0.207 \\
+& Vanilla SNN   & 99.61 & 98.42 & 97.04 & 0.9413 & 97.14 & 0.31 & 21,571 & 0.072 \\
+& Tree-to-Spike & 99.74 & 98.60 & 98.03 & 0.9607 & 97.37 & \cellcolor{bestcell}\textbf{0.18} & \cellcolor{bestcell}\textbf{7,029} & 0.371 \\
+& DNN-Tree      & \cellcolor{bestcell}\textbf{99.76} & \cellcolor{bestcell}\textbf{98.90} & \cellcolor{bestcell}\textbf{98.18} & \cellcolor{bestcell}\textbf{0.9638} & 97.98 & 0.18 & 34,857 & \cellcolor{bestcell}\textbf{0.028} \\
+& TASNN         & 99.53 & 98.90 & 96.55 & 0.9323 & \cellcolor{bestcell}\textbf{98.22} & 0.42 & 430.9M$^\dagger$ & 0.207 \\
 \midrule
 \multirow{4}{*}{CIC-IDS2017}
-& Vanilla SNN   & 99.76 & 98.08 & \cellcolor{bestcell}\textbf{98.62} & 0.9929 & 99.33 & 0.13 & 89.4 & 16,841 SOPs & 15,157 & 0.073 \\
-& Tree-to-Spike & \cellcolor{bestcell}\textbf{99.84} & 97.77 & 98.39 & \cellcolor{bestcell}\textbf{0.9952} & \cellcolor{bestcell}\textbf{99.67} & \cellcolor{bestcell}\textbf{0.11} & 88.2 & \cellcolor{bestcell}\textbf{12,002 SOPs} & \cellcolor{bestcell}\textbf{10,802} & 0.416 \\
-& DNN-Tree      & 99.79 & \cellcolor{bestcell}\textbf{98.17} & 98.55 & 0.9936 & 99.52 & 0.14 & --- & 8,371 MACs & 38,508 & \cellcolor{bestcell}\textbf{0.028} \\
-& TASNN         & 99.49 & 93.64 & 94.81 & 0.9847 & 98.96 & 0.35 & \cellcolor{bestcell}\textbf{99.8} & 37.4M MACs$^\dagger$ & 166.9M$^\dagger$ & 0.197 \\
+& Vanilla SNN   & 99.76 & 98.08 & \cellcolor{bestcell}\textbf{98.62} & 0.9929 & 99.33 & 0.13 & 15,157 & 0.073 \\
+& Tree-to-Spike & \cellcolor{bestcell}\textbf{99.84} & 97.77 & 98.39 & \cellcolor{bestcell}\textbf{0.9952} & \cellcolor{bestcell}\textbf{99.67} & \cellcolor{bestcell}\textbf{0.11} & \cellcolor{bestcell}\textbf{10,802} & 0.416 \\
+& DNN-Tree      & 99.79 & \cellcolor{bestcell}\textbf{98.17} & 98.55 & 0.9936 & 99.52 & 0.14 & 38,508 & \cellcolor{bestcell}\textbf{0.028} \\
+& TASNN         & 99.49 & 93.64 & 94.81 & 0.9847 & 98.96 & 0.35 & 166.9M$^\dagger$ & 0.197 \\
 \midrule
 \multirow{4}{*}{CSE-CIC-2018}
-& Vanilla SNN   & \cellcolor{bestcell}\textbf{98.20} & 67.61 & 70.10 & \cellcolor{bestcell}\textbf{0.9372} & 94.07 & \cellcolor{bestcell}\textbf{0.05} & 94.1 & 16,070 SOPs & 14,463 & 0.058 \\
-& Tree-to-Spike & 98.04 & \cellcolor{bestcell}\textbf{77.15} & \cellcolor{bestcell}\textbf{75.94} & 0.9323 & \cellcolor{bestcell}\textbf{94.96} & 0.36 & 89.0 & \cellcolor{bestcell}\textbf{13,595 SOPs} & \cellcolor{bestcell}\textbf{12,236} & 0.400 \\
-& DNN-Tree      & 93.18 & 65.61 & 65.93 & 0.7363 & 72.06 & 0.99 & --- & 8,640 MACs & 39,744 & \cellcolor{bestcell}\textbf{0.027} \\
-& TASNN         & 97.99 & 69.67 & 69.56 & 0.9298 & 94.01 & 0.13 & \cellcolor{bestcell}\textbf{99.7} & 39.5M MACs$^\dagger$ & 176.5M$^\dagger$ & 0.085 \\
+& Vanilla SNN   & \cellcolor{bestcell}\textbf{98.20} & 67.61 & 70.10 & \cellcolor{bestcell}\textbf{0.9372} & 94.07 & \cellcolor{bestcell}\textbf{0.05} & 14,463 & 0.058 \\
+& Tree-to-Spike & 98.04 & \cellcolor{bestcell}\textbf{77.15} & \cellcolor{bestcell}\textbf{75.94} & 0.9323 & \cellcolor{bestcell}\textbf{94.96} & 0.36 & \cellcolor{bestcell}\textbf{12,236} & 0.400 \\
+& DNN-Tree      & 93.18 & 65.61 & 65.93 & 0.7363 & 72.06 & 0.99 & 39,744 & \cellcolor{bestcell}\textbf{0.027} \\
+& TASNN         & 97.99 & 69.67 & 69.56 & 0.9298 & 94.01 & 0.13 & 176.5M$^\dagger$ & 0.085 \\
 \midrule
 \multirow{4}{*}{UNSW-NB15}
-& Vanilla SNN   & 75.98 & 45.22 & \cellcolor{bestcell}\textbf{44.47} & 0.6843 & 96.36 & \cellcolor{bestcell}\textbf{21.95} & 94.3 & 29,783 SOPs & 26,805 & 0.035 \\
-& Tree-to-Spike & 74.54 & 45.08 & 41.73 & 0.6727 & 96.56 & 27.22 & 79.0 & \cellcolor{bestcell}\textbf{24,532 SOPs} & \cellcolor{bestcell}\textbf{22,079} & 1.156 \\
-& DNN-Tree      & \cellcolor{bestcell}\textbf{76.20} & \cellcolor{bestcell}\textbf{48.83} & 44.38 & \cellcolor{bestcell}\textbf{0.6910} & 97.07 & 23.76 & --- & 14,733 MACs & 67,771 & \cellcolor{bestcell}\textbf{0.028} \\
-& TASNN         & 74.46 & 44.83 & 40.50 & 0.6739 & \cellcolor{bestcell}\textbf{97.64} & 27.12 & \cellcolor{bestcell}\textbf{98.8} & 110.3M MACs$^\dagger$ & 496.8M$^\dagger$ & 0.299 \\
+& Vanilla SNN   & 75.98 & 45.22 & \cellcolor{bestcell}\textbf{44.47} & 0.6843 & 96.36 & \cellcolor{bestcell}\textbf{21.95} & 26,805 & 0.035 \\
+& Tree-to-Spike & 74.54 & 45.08 & 41.73 & 0.6727 & 96.56 & 27.22 & \cellcolor{bestcell}\textbf{22,079} & 1.156 \\
+& DNN-Tree      & \cellcolor{bestcell}\textbf{76.20} & \cellcolor{bestcell}\textbf{48.83} & 44.38 & \cellcolor{bestcell}\textbf{0.6910} & 97.07 & 23.76 & 67,771 & \cellcolor{bestcell}\textbf{0.028} \\
+& TASNN         & 74.46 & 44.83 & 40.50 & 0.6739 & \cellcolor{bestcell}\textbf{97.64} & 27.12 & 496.8M$^\dagger$ & 0.299 \\
 \midrule
 \multirow{4}{*}{CICIoT2023}
-& Vanilla SNN   & 88.81 & 59.41 & 62.82 & 0.7324 & 99.32 & 6.63 & 93.6 & \cellcolor{bestcell}\textbf{9,777 SOPs} & \cellcolor{bestcell}\textbf{8,799} & 0.039 \\
-& Tree-to-Spike & 99.07 & 68.93 & 72.22 & 0.9787 & 99.41 & \cellcolor{bestcell}\textbf{0.46} & 86.2 & 12,830 SOPs & 11,547 & 0.569 \\
-& DNN-Tree      & \cellcolor{bestcell}\textbf{99.33} & \cellcolor{bestcell}\textbf{69.71} & \cellcolor{bestcell}\textbf{72.43} & \cellcolor{bestcell}\textbf{0.9846} & \cellcolor{bestcell}\textbf{99.51} & 0.48 & --- & 7,091 MACs & 32,620 & \cellcolor{bestcell}\textbf{0.029} \\
-& TASNN         & 88.79 & 57.84 & 59.09 & 0.7330 & 99.40 & 8.08 & \cellcolor{bestcell}\textbf{99.6} & 21.3M MACs$^\dagger$ & 94.4M$^\dagger$ & 0.142 \\
+& Vanilla SNN   & 88.81 & 59.41 & 62.82 & 0.7324 & 99.32 & 6.63 & \cellcolor{bestcell}\textbf{8,799} & 0.039 \\
+& Tree-to-Spike & 99.07 & 68.93 & 72.22 & 0.9787 & 99.41 & \cellcolor{bestcell}\textbf{0.46} & 11,547 & 0.569 \\
+& DNN-Tree      & \cellcolor{bestcell}\textbf{99.33} & \cellcolor{bestcell}\textbf{69.71} & \cellcolor{bestcell}\textbf{72.43} & \cellcolor{bestcell}\textbf{0.9846} & \cellcolor{bestcell}\textbf{99.51} & 0.48 & 32,620 & \cellcolor{bestcell}\textbf{0.029} \\
+& TASNN         & 88.79 & 57.84 & 59.09 & 0.7330 & 99.40 & 8.08 & 94.4M$^\dagger$ & 0.142 \\
 \midrule
 \multirow{4}{*}{CICIoMT2024}
-& Vanilla SNN   & 78.21 & 74.45 & 72.61 & 0.5557 & \cellcolor{bestcell}\textbf{99.80} & 7.61 & 94.9 & 8,837 SOPs & 7,953 & 0.035 \\
-& Tree-to-Spike & \cellcolor{bestcell}\textbf{99.67} & 88.87 & \cellcolor{bestcell}\textbf{89.42} & \cellcolor{bestcell}\textbf{0.9934} & 99.78 & 0.87 & 91.9 & \cellcolor{bestcell}\textbf{8,355 SOPs} & \cellcolor{bestcell}\textbf{7,519} & 0.624 \\
-& DNN-Tree      & 99.66 & \cellcolor{bestcell}\textbf{89.02} & 89.24 & 0.9931 & 99.80 & \cellcolor{bestcell}\textbf{0.10} & --- & 6,861 MACs & 31,560 & \cellcolor{bestcell}\textbf{0.028} \\
-& TASNN         & 80.08 & 75.73 & 74.18 & 0.5818 & 99.77 & 7.15 & \cellcolor{bestcell}\textbf{99.6} & 20.9M MACs$^\dagger$ & 92.3M$^\dagger$ & 0.153 \\
+& Vanilla SNN   & 78.21 & 74.45 & 72.61 & 0.5557 & \cellcolor{bestcell}\textbf{99.80} & 7.61 & 7,953 & 0.035 \\
+& Tree-to-Spike & \cellcolor{bestcell}\textbf{99.67} & 88.87 & \cellcolor{bestcell}\textbf{89.42} & \cellcolor{bestcell}\textbf{0.9934} & 99.78 & 0.87 & \cellcolor{bestcell}\textbf{7,519} & 0.624 \\
+& DNN-Tree      & 99.66 & \cellcolor{bestcell}\textbf{89.02} & 89.24 & 0.9931 & 99.80 & \cellcolor{bestcell}\textbf{0.10} & 31,560 & \cellcolor{bestcell}\textbf{0.028} \\
+& TASNN         & 80.08 & 75.73 & 74.18 & 0.5818 & 99.77 & 7.15 & 92.3M$^\dagger$ & 0.153 \\
 \midrule
 \multirow{4}{*}{Edge-IIoTset}
-& Vanilla SNN   & 96.44 & 80.91 & 82.13 & 0.9262 & \cellcolor{bestcell}\textbf{100.00} & \cellcolor{bestcell}\textbf{0.00} & 93.4 & 17,024 SOPs & 15,322 & 0.039 \\
-& Tree-to-Spike & 97.97 & 88.80 & 88.78 & 0.9579 & 100.00 & 0.00 & 91.1 & \cellcolor{bestcell}\textbf{9,703 SOPs} & \cellcolor{bestcell}\textbf{8,732} & 0.681 \\
-& DNN-Tree      & \cellcolor{bestcell}\textbf{98.07} & \cellcolor{bestcell}\textbf{90.10} & \cellcolor{bestcell}\textbf{89.87} & \cellcolor{bestcell}\textbf{0.9600} & 100.00 & 0.00 & --- & 7,654 MACs & 35,210 & \cellcolor{bestcell}\textbf{0.027} \\
-& TASNN         & 97.52 & 81.71 & 81.57 & 0.9485 & 100.00 & 0.00 & \cellcolor{bestcell}\textbf{99.6} & 46.6M MACs$^\dagger$ & 208.4M$^\dagger$ & 0.164 \\
+& Vanilla SNN   & 96.44 & 80.91 & 82.13 & 0.9262 & \cellcolor{bestcell}\textbf{100.00} & \cellcolor{bestcell}\textbf{0.00} & 15,322 & 0.039 \\
+& Tree-to-Spike & 97.97 & 88.80 & 88.78 & 0.9579 & 100.00 & 0.00 & \cellcolor{bestcell}\textbf{8,732} & 0.681 \\
+& DNN-Tree      & \cellcolor{bestcell}\textbf{98.07} & \cellcolor{bestcell}\textbf{90.10} & \cellcolor{bestcell}\textbf{89.87} & \cellcolor{bestcell}\textbf{0.9600} & 100.00 & 0.00 & 35,210 & \cellcolor{bestcell}\textbf{0.027} \\
+& TASNN         & 97.52 & 81.71 & 81.57 & 0.9485 & 100.00 & 0.00 & 208.4M$^\dagger$ & 0.164 \\
 \midrule
 \multirow{4}{*}{TON-IoT}
-& Vanilla SNN   & 95.48 & 92.60 & 92.04 & 0.9484 & 99.53 & 0.62 & 90.3 & 20,615 SOPs & 18,554 & 0.094 \\
-& Tree-to-Spike & 96.91 & 93.69 & 92.98 & 0.9646 & 99.53 & \cellcolor{bestcell}\textbf{0.58} & 76.7 & \cellcolor{bestcell}\textbf{18,043 SOPs} & \cellcolor{bestcell}\textbf{16,239} & 1.220 \\
-& DNN-Tree      & \cellcolor{bestcell}\textbf{97.13} & \cellcolor{bestcell}\textbf{95.66} & \cellcolor{bestcell}\textbf{94.06} & \cellcolor{bestcell}\textbf{0.9674} & \cellcolor{bestcell}\textbf{99.59} & 3.29 & --- & 9,408 MACs & 43,277 & \cellcolor{bestcell}\textbf{0.027} \\
-& TASNN         & 95.25 & 91.02 & 90.37 & 0.9458 & 99.58 & 0.70 & \cellcolor{bestcell}\textbf{98.8} & 58.0M MACs$^\dagger$ & 259.8M$^\dagger$ & 0.369 \\
+& Vanilla SNN   & 95.48 & 92.60 & 92.04 & 0.9484 & 99.53 & 0.62 & 18,554 & 0.094 \\
+& Tree-to-Spike & 96.91 & 93.69 & 92.98 & 0.9646 & 99.53 & \cellcolor{bestcell}\textbf{0.58} & \cellcolor{bestcell}\textbf{16,239} & 1.220 \\
+& DNN-Tree      & \cellcolor{bestcell}\textbf{97.13} & \cellcolor{bestcell}\textbf{95.66} & \cellcolor{bestcell}\textbf{94.06} & \cellcolor{bestcell}\textbf{0.9674} & \cellcolor{bestcell}\textbf{99.59} & 3.29 & 43,277 & \cellcolor{bestcell}\textbf{0.027} \\
+& TASNN         & 95.25 & 91.02 & 90.37 & 0.9458 & 99.58 & 0.70 & 259.8M$^\dagger$ & 0.369 \\
 \bottomrule
 \end{tabular}}
 \end{table*}
