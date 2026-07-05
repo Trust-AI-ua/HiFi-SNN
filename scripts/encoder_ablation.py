@@ -28,9 +28,14 @@ import matplotlib.pyplot as plt
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-A_DATASETS = ["nslkdd", "unswnb15", "toniot", "cicids2017"]
-DS_NAME = {"nslkdd": "NSL-KDD", "unswnb15": "UNSW-NB15", "toniot": "TON-IoT",
-           "cicids2017": "CIC-IDS2017"}
+A_DATASETS = ["kddcup99", "nslkdd", "ctu13", "iscxids2012", "cicids2017",
+              "cse-cic-ids2018", "unswnb15", "ciciot2023", "ciciomt2024",
+              "edgeiiot", "toniot"]
+DS_NAME = {"kddcup99": "KDDCup99", "nslkdd": "NSL-KDD", "ctu13": "CTU-13",
+           "iscxids2012": "ISCX-IDS2012", "cicids2017": "CIC-IDS2017",
+           "cse-cic-ids2018": "CSE-CIC-IDS2018", "unswnb15": "UNSW-NB15",
+           "ciciot2023": "CICIoT2023", "ciciomt2024": "CICIoMT2024",
+           "edgeiiot": "Edge-IIoTset", "toniot": "TON-IoT"}
 MODES = ["tree", "uniform", "all"]              # tree = production results (not re-run)
 RUN_MODES = ["uniform", "all"]
 SEEDS = [42, 43, 44, 45, 46]
@@ -136,8 +141,9 @@ def plot(data):
     plt.close(fig)
 
     # (2) scatter: SOPs vs Macro-F1 (efficiency frontier) — tree should sit lower-left-ish
-    fig, ax = plt.subplots(figsize=(5.2, 3.6))
-    marker = {"nslkdd": "o", "unswnb15": "s", "toniot": "^", "cicids2017": "D"}
+    markers = ["o", "s", "^", "D", "v", "P", "X", "*", "<", ">", "h"]
+    marker = {ds: markers[i % len(markers)] for i, ds in enumerate(A_DATASETS)}
+    fig, ax = plt.subplots(figsize=(6.6, 3.8))
     for ds in A_DATASETS:
         for m in MODES:
             c = data[ds][m]
@@ -153,8 +159,11 @@ def plot(data):
                    markeredgecolor="black", markersize=8, label=m) for m in MODES]
     leg2 = [Line2D([0], [0], marker=marker[d], color="w", markerfacecolor="gray",
                    markeredgecolor="black", markersize=8, label=DS_NAME[d]) for d in A_DATASETS]
-    ax.add_artist(ax.legend(handles=leg1, title="encoder", loc="lower right", frameon=False))
-    ax.legend(handles=leg2, title="dataset", loc="upper left", frameon=False, fontsize=7)
+    # legends OUTSIDE the axes (right) so they never overlap the markers
+    ax.add_artist(ax.legend(handles=leg1, title="encoder", loc="upper left",
+                            bbox_to_anchor=(1.02, 1.0), frameon=False))
+    ax.legend(handles=leg2, title="dataset", loc="lower left",
+              bbox_to_anchor=(1.02, 0.0), frameon=False, fontsize=7)
     for ext in ("pdf", "png"):
         fig.savefig(OUT / "figures" / f"encoder_ablation_frontier.{ext}")
     plt.close(fig)

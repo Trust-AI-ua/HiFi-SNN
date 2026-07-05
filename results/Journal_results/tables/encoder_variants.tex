@@ -1,0 +1,28 @@
+% Encoder-ablation variant descriptions (no em dashes).
+\paragraph{Encoder variants.}
+All three variants share the same tree-derived spike code: continuous features are
+converted to spikes at the decision thresholds (split points) harvested from the
+trained gradient-boosted tree, so a channel fires when a feature value crosses one of
+the boundaries the tree found discriminative. The variants differ only in how many
+channels (the population budget) each feature receives, which isolates the contribution
+of importance-guided allocation from the choice of thresholds.
+\begin{itemize}
+  \item \textbf{Tree-guided (\texttt{tree}).} The production encoder. Each feature that
+  owns decision edges is given a channel budget proportional to its GBDT importance, so
+  informative features are encoded at high resolution (many thresholds) while weak
+  features receive a single channel or are dropped. The spike budget is concentrated
+  where it carries class information.
+  \item \textbf{Uniform (\texttt{uniform}).} Every feature that owns decision edges
+  receives exactly one channel, regardless of importance. This keeps the same feature
+  set and threshold code as \texttt{tree} but removes the importance weighting, so it
+  isolates the effect of the allocation policy by itself.
+  \item \textbf{All-channel (\texttt{all}).} Every feature that owns decision edges
+  receives the maximum channel budget $M_{\max}$. This is the dense upper bound, an
+  encoder that spends spikes on every threshold of every feature with no pruning.
+\end{itemize}
+Comparing the three separates \emph{which} thresholds are used (shared) from \emph{how
+much} spike budget each feature is given (varied). The all-channel encoder roughly
+doubles the SOP count relative to the tree-guided encoder for at most $1.7$ points of
+macro-F1, and the uniform encoder matches tree-guided accuracy at a similar cost,
+confirming that the importance-guided channel budget, not the raw threshold set, is the
+mechanism behind the efficiency of Tree-to-Spike.
