@@ -443,6 +443,45 @@ for _met in ["accuracy", "f1_macro", "mcc", "DR", "FAR"]:
     heatmap(_met, f"heatmap_{_met}")
 
 
+def energy_heatmap(fname="heatmap_energy"):
+    """Compute-energy (pJ/sample) heatmap, dataset x model — same layout as the
+    per-metric heatmaps but on a LOG color scale, because energy spans ~10^3
+    (spiking students) to ~10^8 pJ (TASNN transformer) and a linear scale would
+    collapse every spiking cell into one colour. Lower is better (viridis_r)."""
+    from matplotlib.colors import LogNorm
+
+    def _fmt(v):
+        if v >= 1e7:  return f"{v/1e6:.0f}M"
+        if v >= 1e6:  return f"{v/1e6:.1f}M"
+        if v >= 1e4:  return f"{v/1e3:.0f}k"
+        if v >= 1e3:  return f"{v/1e3:.1f}k"
+        return f"{v:.0f}"
+
+    mat = np.full((len(DS_KEYS), len(MKEYS)), np.nan)
+    for i, ds in enumerate(DS_KEYS):
+        for j, k in enumerate(MKEYS):
+            if DATA[ds][k] and DATA[ds][k].get("E_pj") is not None:
+                mat[i, j] = DATA[ds][k]["E_pj"]
+    fig, ax = plt.subplots(figsize=(4.2, 5.0))
+    vmin = max(np.nanmin(mat), 1e-9); vmax = np.nanmax(mat)
+    im = ax.imshow(mat, aspect="auto", cmap="viridis_r", norm=LogNorm(vmin=vmin, vmax=vmax))
+    ax.set_xticks(range(len(MKEYS))); ax.set_xticklabels([MNAME[k] for k in MKEYS], rotation=30, ha="right")
+    ax.set_yticks(range(len(DS_KEYS))); ax.set_yticklabels([DS_NAME[d] for d in DS_KEYS])
+    logmid = np.nanmean(np.log10(mat))
+    for i in range(len(DS_KEYS)):
+        for j in range(len(MKEYS)):
+            if mat[i, j] == mat[i, j]:
+                # viridis_r: low energy -> bright (black text); high energy -> dark (white text)
+                ax.text(j, i, _fmt(mat[i, j]), ha="center", va="center", fontsize=7,
+                        color="white" if np.log10(mat[i, j]) > logmid else "black")
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Compute energy (pJ/sample, log)")
+    ax.set_title("Compute energy — dataset $\\times$ model\n(lower is better; TASNN$^{\\dagger}$ analytic)")
+    save(fig, fname)
+
+
+energy_heatmap()
+
+
 def pareto():
     """Mean Macro-F1 vs mean parameters (log) — upper-left = better."""
     fig, ax = plt.subplots(figsize=(4.6, 3.4))
