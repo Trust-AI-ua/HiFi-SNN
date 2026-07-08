@@ -128,12 +128,12 @@ def plot(data):
                          "savefig.bbox": "tight", "axes.grid": True, "grid.alpha": 0.3})
     # (1) grouped bar: SOPs/sample per mode per dataset (log)
     x = np.arange(len(A_DATASETS)); w = 0.26
-    fig, ax = plt.subplots(figsize=(6.4, 3.2))
+    fig, ax = plt.subplots(figsize=(7.6, 3.4))
     for i, m in enumerate(MODES):
         ys = [(data[ds][m]["syn"][0] or np.nan) for ds in A_DATASETS]
         ax.bar(x + (i - 1) * w, ys, w, label=m, color=COLOR[m], edgecolor="black", linewidth=0.4)
     ax.set_yscale("log"); ax.set_xticks(x)
-    ax.set_xticklabels([DS_NAME[d] for d in A_DATASETS], rotation=15)
+    ax.set_xticklabels([DS_NAME[d] for d in A_DATASETS], rotation=35, ha="right", fontsize=8)
     ax.set_ylabel("SOPs / sample (log)"); ax.legend(frameon=False, title="encoder")
     ax.set_title("Spike cost by encoder variant (lower = cheaper)")
     for ext in ("pdf", "png"):

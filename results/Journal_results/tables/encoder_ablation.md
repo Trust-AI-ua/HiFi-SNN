@@ -31,6 +31,9 @@ Mean over 5 seeds. **SOPs include the input->layer-1 term** (channels x hidden[0
 | CICIoMT2024 | **tree** | 37 | 8,355 | 7,519 | 99.7 | 89.4 |
 | CICIoMT2024 | uniform | 42 | 8,562 | 7,706 | 99.7 | 89.4 |
 | CICIoMT2024 | all | 127 | 13,983 | 12,585 | 99.7 | 91.9 |
+| Edge-IIoTset | **tree** | 41 | 9,703 | 8,732 | 98.0 | 88.8 |
+| Edge-IIoTset | uniform | 46 | 10,040 | 9,036 | 98.0 | 88.8 |
+| Edge-IIoTset | all | 139 | 15,736 | 14,163 | 98.3 | 90.5 |
 | TON-IoT | **tree** | 73 | 18,043 | 16,239 | 96.9 | 93.0 |
 | TON-IoT | uniform | 71 | 16,708 | 15,037 | 96.8 | 92.6 |
 | TON-IoT | all | 212 | 34,492 | 31,042 | 97.0 | 92.5 |
