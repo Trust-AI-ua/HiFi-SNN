@@ -417,6 +417,13 @@ def radar_grid():
 radar_grid()
 
 
+def _tol_blue_cmap():
+    """White -> IEEE-scheme blue (#4477AA, the 4-way palette blue) sequential map,
+    so heatmaps share the bright Tol scheme of the categorical figures."""
+    from matplotlib.colors import LinearSegmentedColormap
+    return LinearSegmentedColormap.from_list("tol_blue", ["#FFFFFF", "#4477AA", "#26456E"])
+
+
 def heatmap(met, fname):
     getter, hib, pretty = METRICS[met]
     mat = np.full((len(DS_KEYS), len(MKEYS)), np.nan)
@@ -425,15 +432,21 @@ def heatmap(met, fname):
             if DATA[ds][k] and DATA[ds][k][met] and DATA[ds][k][met][0] is not None:
                 mat[i, j] = DATA[ds][k][met][0] * 100
     fig, ax = plt.subplots(figsize=(4.2, 5.0))
-    cmap = "viridis" if hib else "viridis_r"
+    # darker blue = better everywhere: normal map when higher is better, reversed otherwise
+    base = _tol_blue_cmap()
+    cmap = base if hib else base.reversed()
     im = ax.imshow(mat, aspect="auto", cmap=cmap)
     ax.set_xticks(range(len(MKEYS))); ax.set_xticklabels([MNAME[k] for k in MKEYS], rotation=30, ha="right")
     ax.set_yticks(range(len(DS_KEYS))); ax.set_yticklabels([DS_NAME[d] for d in DS_KEYS])
+    vmin, vmax = np.nanmin(mat), np.nanmax(mat)
+    span = (vmax - vmin) or 1.0
     for i in range(len(DS_KEYS)):
         for j in range(len(MKEYS)):
             if mat[i, j] == mat[i, j]:
+                frac = (mat[i, j] - vmin) / span          # 0..1 along the data range
+                dark = frac if hib else 1.0 - frac        # fraction into the dark end
                 ax.text(j, i, f"{mat[i,j]:.0f}", ha="center", va="center", fontsize=7,
-                        color="white" if (mat[i, j] < np.nanmean(mat)) == hib else "black")
+                        color="white" if dark > 0.55 else "black")
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label=f"{pretty} (%)")
     ax.set_title(f"{pretty} — dataset $\\times$ model")
     save(fig, fname)
@@ -447,7 +460,8 @@ def energy_heatmap(fname="heatmap_energy"):
     """Compute-energy (pJ/sample) heatmap, dataset x model — same layout as the
     per-metric heatmaps but on a LOG color scale, because energy spans ~10^3
     (spiking students) to ~10^8 pJ (TASNN transformer) and a linear scale would
-    collapse every spiking cell into one colour. Lower is better (viridis_r)."""
+    collapse every spiking cell into one colour. Lower is better -> darker blue
+    (reversed white->Tol-blue map, matching the other heatmaps)."""
     from matplotlib.colors import LogNorm
 
     def _fmt(v):
@@ -464,16 +478,18 @@ def energy_heatmap(fname="heatmap_energy"):
                 mat[i, j] = DATA[ds][k]["E_pj"]
     fig, ax = plt.subplots(figsize=(4.2, 5.0))
     vmin = max(np.nanmin(mat), 1e-9); vmax = np.nanmax(mat)
-    im = ax.imshow(mat, aspect="auto", cmap="viridis_r", norm=LogNorm(vmin=vmin, vmax=vmax))
+    im = ax.imshow(mat, aspect="auto", cmap=_tol_blue_cmap().reversed(),
+                   norm=LogNorm(vmin=vmin, vmax=vmax))
     ax.set_xticks(range(len(MKEYS))); ax.set_xticklabels([MNAME[k] for k in MKEYS], rotation=30, ha="right")
     ax.set_yticks(range(len(DS_KEYS))); ax.set_yticklabels([DS_NAME[d] for d in DS_KEYS])
-    logmid = np.nanmean(np.log10(mat))
+    lo, hi = np.log10(vmin), np.log10(vmax)
     for i in range(len(DS_KEYS)):
         for j in range(len(MKEYS)):
             if mat[i, j] == mat[i, j]:
-                # viridis_r: low energy -> bright (black text); high energy -> dark (white text)
+                # reversed map: low energy -> dark blue (white text); high -> near-white (black text)
+                dark = 1.0 - (np.log10(mat[i, j]) - lo) / ((hi - lo) or 1.0)
                 ax.text(j, i, _fmt(mat[i, j]), ha="center", va="center", fontsize=7,
-                        color="white" if np.log10(mat[i, j]) > logmid else "black")
+                        color="white" if dark > 0.55 else "black")
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Compute energy (pJ/sample, log)")
     ax.set_title("Compute energy — dataset $\\times$ model\n(lower is better; TASNN$^{\\dagger}$ analytic)")
     save(fig, fname)

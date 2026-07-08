@@ -15,4 +15,4 @@ Higher = better-separated classes. Best per row in **bold** (`n/a` = degenerate 
 | CICIoMT2024 | 0.080 | 0.374 | **0.564** | 0.128 |
 | Edge-IIoTset | 0.429 | 0.646 | 0.440 | **0.868** |
 | TON-IoT | 0.162 | 0.205 | 0.266 | **0.668** |
-| **Mean** | 0.189 | 0.361 | 0.396 | **0.564** |
+| **Mean** | 0.189 | 0.362 | 0.396 | **0.564** |

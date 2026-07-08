@@ -41,6 +41,15 @@ N_VIZ = 2500
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 OUT = REPO / "results" / "Journal_results" / "figures"
 OUT.mkdir(parents=True, exist_ok=True)
+CACHE = REPO / "results" / "Journal_results" / "embeddings_cache"
+CACHE.mkdir(parents=True, exist_ok=True)
+
+# Per-class qualitative palette matching the 4-way figures (Paul Tol bright +
+# Okabe-Ito + Tol muted/light extensions, colorblind-aware, ordered for contrast).
+# Replaces matplotlib tab10/tab20 so every figure shares the IEEE-bright scheme.
+PALETTE = ["#4477AA", "#EE6677", "#228833", "#E69F00", "#66CCEE", "#AA3377",
+           "#CCBB44", "#332288", "#009988", "#882255", "#999933", "#FFAABB",
+           "#000000", "#BBBBBB", "#EE8866"]
 
 
 class Penult:
@@ -146,12 +155,28 @@ def project(Z):
                      metric="euclidean").fit_transform(Z)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", default="nslkdd")
-    args = ap.parse_args()
-    ds = args.dataset
+MODEL_ORDER = ["Vanilla SNN", "Tree-to-Spike", "DNN-Tree", "TASNN"]
 
+
+def _save_cache(ds, embs, yv, names):
+    """Persist the 2D projections so restyling doesn't need GPU recompute."""
+    arrs = {"yv": yv, "names": np.asarray(names, dtype=object)}
+    for name, (P, sil) in embs.items():
+        arrs[f"P::{name}"] = P
+        arrs[f"sil::{name}"] = np.float64(sil)
+    np.savez(CACHE / f"{ds}.npz", **arrs)
+
+
+def _load_cache(ds):
+    p = CACHE / f"{ds}.npz"
+    if not p.exists():
+        return None
+    z = np.load(p, allow_pickle=True)
+    embs = {k[3:]: (z[k], float(z[f"sil::{k[3:]}"])) for k in z.files if k.startswith("P::")}
+    return embs, z["yv"], list(z["names"])
+
+
+def compute(ds):
     tcfg = yaml.safe_load(open(REPO / f"experiments/Tree-to-Spike/{ds}/config.yaml"))
     lp = __import__("inspect").signature(DATASET_LOADERS[ds]).parameters
     dk = dict(seed=SEED)
@@ -191,19 +216,23 @@ def main():
         except Exception as e:
             print(f"  {name:14} FAILED: {e}")
     _write_silhouette_csv(ds, list(models), embs)
+    _save_cache(ds, embs, yv, names)
+    return embs, yv, names
 
-    # ---- consistent 2x2 figure ----
+
+def plot(ds, embs, yv, names):
+    """Consistent 2x2 figure, per-class colors from the shared IEEE palette."""
+    nc = len(names)
     plt.rcParams.update({"font.family": "serif", "font.size": 9, "figure.dpi": 150,
                          "savefig.bbox": "tight"})
-    cmap = plt.cm.tab10 if nc <= 10 else plt.cm.tab20
     fig, axes = plt.subplots(2, 2, figsize=(8.2, 7.6))
-    for ax, name in zip(axes.ravel(), models):
+    for ax, name in zip(axes.ravel(), MODEL_ORDER):
         if name not in embs:
             ax.set_visible(False); continue
         P, sil = embs[name]
         for c in range(nc):
             m = yv == c
-            ax.scatter(P[m, 0], P[m, 1], s=5, color=cmap(c % cmap.N),
+            ax.scatter(P[m, 0], P[m, 1], s=5, color=PALETTE[c % len(PALETTE)],
                        label=names[c] if len(names) <= 12 else None, alpha=0.6, linewidths=0)
         sstr = f"{sil:.2f}" if np.isfinite(sil) else "n/a"
         ax.set_title(f"{name}  (silhouette={sstr})"); ax.set_xticks([]); ax.set_yticks([])
@@ -217,6 +246,23 @@ def main():
     for ext in ("pdf", "png"):
         fig.savefig(OUT / f"embeddings_{ds}.{ext}")
     print(f"[wrote] {OUT}/embeddings_{ds}.pdf + .png")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dataset", default="nslkdd")
+    ap.add_argument("--force", action="store_true",
+                    help="recompute embeddings even if a cache exists")
+    args = ap.parse_args()
+    ds = args.dataset
+
+    cached = None if args.force else _load_cache(ds)
+    if cached is not None:
+        print(f"[embed] {ds}: replotting from cache (use --force to recompute)")
+        embs, yv, names = cached
+    else:
+        embs, yv, names = compute(ds)
+    plot(ds, embs, yv, names)
 
 
 if __name__ == "__main__":
