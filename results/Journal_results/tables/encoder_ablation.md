@@ -1,6 +1,6 @@
-### Encoder ablation — tree-guided vs uniform vs all-channel
+### Encoder ablation - tree-guided vs uniform vs all-channel
 
-Mean over 5 seeds. **SOPs include the input->layer-1 term** (channels x hidden[0]); **Energy = SOPs × 0.9 pJ.** The all-channel encoder costs ~2x for negligible accuracy gain — the importance-guided channel budget is the efficiency mechanism.
+Mean over 5 seeds. **SOPs include the input->layer-1 term** (channels x hidden[0]); **Energy = SOPs × 0.9 pJ.** The all-channel encoder costs ~2x for negligible accuracy gain - the importance-guided channel budget is the efficiency mechanism.
 
 | Dataset | Encoder | Channels | SOPs/sample | Energy (pJ) | Accuracy | Macro-F1 |
 |---|---|--:|--:|--:|--:|--:|

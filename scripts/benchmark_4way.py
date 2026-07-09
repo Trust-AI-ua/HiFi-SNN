@@ -5,14 +5,14 @@ Models: Vanilla SNN (LeakyParallel/latency), Tree-to-Spike, DNN-Tree, TASNN.
 Datasets: all 11 (6 classic + 5 modern). 5 seeds each -> mean ± std.
 
 Emits, under results/Journal_results/:
-  tables/  *.tex (booktabs) + *.md   — per-metric quality, IDS, efficiency
-  figures/ *.pdf + *.png             — grouped bars + heatmaps (per metric), radar,
+  tables/  *.tex (booktabs) + *.md   - per-metric quality, IDS, efficiency
+  figures/ *.pdf + *.png             - grouped bars + heatmaps (per metric), radar,
                                        Pareto (acc vs params), iso-trio energy,
                                        mean-rank bars + critical-difference diagrams
 
 Energy (Horowitz 45 nm): spiking op E_AC = 0.9 pJ (SOPs); dense MAC E_MAC = 4.6 pJ.
 Compute energy is reported for the parameter-matched iso-trio (SNN / Tree-to-Spike /
-DNN-Tree); TASNN is the heavyweight transformer competitor — its spike-SOP count excludes
+DNN-Tree); TASNN is the heavyweight transformer competitor - its spike-SOP count excludes
 its transformer front-end, so it is compared on quality + parameters, not SOP energy.
 """
 from __future__ import annotations
@@ -47,7 +47,7 @@ MODELS = [
 MKEYS = [m[0] for m in MODELS]
 MNAME = {m[0]: m[1] for m in MODELS}
 # IEEE-friendly Paul Tol "bright" qualitative palette (bright + colorblind-safe):
-# IEEE/colorblind-safe qualitative set — blue / green / red / orange (Okabe-Ito amber for
+# IEEE/colorblind-safe qualitative set - blue / green / red / orange (Okabe-Ito amber for
 # TASNN, distinct from blue & red). Clean solid fills; scatter plots add distinct markers.
 COLOR = {"vanilla": "#4477AA", "tree": "#228833", "dnn": "#EE6677", "tasnn": "#E69F00"}
 HATCH = {"vanilla": "",        "tree": "//",      "dnn": "..",       "tasnn": "xx"}
@@ -185,7 +185,7 @@ for ds in DS_KEYS:
             return None
         cell["lat_ms"] = _agg(recs, _lat)[0]
         # 32-bit energy + matched-precision int8 energy (B2: reviewer-proof "an int8 DNN
-        # is also cheap" — re-priced from the same op counts, no re-run).
+        # is also cheap" - re-priced from the same op counts, no re-run).
         if mk == "tasnn":
             e32, ei8 = [], []
             for r in recs:
@@ -448,7 +448,7 @@ def heatmap(met, fname):
                 ax.text(j, i, f"{mat[i,j]:.0f}", ha="center", va="center", fontsize=7,
                         color="white" if dark > 0.55 else "black")
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label=f"{pretty} (%)")
-    ax.set_title(f"{pretty} — dataset $\\times$ model")
+    ax.set_title(f"{pretty} - dataset $\\times$ model")
     save(fig, fname)
 
 
@@ -457,7 +457,7 @@ for _met in ["accuracy", "f1_macro", "mcc", "DR", "FAR"]:
 
 
 def energy_heatmap(fname="heatmap_energy"):
-    """Compute-energy (pJ/sample) heatmap, dataset x model — same layout as the
+    """Compute-energy (pJ/sample) heatmap, dataset x model - same layout as the
     per-metric heatmaps but on a LOG color scale, because energy spans ~10^3
     (spiking students) to ~10^8 pJ (TASNN transformer) and a linear scale would
     collapse every spiking cell into one colour. Lower is better -> darker blue
@@ -491,7 +491,7 @@ def energy_heatmap(fname="heatmap_energy"):
                 ax.text(j, i, _fmt(mat[i, j]), ha="center", va="center", fontsize=7,
                         color="white" if dark > 0.55 else "black")
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Compute energy (pJ/sample, log)")
-    ax.set_title("Compute energy — dataset $\\times$ model\n(lower is better; TASNN$^{\\dagger}$ analytic)")
+    ax.set_title("Compute energy - dataset $\\times$ model\n(lower is better; TASNN$^{\\dagger}$ analytic)")
     save(fig, fname)
 
 
@@ -499,7 +499,7 @@ energy_heatmap()
 
 
 def pareto():
-    """Mean Macro-F1 vs mean parameters (log) — upper-left = better."""
+    """Mean Macro-F1 vs mean parameters (log) - upper-left = better."""
     fig, ax = plt.subplots(figsize=(4.6, 3.4))
     for k in MKEYS:
         f1 = [DATA[ds][k]["f1_macro"][0] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k]["f1_macro"] and DATA[ds][k]["f1_macro"][0] is not None]
@@ -509,9 +509,9 @@ def pareto():
         ax.scatter(np.mean(pr), np.mean(f1) * 100, s=110, marker=MARKER[k],
                    color=COLOR[k], edgecolor="black", zorder=3, label=MNAME[k])
     ax.set_xscale("log")
-    ax.set_xlabel("Parameters (log) — fewer is better")
+    ax.set_xlabel("Parameters (log) - fewer is better")
     ax.set_ylabel("Macro-F1 (%, mean over datasets)")
-    ax.set_title("Accuracy–size Pareto (upper-left = better)")
+    ax.set_title("Accuracy-size Pareto (upper-left = better)")
     ax.legend(loc="lower left", frameon=True, fontsize=8)
     save(fig, "pareto_f1_vs_params")
 
@@ -532,7 +532,7 @@ def energy_bar():
            edgecolor="black", width=0.6)
     ax.set_yscale("log"); ax.set_xticks(list(xs)); ax.set_xticklabels([MNAME[k] for k in trio])
     ax.set_ylabel("Compute energy (pJ/sample, log)")
-    ax.set_title("Operation energy — iso-architecture trio\n(SOPs$\\times$0.9pJ vs MACs$\\times$4.6pJ)")
+    ax.set_title("Operation energy - iso-architecture trio\n(SOPs$\\times$0.9pJ vs MACs$\\times$4.6pJ)")
     if vals["dnn"] == vals["dnn"] and vals["tree"]:
         ax.text(0.5, 0.95, f"Tree-to-Spike: {vals['dnn']/vals['tree']:.0f}$\\times$ less than DNN-Tree",
                 transform=ax.transAxes, ha="center", va="top", fontsize=8)
@@ -563,7 +563,7 @@ def energy_4way():
 
 
 def pareto_energy():
-    """Mean Macro-F1 vs mean compute energy (log) — upper-left = better."""
+    """Mean Macro-F1 vs mean compute energy (log) - upper-left = better."""
     fig, ax = plt.subplots(figsize=(4.8, 3.4))
     for k in MKEYS:
         f1 = [DATA[ds][k]["f1_macro"][0] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k]["f1_macro"] and DATA[ds][k]["f1_macro"][0] is not None]
@@ -573,9 +573,9 @@ def pareto_energy():
         ax.scatter(np.mean(en), np.mean(f1) * 100, s=110, marker=MARKER[k],
                    color=COLOR[k], edgecolor="black", zorder=3, label=MNAME[k])
     ax.set_xscale("log")
-    ax.set_xlabel("Compute energy (pJ/sample, log) — lower is better")
+    ax.set_xlabel("Compute energy (pJ/sample, log) - lower is better")
     ax.set_ylabel("Macro-F1 (%, mean over datasets)")
-    ax.set_title("Accuracy–energy Pareto (upper-left = better)")
+    ax.set_title("Accuracy-energy Pareto (upper-left = better)")
     ax.legend(loc="lower left", frameon=True, fontsize=8)
     save(fig, "pareto_f1_vs_energy")
 
@@ -653,7 +653,7 @@ def mean_rank_bar(met, fname):
             edgecolor="black")
     ax.set_yticks(ys); ax.set_yticklabels([MNAME[k] for k in order]); ax.invert_yaxis()
     ax.set_xlabel("Mean rank across datasets (1 = best)")
-    ax.set_title(f"{METRICS[met][2]} — mean rank (N={N}, CD={cd:.2f})")
+    ax.set_title(f"{METRICS[met][2]} - mean rank (N={N}, CD={cd:.2f})")
     for i, k in enumerate(order):
         ax.text(avg[k] + 0.03, i, f"{avg[k]:.2f}", va="center", fontsize=8)
     ax.set_xlim(1, len(MKEYS)); ax.grid(axis="x", alpha=0.3)
@@ -701,7 +701,7 @@ def cd_diagram(met, fname):
     for a, b in sorted(groups):
         ax.plot([xpos(a) + 0.04, xpos(b) - 0.04], [ylev, ylev], "k-", lw=3.5, solid_capstyle="round")
         ylev -= 0.07
-    ax.set_title(f"Critical-difference diagram — {METRICS[met][2]} "
+    ax.set_title(f"Critical-difference diagram - {METRICS[met][2]} "
                  f"(Nemenyi $\\alpha$=0.05, N={N})", fontsize=9)
     save(fig, fname)
 
@@ -723,7 +723,7 @@ for k in MKEYS:
     vals = [DATA[ds][k]["f1_macro"][0] for ds in DS_KEYS if DATA[ds][k] and DATA[ds][k]["f1_macro"] and DATA[ds][k]["f1_macro"][0] is not None]
     print(f"   {MNAME[k]:16} {np.mean(vals)*100:.1f}%  (n_datasets={len(vals)})")
 
-print("\nB2 matched-precision compute energy — DNN-Tree / Tree-to-Spike ratio:")
+print("\nB2 matched-precision compute energy - DNN-Tree / Tree-to-Spike ratio:")
 for prec, key in [("32-bit", "E_pj"), ("int8", "E_pj_i8")]:
     dnn = np.mean([DATA[ds]["dnn"][key] for ds in DS_KEYS if DATA[ds]["dnn"] and DATA[ds]["dnn"].get(key) is not None])
     tree = np.mean([DATA[ds]["tree"][key] for ds in DS_KEYS if DATA[ds]["tree"] and DATA[ds]["tree"].get(key) is not None])

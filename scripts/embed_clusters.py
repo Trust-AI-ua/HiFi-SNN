@@ -3,7 +3,7 @@
 
 For one dataset, extracts each model's **penultimate representation** (the input to
 its final classification layer), projects all four to 2D with the *same* UMAP
-settings, and plots a shared 2x2 figure coloured by class — showing how each
+settings, and plots a shared 2x2 figure coloured by class - showing how each
 paradigm separates the attack classes in its learned feature space.
 
 Models: Vanilla SNN (LeakyParallel/latency), Tree-to-Spike, DNN-Tree, TASNN.
@@ -240,7 +240,7 @@ def plot(ds, embs, yv, names):
         h, l = axes[0, 0].get_legend_handles_labels()
         fig.legend(h, l, loc="lower center", ncol=min(nc, 6), frameon=False,
                    markerscale=2, bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle(f"Penultimate-layer representation (UMAP) — {ds}  "
+    fig.suptitle(f"Penultimate-layer representation (UMAP) - {ds}  "
                  f"[same projection settings; higher silhouette = cleaner clusters]", fontsize=10)
     fig.tight_layout(rect=[0, 0.03, 1, 0.97])
     for ext in ("pdf", "png"):

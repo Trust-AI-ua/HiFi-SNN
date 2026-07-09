@@ -35,7 +35,7 @@ def load():
 
 def main():
     d = load()
-    md = ["### Cluster cleanliness — silhouette of each model's penultimate representation (UMAP)\n",
+    md = ["### Cluster cleanliness - silhouette of each model's penultimate representation (UMAP)\n",
           "Higher = better-separated classes. Best per row in **bold** (`n/a` = degenerate "
           "embedding). Companion to `figures/embeddings_<dataset>.pdf`.\n",
           "| Dataset | " + " | ".join(MODELS) + " |",

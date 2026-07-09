@@ -1,4 +1,4 @@
-### Cluster cleanliness — silhouette of each model's penultimate representation (UMAP)
+### Cluster cleanliness - silhouette of each model's penultimate representation (UMAP)
 
 Higher = better-separated classes. Best per row in **bold** (`n/a` = degenerate embedding). Companion to `figures/embeddings_<dataset>.pdf`.
 

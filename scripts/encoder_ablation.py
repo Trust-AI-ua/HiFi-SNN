@@ -3,8 +3,8 @@
 
 Proves the **tree-guided encoder is *why* Tree-to-Spike is efficient**. The `tree`
 mode reuses the production Tree-to-Spike results; this script runs the `uniform`
-(every feature-with-edges, 1 channel — no importance) and `all` (every
-feature-with-edges, pop_max channels — dense upper bound) variants at the *same*
+(every feature-with-edges, 1 channel - no importance) and `all` (every
+feature-with-edges, pop_max channels - dense upper bound) variants at the *same*
 config/seeds, then writes a SOPs + accuracy comparison (figure + table) to
 results/Journal_results/.
 
@@ -80,7 +80,7 @@ PATHS = {
 }
 def _SYN(r):
     """Total SOPs/sample INCLUDING the input->layer-1 term (channels x hidden[0]),
-    which the stored synops_per_sample omits — that term is exactly what the encoder
+    which the stored synops_per_sample omits - that term is exactly what the encoder
     controls, so it must be counted for the ablation to be meaningful."""
     syn = r["test_plus"]["spike_stats"]["synops_per_sample"]
     ch = r["data"]["encoder_channels"]
@@ -103,10 +103,10 @@ def aggregate():
 
 
 def write_table(data):
-    md = ["### Encoder ablation — tree-guided vs uniform vs all-channel\n",
+    md = ["### Encoder ablation - tree-guided vs uniform vs all-channel\n",
           "Mean over 5 seeds. **SOPs include the input->layer-1 term** (channels x hidden[0]); "
           "**Energy = SOPs × 0.9 pJ.** The all-channel encoder costs ~2x for negligible accuracy "
-          "gain — the importance-guided channel budget is the efficiency mechanism.\n",
+          "gain - the importance-guided channel budget is the efficiency mechanism.\n",
           "| Dataset | Encoder | Channels | SOPs/sample | Energy (pJ) | Accuracy | Macro-F1 |",
           "|---|---|--:|--:|--:|--:|--:|"]
     for ds in A_DATASETS:
@@ -140,7 +140,7 @@ def plot(data):
         fig.savefig(OUT / "figures" / f"encoder_ablation_sops.{ext}")
     plt.close(fig)
 
-    # (2) scatter: SOPs vs Macro-F1 (efficiency frontier) — tree should sit lower-left-ish
+    # (2) scatter: SOPs vs Macro-F1 (efficiency frontier) - tree should sit lower-left-ish
     markers = ["o", "s", "^", "D", "v", "P", "X", "*", "<", ">", "h"]
     marker = {ds: markers[i % len(markers)] for i, ds in enumerate(A_DATASETS)}
     fig, ax = plt.subplots(figsize=(6.6, 3.8))
@@ -151,7 +151,7 @@ def plot(data):
                 continue
             ax.scatter(c["syn"][0], c["f1"][0] * 100, s=70, marker=marker[ds],
                        color=COLOR[m], edgecolor="black", zorder=3)
-    ax.set_xscale("log"); ax.set_xlabel("SOPs / sample (log) — fewer is better")
+    ax.set_xscale("log"); ax.set_xlabel("SOPs / sample (log) - fewer is better")
     ax.set_ylabel("Macro-F1 (%)")
     ax.set_title("Encoder ablation: accuracy vs spike cost")
     from matplotlib.lines import Line2D

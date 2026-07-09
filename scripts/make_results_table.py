@@ -8,7 +8,7 @@ Energy methodology (consistent with benchmark_4way.py, NOT the template's raw-sp
   * DNN-Tree: measured MACs; Energy = MACs x 4.6 pJ.
   * TASNN: analytic transformer-MAC + spike-AC estimate (its raw spike count excludes the
     dominant transformer front-end); ops = MAC+AC, Energy = MAC*4.6 + AC*0.9 pJ.  (marked †)
-Horowitz 45 nm. Latency: inference_ms_per_sample (spiking) / *_batch1 (DNN) — batching differs.
+Horowitz 45 nm. Latency: inference_ms_per_sample (spiking) / *_batch1 (DNN) - batching differs.
 """
 from __future__ import annotations
 import glob, json
