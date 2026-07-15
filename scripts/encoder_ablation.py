@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
-"""Encoder ablation (TODO §1): tree-guided vs uniform vs all-channel spike encoder.
+"""Encoder ablation: what does the GBDT teacher actually contribute?
 
-Proves the **tree-guided encoder is *why* Tree-to-Spike is efficient**. The `tree`
-mode reuses the production Tree-to-Spike results; this script runs the `uniform`
-(every feature-with-edges, 1 channel - no importance) and `all` (every
-feature-with-edges, pop_max channels - dense upper bound) variants at the *same*
-config/seeds, then writes a SOPs + accuracy comparison (figure + table) to
-results/Journal_results/.
+Decomposes the teacher's role into separable questions, each with its own arm
+(all at the production config/seeds; `tree` reuses the production results):
+
+  quantile  does the teacher's split PLACEMENT (its "ruler") matter?
+            equal-frequency edges, channels identical to tree (matched budget).
+  nokd      does the teacher's POSTERIOR matter? tree encoder, a_kd = a_rank = 0.
+  uniform   no pruning/importance, 1 channel per feature-with-edges. NOTE: this
+            arm changes pruning AND allocation together (confounded) - kept for
+            completeness, not for causal claims.
+  all       dense upper bound (max channels per feature) - the cost of skipping
+            the channel budget entirely.
+  GBDT      the teacher's own test metrics (teacher_upper_bound; free, no runs).
+
+Writes SOPs/accuracy/TTFS/early-exit comparisons (figure + table) to
+results/Journal_results/. Conclusions are NOT hard-coded: read them off the
+regenerated table.
 
 Run:  python scripts/encoder_ablation.py            # runs variants (skips done) + aggregates
       python scripts/encoder_ablation.py --plot     # aggregate/plot only (no runs)
@@ -36,11 +46,27 @@ DS_NAME = {"kddcup99": "KDDCup99", "nslkdd": "NSL-KDD", "ctu13": "CTU-13",
            "cse-cic-ids2018": "CSE-CIC-IDS2018", "unswnb15": "UNSW-NB15",
            "ciciot2023": "CICIoT2023", "ciciomt2024": "CICIoMT2024",
            "edgeiiot": "Edge-IIoTset", "toniot": "TON-IoT"}
-MODES = ["tree", "uniform", "all"]              # tree = production results (not re-run)
-RUN_MODES = ["uniform", "all"]
+# Arms (tree = production results, not re-run):
+#   tree     XGBoost split edges, importance-pruned + importance-budgeted channels (ours)
+#   quantile equal-frequency edges, channels IDENTICAL to tree  -> does the teacher's ruler matter?
+#   nokd     tree encoder, but a_kd = a_rank = 0                -> does the teacher's posterior matter?
+#   uniform  tree edges, every feature-with-edges, 1 channel    -> no pruning/importance (confounded:
+#            changes pruning AND allocation together; kept for completeness)
+#   all      tree edges, every feature-with-edges, pop_max ch.  -> dense upper bound
+# GBDT-alone (teacher's own test metrics) is reported from teacher_upper_bound, no runs needed.
+MODES = ["tree", "quantile", "nokd", "uniform", "all"]
+RUN_MODES = ["quantile", "nokd", "uniform", "all"]
 SEEDS = [42, 43, 44, 45, 46]
-# Paul Tol "bright" (matches benchmark_4way): tree=green, uniform=blue, all=red.
-COLOR = {"tree": "#228833", "uniform": "#4477AA", "all": "#EE6677"}
+# per-arm config overrides applied on top of the production config
+ARM_CFG = {
+    "quantile": {"encoder_mode": "quantile"},
+    "nokd":     {"encoder_mode": "tree", "a_kd": 0.0, "a_rank": 0.0},
+    "uniform":  {"encoder_mode": "uniform"},
+    "all":      {"encoder_mode": "all"},
+}
+# Paul Tol bright / Okabe-Ito (matches benchmark_4way).
+COLOR = {"tree": "#228833", "quantile": "#E69F00", "nokd": "#AA3377",
+         "uniform": "#4477AA", "all": "#EE6677"}
 OUT = REPO / "results" / "Journal_results"
 (OUT / "figures").mkdir(parents=True, exist_ok=True)
 (OUT / "tables").mkdir(parents=True, exist_ok=True)
@@ -57,7 +83,8 @@ def run_variants():
                 if (rd / f"seed_{seed}" / "results.json").exists():
                     continue
                 cfg = dict(base)
-                cfg.update(encoder_mode=mode, seed=seed, results_dir=str(rd),
+                cfg.update(ARM_CFG[mode])
+                cfg.update(seed=seed, results_dir=str(rd),
                            summary_csv=str(REPO / "results/encoder_ablation/summary.csv"))
                 print(f"[ablation] {ds}/{mode}/seed_{seed}", flush=True)
                 run_experiment(cfg)
@@ -74,9 +101,11 @@ def _stat(patt, getter):
 
 
 PATHS = {
-    "tree":    "results/Tree-to-Spike/{ds}/seed_*/results.json",
-    "uniform": "results/encoder_ablation/{ds}/uniform/seed_*/results.json",
-    "all":     "results/encoder_ablation/{ds}/all/seed_*/results.json",
+    "tree":     "results/Tree-to-Spike/{ds}/seed_*/results.json",
+    "quantile": "results/encoder_ablation/{ds}/quantile/seed_*/results.json",
+    "nokd":     "results/encoder_ablation/{ds}/nokd/seed_*/results.json",
+    "uniform":  "results/encoder_ablation/{ds}/uniform/seed_*/results.json",
+    "all":      "results/encoder_ablation/{ds}/all/seed_*/results.json",
 }
 def _SYN(r):
     """Total SOPs/sample INCLUDING the input->layer-1 term (channels x hidden[0]),
@@ -89,6 +118,10 @@ def _SYN(r):
 _ACC = lambda r: r["test_plus"]["metrics"]["accuracy"]
 _F1 = lambda r: r["test_plus"]["metrics"]["f1_macro"]
 _CH = lambda r: r["data"]["encoder_channels"]
+_TTFS = lambda r: r["test_plus"]["spike_stats"]["mean_spike_time"]     # backfill_encoder_ttfs.py
+_EXIT = lambda r: r["test_plus"]["early_exit"]["mean_exit_step"]
+_GACC = lambda r: r["test_plus"]["teacher_upper_bound"]["accuracy"]    # GBDT-alone reference
+_GF1 = lambda r: r["test_plus"]["teacher_upper_bound"]["f1_macro"]
 
 
 def aggregate():
@@ -98,40 +131,121 @@ def aggregate():
         for m in MODES:
             p = PATHS[m].format(ds=ds)
             data[ds][m] = {"syn": _stat(p, _SYN), "acc": _stat(p, _ACC),
-                           "f1": _stat(p, _F1), "ch": _stat(p, _CH)}
+                           "f1": _stat(p, _F1), "ch": _stat(p, _CH),
+                           "ttfs": _stat(p, _TTFS), "exit": _stat(p, _EXIT)}
+        # GBDT-alone reference (the teacher's own test metrics, stored with the tree runs)
+        pt = PATHS["tree"].format(ds=ds)
+        data[ds]["gbdt"] = {"acc": _stat(pt, _GACC), "f1": _stat(pt, _GF1),
+                            "syn": (None, None), "ch": (None, None),
+                            "ttfs": (None, None), "exit": (None, None)}
     return data
 
 
 def write_table(data):
-    md = ["### Encoder ablation - tree-guided vs uniform vs all-channel\n",
+    md = ["### Encoder ablation - what does the teacher actually contribute?\n",
           "Mean over 5 seeds. **SOPs include the input->layer-1 term** (channels x hidden[0]); "
-          "**Energy = SOPs × 0.9 pJ.** The all-channel encoder costs ~2x for negligible accuracy "
-          "gain - the importance-guided channel budget is the efficiency mechanism.\n",
-          "| Dataset | Encoder | Channels | SOPs/sample | Energy (pJ) | Accuracy | Macro-F1 |",
-          "|---|---|--:|--:|--:|--:|--:|"]
+          "**Energy = SOPs × 0.9 pJ.** Arms: **tree** = XGBoost split edges + importance-pruned/"
+          "budgeted channels (ours). **quantile** = equal-frequency edges with channels IDENTICAL "
+          "to tree (same pruning/budget/jitter; per-feature edge count matched) - isolates whether "
+          "the teacher's split placement (its 'ruler') matters. **nokd** = tree encoder trained "
+          "WITHOUT the teacher-posterior loss terms (a_kd = a_rank = 0) - isolates the teacher's "
+          "soft labels. **uniform** = tree edges, 1 channel per feature-with-edges (NOTE: changes "
+          "pruning AND allocation together, so it is confounded; kept for completeness). **all** = "
+          "tree edges, max channels per feature (dense upper bound). **GBDT (teacher)** = the "
+          "XGBoost teacher's own test accuracy/F1, the reference ceiling (not a spiking model; no "
+          "energy columns). **TTFS** = mean encoder time-to-first-spike (/20, lower = earlier). "
+          "**Exit step** = mean early-exit timestep of the trained student (/20, lower = decides "
+          "sooner).\n",
+          "| Dataset | Encoder | Channels | SOPs/sample | Energy (pJ) | Accuracy | Macro-F1 | TTFS (/20) | Exit step (/20) |",
+          "|---|---|--:|--:|--:|--:|--:|--:|--:|"]
     for ds in A_DATASETS:
-        for m in MODES:
+        for m in MODES + ["gbdt"]:
             c = data[ds][m]
+            if c["acc"][0] is None:
+                continue
+            if m == "gbdt":
+                md.append(f"| {DS_NAME[ds]} | GBDT (teacher) | -- | -- | -- | "
+                          f"{c['acc'][0]*100:.1f} | {c['f1'][0]*100:.1f} | -- | -- |")
+                continue
             if c["syn"][0] is None:
                 continue
             ch = f"{c['ch'][0]:.0f}" if c["ch"][0] is not None else "--"
             syn = c["syn"][0]; e = syn * E_AC
+            ttfs = f"{c['ttfs'][0]:.1f}" if c["ttfs"][0] is not None else "--"
+            ext = f"{c['exit'][0]:.1f}" if c["exit"][0] is not None else "--"
             tag = "**tree**" if m == "tree" else m
             md.append(f"| {DS_NAME[ds]} | {tag} | {ch} | {syn:,.0f} | {e:,.0f} | "
-                      f"{c['acc'][0]*100:.1f} | {c['f1'][0]*100:.1f} |")
+                      f"{c['acc'][0]*100:.1f} | {c['f1'][0]*100:.1f} | {ttfs} | {ext} |")
     (OUT / "tables" / "encoder_ablation.md").write_text("\n".join(md) + "\n")
-    print(f"[wrote] {OUT/'tables'/'encoder_ablation.md'}")
+
+    # ---------- LaTeX twin (same data, booktabs + multirow) ----------
+    ARM_TEX = {"tree": r"\textbf{tree} (ours)", "quantile": "quantile", "nokd": "no-KD",
+               "uniform": "uniform", "all": "all", "gbdt": "GBDT (teacher)"}
+    n_arms = len(MODES) + 1
+    L = [
+        r"% Requires: \usepackage{multirow,booktabs}",
+        r"\begin{table*}[!ht]", r"\centering", r"\renewcommand{\arraystretch}{1.05}",
+        r"\caption{Encoder ablation: what does the GBDT teacher contribute? Mean over 5 "
+        r"seeds. SOPs include the input-to-first-layer term (channels $\times$ hidden$_0$); "
+        r"Energy = SOPs $\times$ 0.9\,pJ. Arms: \textbf{tree} = XGBoost split edges with "
+        r"importance-pruned and importance-budgeted channels (ours); \textbf{quantile} = "
+        r"equal-frequency edges with channels identical to tree (same pruning, budget, "
+        r"jitter, and per-feature edge count), isolating whether the teacher's split "
+        r"placement matters; \textbf{no-KD} = tree encoder trained without the "
+        r"teacher-posterior loss terms ($\alpha_{\mathrm{kd}} = \alpha_{\mathrm{rank}} = 0$), "
+        r"isolating the teacher's soft labels; \textbf{uniform} = tree edges, one channel "
+        r"per feature with edges (changes pruning and allocation together, reported for "
+        r"completeness); \textbf{all} = tree edges, maximum channels per feature (dense "
+        r"upper bound). GBDT (teacher) is the XGBoost teacher's own test performance (not a "
+        r"spiking model). The teacher is trained cost-sensitively (inverse-frequency sample "
+        r"weights), so it operates at a balanced-performance point: on strongly imbalanced "
+        r"splits its raw accuracy can fall below the student's (CSE-CIC-IDS2018, UNSW-NB15) "
+        r"even where its macro-F1 leads, and it is a reference, not an accuracy ceiling. TTFS = mean encoder time-to-first-spike "
+        r"over all emitted spikes; Exit = mean confidence-triggered early-exit timestep of "
+        r"the trained student (both /$T{=}20$, lower = earlier).}",
+        r"\label{tab:encoder_ablation}", r"{\scriptsize",
+        r"\begin{tabular}{l l r r r r r r r}", r"\toprule",
+        r"\textbf{Dataset} & \textbf{Encoder} & \textbf{Channels} & \textbf{SOPs} & "
+        r"\textbf{Energy (pJ)} & \textbf{ACC (\%)} & \textbf{F1-M (\%)} & "
+        r"\textbf{TTFS} & \textbf{Exit} \\", r"\midrule",
+    ]
+    cur = None
+    for ds in A_DATASETS:
+        for m in MODES + ["gbdt"]:
+            c = data[ds][m]
+            if c["acc"][0] is None or (m != "gbdt" and c["syn"][0] is None):
+                continue
+            if m == "gbdt":
+                cells = (f"--- & --- & --- & {c['acc'][0]*100:.1f} & "
+                         f"{c['f1'][0]*100:.1f} & --- & ---")
+            else:
+                ch = f"{c['ch'][0]:.0f}" if c["ch"][0] is not None else "---"
+                syn = c["syn"][0]; e = syn * E_AC
+                ttfs = f"{c['ttfs'][0]:.1f}" if c["ttfs"][0] is not None else "---"
+                ext = f"{c['exit'][0]:.1f}" if c["exit"][0] is not None else "---"
+                cells = (f"{ch} & {syn:,.0f} & {e:,.0f} & {c['acc'][0]*100:.1f} & "
+                         f"{c['f1'][0]*100:.1f} & {ttfs} & {ext}")
+            if ds != cur:
+                if cur is not None:
+                    L.append(r"\midrule")
+                L.append(rf"\multirow{{{n_arms}}}{{*}}{{{DS_NAME[ds]}}}")
+                cur = ds
+            L.append(rf"& {ARM_TEX[m]} & {cells} \\")
+    L += [r"\bottomrule", r"\end{tabular}}", r"\end{table*}", ""]
+    (OUT / "tables" / "encoder_ablation.tex").write_text("\n".join(L))
+    print(f"[wrote] {OUT/'tables'}/encoder_ablation.md + .tex")
 
 
 def plot(data):
     plt.rcParams.update({"font.family": "serif", "font.size": 9, "figure.dpi": 150,
                          "savefig.bbox": "tight", "axes.grid": True, "grid.alpha": 0.3})
     # (1) grouped bar: SOPs/sample per mode per dataset (log)
-    x = np.arange(len(A_DATASETS)); w = 0.26
+    x = np.arange(len(A_DATASETS)); w = 0.8 / len(MODES)
     fig, ax = plt.subplots(figsize=(7.6, 3.4))
     for i, m in enumerate(MODES):
         ys = [(data[ds][m]["syn"][0] or np.nan) for ds in A_DATASETS]
-        ax.bar(x + (i - 1) * w, ys, w, label=m, color=COLOR[m], edgecolor="black", linewidth=0.4)
+        ax.bar(x + (i - (len(MODES) - 1) / 2) * w, ys, w, label=m, color=COLOR[m],
+               edgecolor="black", linewidth=0.4)
     ax.set_yscale("log"); ax.set_xticks(x)
     ax.set_xticklabels([DS_NAME[d] for d in A_DATASETS], rotation=35, ha="right", fontsize=8)
     ax.set_ylabel("SOPs / sample (log)"); ax.legend(frameon=False, title="encoder")

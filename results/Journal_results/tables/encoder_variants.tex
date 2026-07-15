@@ -19,10 +19,20 @@ of importance-guided allocation from the choice of thresholds.
   \item \textbf{All-channel (\texttt{all}).} Every feature that owns decision edges
   receives the maximum channel budget $M_{\max}$. This is the dense upper bound, an
   encoder that spends spikes on every threshold of every feature with no pruning.
+  \item \textbf{Quantile (\texttt{quantile}).} The teacher-ruler control. Channels are
+  \emph{identical} to \texttt{tree} (same pruning, same importance budget, same jitter)
+  and each kept feature receives the \emph{same number} of bin edges, but the edges are
+  equal-frequency quantiles of the training data rather than the teacher's split
+  thresholds. Only the edge placement changes, so \texttt{tree} versus \texttt{quantile}
+  isolates whether the teacher's split points carry information beyond a sensible
+  data-driven binning at matched budget.
 \end{itemize}
-Comparing the three separates \emph{which} thresholds are used (shared) from \emph{how
-much} spike budget each feature is given (varied). The all-channel encoder roughly
-doubles the SOP count relative to the tree-guided encoder for at most $1.7$ points of
-macro-F1, and the uniform encoder matches tree-guided accuracy at a similar cost,
-confirming that the importance-guided channel budget, not the raw threshold set, is the
-mechanism behind the efficiency of Tree-to-Spike.
+A separate training arm, \texttt{no-KD}, keeps the \texttt{tree} encoder but removes
+the teacher-posterior loss terms ($\alpha_{\mathrm{kd}} = \alpha_{\mathrm{rank}} = 0$),
+isolating the teacher's soft labels; and the teacher's own test metrics (GBDT alone)
+are reported as the reference ceiling. Comparing \texttt{all} against \texttt{tree}
+measures the cost of skipping the channel budget: roughly double the SOPs for up to
+$2.5$ points of macro-F1. The \texttt{uniform} arm changes pruning and allocation
+together and is therefore reported for completeness only; the \texttt{quantile} and
+\texttt{no-KD} arms are the controlled tests of whether the teacher's ruler and
+posterior, respectively, are load-bearing.

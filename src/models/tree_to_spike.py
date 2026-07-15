@@ -54,13 +54,18 @@ class TreeGuidedSpikeEncoder:
         # population (the contribution); "uniform" = every feature-with-edges, 1 channel each
         # (no importance); "all" = every feature-with-edges, pop_max channels each (dense upper
         # bound). uniform/all keep the same tree-threshold latency code, only the channel
-        # allocation differs — so the ablation isolates the importance-guided allocation.
+        # allocation differs - so those arms probe the channel budget.
+        # "quantile" = the teacher-ruler control: IDENTICAL channels to "tree" (same pruning,
+        # same importance budget, same jitter) and the same per-feature edge COUNT, but the
+        # edges are equal-frequency quantiles of the training data instead of XGBoost split
+        # thresholds. Only the edge placement changes, so tree-vs-quantile isolates whether
+        # the teacher's split points ("the ruler") matter at matched budget. Requires X in fit().
         self.encoder_mode = encoder_mode
         self.edges_ = {}                # feat_idx -> sorted unique split thresholds
         self.channels_ = []             # list of (feat_idx, level_offset)
         self.out_dim = 0
 
-    def fit(self, teacher, n_features: int):
+    def fit(self, teacher, n_features: int, X=None):
         booster = teacher.get_booster()
         tdf = booster.trees_to_dataframe()
         # collect split thresholds per feature (feature names are 'f0','f1',...)
@@ -91,13 +96,28 @@ class TreeGuidedSpikeEncoder:
             for j in range(n_features):
                 if j in self.edges_:
                     self.channels_.append((j, 0.0))
-        else:                                   # "tree" (default): importance-pruned + weighted
+        else:                                   # "tree"/"quantile": importance-pruned + weighted
             for j in range(n_features):
                 if imp[j] <= 0 or imp[j] < keep_thr or j not in self.edges_:
                     continue  # pruned
                 _add_population(j, max(1, int(np.ceil((imp[j] / imp_max) * self.pop_max))))
         if not self.channels_:  # safety: keep everything if pruning removed all
             self.channels_ = [(j, 0.0) for j in self.edges_]
+
+        if self.encoder_mode == "quantile":
+            # teacher-ruler control: swap each kept feature's edges for equal-frequency
+            # quantiles of the TRAINING data with the SAME edge count. Channels (pruning,
+            # budget, jitter) are already identical to "tree", so only placement changes.
+            if X is None:
+                raise ValueError("encoder_mode='quantile' requires the training X in fit()")
+            X = np.asarray(X, dtype=np.float32)
+            for j in sorted({j for j, _ in self.channels_}):
+                k = len(self.edges_[j])
+                qs = np.linspace(0, 1, k + 2)[1:-1]          # k interior quantiles
+                e = np.unique(np.quantile(X[:, j], qs).astype(np.float32))
+                if len(e) == 0:                               # constant feature: keep tree edges
+                    continue
+                self.edges_[j] = e
         self.out_dim = len(self.channels_)
         return self
 

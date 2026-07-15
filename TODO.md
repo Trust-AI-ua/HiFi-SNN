@@ -9,8 +9,12 @@ plus optional enhancements. (Completed items removed — see git history / `READ
 Status: ⬜ not started · 🟡 in progress.
 
 > **Recently completed (artifacts in `results/Journal_results/`):**
-> - **Encoder ablation** — `tree|uniform|all`; the all-channel encoder costs ~2× tree-guided
->   for ≤1.7 F1 → the importance-guided channel budget is the verified efficiency mechanism.
+> - **Encoder ablation** — `tree|quantile|nokd|uniform|all` + GBDT-alone reference. The
+>   all-channel encoder costs ~2× tree-guided for up to +2.5 F1 (budget = the cost lever);
+>   uniform ≈ tree shows importance *weighting* alone is not the mechanism. The `quantile`
+>   (teacher's ruler at matched channels) and `nokd` (teacher's posterior) arms are the
+>   controlled tests of whether the teacher is load-bearing — read conclusions off the
+>   regenerated table, do not restate the old claim.
 > - **DNN-Tree int8 (matched-precision accuracy)** — Tree-to-Spike 79.8 ≈ DNN-Tree 79.9 (tied).
 > - **Matched-precision energy (32b + int8) + input→layer-1 SOP correction** — honest ratio:
 >   Tree-to-Spike uses **3.7× (32b) / 5.6× (int8)** less compute energy than the matched DNN-Tree.

@@ -44,10 +44,16 @@ def cell(key, recs):
     if not recs:
         return None
     g = lambda fn: float(np.mean([fn(r) for r in recs]))
-    M = lambda k: g(lambda r: r["test_plus"]["metrics"][k])
-    B = lambda k: g(lambda r: r["test_plus"]["binary_ids_metrics"][k])
-    o = {"acc": M("accuracy"), "bacc": M("balanced_accuracy"), "f1": M("f1_macro"),
-         "mcc": M("matthews_corrcoef"), "dr": B("detection_rate"), "far": B("false_alarm_rate")}
+    sd = lambda fn: float(np.std([fn(r) for r in recs]))   # population std across seeds
+    M = lambda k: (lambda r: r["test_plus"]["metrics"][k])
+    B = lambda k: (lambda r: r["test_plus"]["binary_ids_metrics"][k])
+    o = {}
+    for nm, fn in [("acc", M("accuracy")), ("bacc", M("balanced_accuracy")),
+                   ("f1", M("f1_macro")), ("mcc", M("matthews_corrcoef")),
+                   ("dr", B("detection_rate")), ("far", B("false_alarm_rate"))]:
+        o[nm] = g(fn); o[nm + "_sd"] = sd(fn)
+    # parameter count (identical across seeds -> mean is exact); total, not just trainable
+    o["params"] = g(lambda r: r["model_size"]["total_parameters"])
     if key == "dnn":
         o["spar"] = None
         o["ops"] = g(lambda r: r["test_plus"]["compute"]["macs_per_sample"]); o["unit"] = "MACs"
@@ -98,10 +104,17 @@ def build():
         for mk, _, patt in MODELS:
             recs = [json.load(open(f)) for f in glob.glob(str(REPO / patt.format(d=dk)))]
             data[dk][mk] = cell(mk, recs)
+        # relative energy vs the Tree-to-Spike baseline on the same dataset
+        # (>1x = uses that many times MORE energy than our approach)
+        base = (data[dk].get("tree") or {}).get("energy")
+        for mk in data[dk]:
+            c = data[dk][mk]
+            if c is not None:
+                c["efac"] = (c["energy"] / base) if (base and c.get("energy")) else None
 
     # columns: (label, key, direction)  dir: +1 higher better, -1 lower better, 'E' by energy
     COLS = [("acc", +1), ("bacc", +1), ("f1", +1), ("mcc", +1), ("dr", +1),
-            ("far", -1), ("energy", -1), ("lat", -1)]
+            ("far", -1), ("params", -1), ("energy", -1), ("efac", -1), ("lat", -1)]
     mkeys = [m[0] for m in MODELS]; mnames = {m[0]: m[1] for m in MODELS}
 
     def best(dk, col, direction):
@@ -120,18 +133,29 @@ def build():
     def fmt(dk, mk, col, direction):
         c = data[dk][mk]
         v = c.get(col) if c else None
-        if col == "spar" and (v is None):
-            return "---"
+        # Params: descriptive size column (K params), constant across seeds -> no best-highlight
+        if col == "params":
+            if v is None:
+                return "---"
+            return f"{v/1000:.1f}K" if v >= 1000 else f"{v:.0f}"
+        # relative energy vs Vanilla SNN: derived from Energy, so no best-highlight
+        if col == "efac":
+            if v is None:
+                return "---"
+            s = f"{v/1000:,.0f}k" if v >= 1000 else (f"{v:.1f}" if v >= 10 else f"{v:.2f}")
+            return rf"{s}$\times$" + (r"$^\dagger$" if c.get("tasnn") else "")
         if v is None:
             return "---"
         if col in ("acc", "bacc", "f1", "dr", "far"):
             s = f"{v*100:.2f}"
+            sdv = c.get(col + "_sd")
+            if sdv is not None:
+                s += rf"$_{{\pm{sdv*100:.2f}}}$"          # std across 5 seeds
         elif col == "mcc":
             s = f"{v:.4f}"
-        elif col == "spar":
-            s = f"{v*100:.1f}"
-        elif col == "ops":
-            s = fnum(v, c["unit"]) + (r"$^\dagger$" if c.get("tasnn") else "")
+            sdv = c.get("mcc_sd")
+            if sdv is not None:
+                s += rf"$_{{\pm{sdv:.4f}}}$"
         elif col == "energy":
             s = fnum(v) + (r"$^\dagger$" if c.get("tasnn") else "")
         elif col == "lat":
@@ -144,25 +168,31 @@ def build():
         r"% \definecolor{bestcell}{HTML}{C6EFCE}  % light forest-green; for light blue use {HTML}{BBDEFB}",
         r"\begin{table*}[!ht]", r"\centering", r"\renewcommand{\arraystretch}{1.1}",
         r"\caption{Classification, binary IDS, and absolute-energy results across all datasets "
-        r"(mean over 5 seeds). Best per metric and dataset in \colorbox{bestcell}{\textbf{bold}}; "
-        r"the arrow ($\uparrow$/$\downarrow$) next to each metric gives the better direction. "
-        r"We report \emph{absolute} compute energy rather than spike sparsity: sparsity is a ratio "
-        r"that ignores network size and dense (non-spiking) components, whereas absolute energy "
-        r"counts every operation. SNN/Tree-to-Spike energy = SOPs (incl.\ input layer) $\times$ "
-        r"0.9\,pJ; DNN-Tree = MACs $\times$ 4.6\,pJ (Horowitz 45\,nm). $^\dagger$TASNN energy is an "
-        r"analytic transformer-MAC + spike-AC estimate (its raw spike count excludes the dominant "
-        r"dense transformer). Latency is wall-clock (batching differs: batch-1 for DNN-Tree, batched "
-        r"per-sample otherwise).}",
-        r"\label{tab:results_full}", r"{\footnotesize",
-        r"\begin{tabular}{l l r r r r r r r r}", r"\toprule",
+        r"(mean over 5 seeds; subscripts are the across-seed standard deviation). Best mean per "
+        r"metric and dataset in \colorbox{bestcell}{\textbf{bold}}; the arrow ($\uparrow$/$\downarrow$) "
+        r"next to each metric gives the better direction. \textbf{Params} is the total parameter count "
+        r"(K = thousands; identical across seeds, so no std or highlight; Tree-to-Spike and DNN-Tree "
+        r"share the same iso-architecture size). We report \emph{absolute} compute energy rather than "
+        r"spike sparsity: sparsity is a ratio that ignores network size and dense (non-spiking) "
+        r"components, whereas absolute energy counts every operation. SNN/Tree-to-Spike energy = SOPs "
+        r"(incl.\ input layer) $\times$ 0.9\,pJ; DNN-Tree = MACs $\times$ 4.6\,pJ (Horowitz 45\,nm). "
+        r"$^\dagger$TASNN energy is an analytic transformer-MAC + spike-AC estimate (its raw spike "
+        r"count excludes the dominant dense transformer). \textbf{Rel.\,E} is each model's energy "
+        r"relative to the Tree-to-Spike baseline on the same dataset ($E_{\mathrm{model}}/"
+        r"E_{\mathrm{Tree}}$): a value of $n\times$ means the model uses $n$ times the energy "
+        r"of our approach (derived from Energy, so not highlighted). Latency is wall-clock (batching differs: "
+        r"batch-1 for DNN-Tree, batched per-sample otherwise).}",
+        r"\label{tab:results_full}", r"{\scriptsize",
+        r"\begin{tabular}{l l r r r r r r r r r r}", r"\toprule",
         r"& & \multicolumn{6}{c}{\textbf{Classification \& Detection}} & "
-        r"\multicolumn{2}{c}{\textbf{Efficiency}} \\",
-        r"\cmidrule(lr){3-8} \cmidrule(lr){9-10}",
+        r"\multicolumn{4}{c}{\textbf{Efficiency}} \\",
+        r"\cmidrule(lr){3-8} \cmidrule(lr){9-12}",
         r"\textbf{Dataset} & \textbf{Model} & \textbf{ACC}\,$\uparrow$ & \textbf{BACC}\,$\uparrow$ & "
         r"\textbf{F1-M}\,$\uparrow$ & \textbf{MCC}\,$\uparrow$ & \textbf{DR}\,$\uparrow$ & "
-        r"\textbf{FAR}\,$\downarrow$ & \textbf{Energy}\,$\downarrow$ & \textbf{Latency}\,$\downarrow$ \\",
+        r"\textbf{FAR}\,$\downarrow$ & \textbf{Params}\,$\downarrow$ & \textbf{Energy}\,$\downarrow$ & "
+        r"\textbf{Rel.\,E}\,$\downarrow$ & \textbf{Latency}\,$\downarrow$ \\",
         r"& & \textbf{(\%)} & \textbf{(\%)} & \textbf{(\%)} & & \textbf{(\%)} & \textbf{(\%)} & "
-        r"\textbf{(pJ)} & \textbf{(ms)} \\", r"\midrule",
+        r"\textbf{(K)} & \textbf{(pJ)} & \textbf{($\times$)} & \textbf{(ms)} \\", r"\midrule",
     ]
     for dk, dn in DS:
         lines.append(rf"\multirow{{4}}{{*}}{{{dn}}}")

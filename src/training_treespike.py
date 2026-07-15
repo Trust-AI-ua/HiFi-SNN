@@ -264,7 +264,8 @@ def run_experiment(cfg: Dict) -> Dict:
     # ---------- 2) tree-guided spike encoder ----------
     encoder = TreeGuidedSpikeEncoder(
         T=cfg["T"], pop_max=cfg["pop_max"], prune_quantile=cfg["prune_quantile"],
-        jitter=cfg["jitter"], encoder_mode=cfg["encoder_mode"]).fit(teacher, Xtr.shape[1])
+        jitter=cfg["jitter"], encoder_mode=cfg["encoder_mode"]).fit(
+            teacher, Xtr.shape[1], X=Xtr)   # X used only by the "quantile" ruler-control mode
     print(f"[encoder] kept {encoder.out_dim} spike channels from {Xtr.shape[1]} features")
 
     # ---------- 3) distillation training of the SNN student ----------
