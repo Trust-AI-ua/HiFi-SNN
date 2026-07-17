@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
-"""Fast synops_per_sample backfill for Vanilla SNN runs missing it: replays the
-saved checkpoint on a capped test subset (synops is a per-sample mean, so a subset
-is an accurate estimate) and writes it into results.json. Eval-only, no retraining.
+"""SUPERSEDED by scripts/backfill_snn_metrics.py (full-test replay).
+
+This script estimates synops_per_sample from a capped test SUBSET (N=10000).
+All published numbers now come from the FULL-test backfill; the skip guard
+below means re-running this is a no-op while full-test values exist, but do
+not use it for paper numbers. Kept only for quick sanity estimates.
+
+Original: fast synops_per_sample backfill for Vanilla SNN runs missing it;
+replays the saved checkpoint on a capped test subset (synops is a per-sample
+mean, so a subset is an accurate estimate). Eval-only, no retraining.
 """
-import glob, json, sys, inspect
+import glob, json, os, sys, inspect
 from pathlib import Path
 import numpy as np, torch, yaml
 REPO = Path(__file__).resolve().parents[1]; sys.path.insert(0, str(REPO))
@@ -36,6 +43,7 @@ for ds in DSETS:
             spikes = enc(Xte, cfg["num_steps"]).to(DEV)
             syn = float(model.predict_early_exit(spikes)[-1])
         r["test_plus"]["spike_stats"]["synops_per_sample"] = syn
-        json.dump(r, open(rjp, "w"), indent=2)
+        tmp = Path(str(rjp) + ".tmp")
+        json.dump(r, open(tmp, "w"), indent=2); os.replace(tmp, rjp)
         print(f"  {ds}/seed_{seed}: synops_per_sample={syn:.0f}  (n={Xte.shape[0]})", flush=True)
 print("DONE")

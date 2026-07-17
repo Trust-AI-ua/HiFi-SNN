@@ -32,6 +32,7 @@ import argparse
 import csv
 import inspect
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -48,6 +49,14 @@ from src.data import get_dataset, DATASET_LOADERS
 from src.encoding import get_encoder
 from src.metrics import compute_metrics
 from src.models import SNN
+
+def _write_json_atomic(path, obj):
+    """Crash-safe in-place update: write to a sibling tmp file, then rename."""
+    tmp = Path(str(path) + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=2)
+    os.replace(tmp, path)
+
 
 DATASETS = ["nslkdd", "kddcup99", "cicids2017", "ctu13", "cse-cic-ids2018"]
 SUMMARY_HEADER = [
@@ -155,8 +164,7 @@ def backfill_one(rj_path: Path, r: dict, b: "_Bundle", device, force: bool):
         r["test_minus_21"]["early_exit"] = ee21
         r["test_minus_21"].setdefault("spike_stats", {})["synops_per_sample"] = synops21
 
-    with open(rj_path, "w") as f:
-        json.dump(r, f, indent=2)
+    _write_json_atomic(rj_path, r)
     return "ok"
 
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -45,6 +46,15 @@ RJ = {  # arm -> results.json glob (relative, {ds}/{seed} filled in)
     "all":      "results/encoder_ablation/{ds}/all/seed_{seed}/results.json",
 }
 ENC_MODE = {"nokd": "tree"}   # nokd is a LOSS arm; its encoder is the tree encoder
+
+
+def _write_json_atomic(path, obj):
+    """Crash-safe in-place update: write to a sibling tmp file, then rename."""
+    tmp = Path(str(path) + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=2)
+    os.replace(tmp, path)
+
 
 
 def mean_ttfs(enc: TreeGuidedSpikeEncoder, X: np.ndarray, batch: int = 100_000):
@@ -99,8 +109,7 @@ def backfill_dataset(ds: str, force: bool):
             tt = mean_ttfs(enc, Xte)
             r["test_plus"].setdefault("spike_stats", {})["mean_spike_time"] = tt
             r["test_plus"]["spike_stats"]["ttfs_T"] = int(tcfg["T"])
-            with open(p, "w") as f:
-                json.dump(r, f, indent=2)
+            _write_json_atomic(p, r)
             print(f"[{ds}] seed_{seed}/{mode:8}: mean TTFS = {tt:.2f}/{tcfg['T']}", flush=True)
         print(f"[{ds}] seed_{seed}: done in {time.time()-t0:.0f}s", flush=True)
 

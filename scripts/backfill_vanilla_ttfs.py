@@ -19,6 +19,7 @@ import argparse
 import glob
 import inspect
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -35,6 +36,15 @@ DATASETS = ["kddcup99", "nslkdd", "ctu13", "iscxids2012", "cicids2017",
             "cse-cic-ids2018", "unswnb15", "ciciot2023", "ciciomt2024",
             "edgeiiot", "toniot"]
 THRESHOLD = 0.01   # matches latency_encode's default
+
+
+def _write_json_atomic(path, obj):
+    """Crash-safe in-place update: write to a sibling tmp file, then rename."""
+    tmp = Path(str(path) + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=2)
+    os.replace(tmp, path)
+
 
 
 def _loader_kwargs(ds, cfg, seed):
@@ -65,8 +75,7 @@ def backfill_dataset(ds: str, force: bool):
         tt = float(times[fire].mean()) if fire.any() else float("nan")
         r["test_plus"].setdefault("spike_stats", {})["mean_spike_time"] = tt
         r["test_plus"]["spike_stats"]["ttfs_T"] = int(T)
-        with open(rj, "w") as f:
-            json.dump(r, f, indent=2)
+        _write_json_atomic(rj, r)
         print(f"[{ds}] seed_{seed}: mean TTFS = {tt:.2f}/{T} "
               f"(firing frac {fire.mean():.2f})  [{time.time()-t0:.0f}s]", flush=True)
 

@@ -127,11 +127,14 @@ def build():
         r"early-exit step can be far smaller than the mean TTFS. \textbf{Exit} = mean confidence-triggered "
         r"early-exit timestep$/T$ (DNN-Tree is one-shot; TASNN has no early exit). "
         r"\textbf{Rel.\,E} = compute energy relative to Tree-to-Spike on the same dataset "
-        r"($n\times$ = $n$ times our energy; $^\dagger$TASNN analytic).}",
+        r"($n\times$ = $n$ times our energy; $^\dagger$TASNN analytic). "
+        r"\textbf{Storage} = model-storage footprint derived from the parameter count at "
+        r"FP32 / int8 weight representations (4 / 1 bytes per parameter).}",
         r"\label{tab:architecture}", r"{\scriptsize",
-        r"\begin{tabular}{l c l l r r r r r}", r"\toprule",
+        r"\begin{tabular}{l c l l r r r r r r}", r"\toprule",
         r"\textbf{Dataset} & \textbf{Classes} & \textbf{Model} & "
         r"\textbf{Architecture (in - hidden - out)} & \textbf{Params} & "
+        r"\textbf{Storage (KB)} & "
         r"\textbf{Spikes/sample} & \textbf{TTFS} & \textbf{Exit} & \textbf{Rel.\,E} \\",
         r"\midrule",
     ]
@@ -145,8 +148,8 @@ def build():
           "compute energy relative to Tree-to-Spike on the same dataset (n x = n times ours). "
           "Architecture uses the seed-42 encoder width; params are the across-seed mean (the "
           "tree-guided encoder width shifts by a few channels per seed).\n",
-          "| Dataset | Classes | Model | Architecture (in - hidden - out) | Params | Spikes/sample | TTFS | Exit | Rel.E |",
-          "|---|--:|---|---|--:|--:|--:|--:|--:|"]
+          "| Dataset | Classes | Model | Architecture (in - hidden - out) | Params | Storage KB (fp32/int8) | Spikes/sample | TTFS | Exit | Rel.E |",
+          "|---|--:|---|---|--:|--:|--:|--:|--:|--:|"]
 
     def _frac(pair, tex=True):
         (m, s), T = pair
@@ -157,6 +160,10 @@ def build():
     cur = None
     for dn, K, mk, mn, arch, arch_md, params, spk, ttfs, ee, efac in rows:
         p = f"{params/1000:.1f}K" if params >= 1000 else f"{params:.0f}"
+        # model-storage footprint from param count: FP32 (4 B/param) / int8 (1 B/param)
+        kb32, kb8 = params * 4 / 1024, params / 1024
+        store_tex = f"{kb32:,.0f} / {kb8:,.0f}"
+        store_md = f"{kb32:,.0f} / {kb8:,.0f}"
         sm, ss = spk
         if sm is None:
             spk_tex, spk_md = "---", "---"
@@ -175,7 +182,7 @@ def build():
             dag = r"$^\dagger$" if mk == "tasnn" else ""
             ef_tex = rf"{s}$\times${dag}"
             ef_md = f"{s}x" + (" (analytic)" if mk == "tasnn" else "")
-        cells_tex = f"{arch} & {p} & {spk_tex} & {ttfs_tex} & {ee_tex} & {ef_tex}"
+        cells_tex = f"{arch} & {p} & {store_tex} & {spk_tex} & {ttfs_tex} & {ee_tex} & {ef_tex}"
         if dn != cur:
             if cur is not None:
                 L.append(r"\midrule")
@@ -184,7 +191,7 @@ def build():
             L.append(rf"  & {mn:13} & {cells_tex} \\")
         else:
             L.append(rf"& & {mn:13} & {cells_tex} \\")
-        md.append(f"| {dn} | {K} | {mn} | {arch_md} | {p} | {spk_md} | {ttfs_md} | {ee_md} | {ef_md} |")
+        md.append(f"| {dn} | {K} | {mn} | {arch_md} | {p} | {store_md} | {spk_md} | {ttfs_md} | {ee_md} | {ef_md} |")
 
     L += [r"\bottomrule", r"\end{tabular}}", r"\end{table*}", ""]
     (TAB / "table_architecture.tex").write_text("\n".join(L))

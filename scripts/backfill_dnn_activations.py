@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -43,6 +44,31 @@ DATASETS = ["kddcup99", "nslkdd", "ctu13", "iscxids2012", "cicids2017",
             "cse-cic-ids2018", "unswnb15", "ciciot2023", "ciciomt2024",
             "edgeiiot", "toniot"]
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# keys that must agree between the DNN config (source of truth here) and its
+# Tree-to-Spike twin; the DNN was trained on the twin's data/teacher/encoder setup
+TWIN_KEYS = ["subsample_fraction", "label_mode", "test_fraction",
+             "teacher_n_estimators", "teacher_max_depth", "teacher_lr",
+             "teacher_cost_power", "T", "pop_max", "prune_quantile", "jitter"]
+
+
+def _write_json_atomic(path, obj):
+    """Crash-safe in-place update: write to a sibling tmp file, then rename."""
+    tmp = Path(str(path) + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=2)
+    os.replace(tmp, path)
+
+
+def _dnn_config(ds: str) -> dict:
+    """The DNN run's own config, asserted consistent with its Tree-to-Spike twin
+    on every key this replay depends on (fail loudly rather than reconstruct a
+    subtly different split/teacher/encoder)."""
+    dcfg = yaml.safe_load(open(REPO / f"experiments/DNN-Tree/{ds}/config.yaml"))
+    tcfg = yaml.safe_load(open(REPO / f"experiments/Tree-to-Spike/{ds}/config.yaml"))
+    diffs = {k: (dcfg.get(k), tcfg.get(k)) for k in TWIN_KEYS if dcfg.get(k) != tcfg.get(k)}
+    if diffs:
+        raise ValueError(f"{ds}: DNN config diverges from Tree-to-Spike twin on {diffs}")
+    return dcfg
 
 
 @torch.no_grad()
@@ -63,8 +89,7 @@ def backfill_dataset(ds: str, force: bool):
     rjs = sorted(glob.glob(str(REPO / f"results/DNN-Tree/{ds}/seed_*/results.json")))
     if not rjs:
         print(f"[{ds}] no runs found"); return 0
-    # loader kwargs from the Tree-to-Spike config (the DNN twin mirrors it)
-    tcfg = yaml.safe_load(open(REPO / f"experiments/Tree-to-Spike/{ds}/config.yaml"))
+    tcfg = _dnn_config(ds)   # the DNN's own config, twin-consistency asserted
     lp = __import__("inspect").signature(DATASET_LOADERS[ds]).parameters
     done = 0
     for rj in rjs:
@@ -107,8 +132,7 @@ def backfill_dataset(ds: str, force: bool):
             "activation_density": act / h,
             "hidden_neurons": int(h),
         }
-        with open(rj, "w") as f:
-            json.dump(r, f, indent=2)
+        _write_json_atomic(rj, r)
         done += 1
         print(f"[{ds}] seed_{seed}: active={act:.1f}/{h} "
               f"(density {act/h:.2f})  [{time.time()-t0:.0f}s]", flush=True)
