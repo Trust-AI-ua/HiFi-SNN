@@ -19,11 +19,16 @@ REPO = Path(__file__).resolve().parents[1]
 TAB = REPO / "results" / "Journal_results" / "tables"
 E_AC, E_MAC = 0.9, 4.6
 
-DS = [("kddcup99", "KDDCup99"), ("nslkdd", "NSL-KDD"), ("ctu13", "CTU-13"),
-      ("iscxids2012", "ISCX2012"), ("cicids2017", "CIC-IDS2017"),
-      ("cse-cic-ids2018", "CSE-CIC-2018"), ("unswnb15", "UNSW-NB15"),
-      ("ciciot2023", "CICIoT2023"), ("ciciomt2024", "CICIoMT2024"),
-      ("edgeiiot", "Edge-IIoTset"), ("toniot", "TON-IoT")]
+DS_GENERAL = [("kddcup99", "KDDCup99"), ("nslkdd", "NSL-KDD"), ("ctu13", "CTU-13"),
+              ("iscxids2012", "ISCX2012"), ("cicids2017", "CIC-IDS2017"),
+              ("cse-cic-ids2018", "CSE-CIC-2018"), ("unswnb15", "UNSW-NB15")]
+DS_IOT = [("ciciot2023", "CICIoT2023"), ("ciciomt2024", "CICIoMT2024"),
+          ("edgeiiot", "Edge-IIoTset"), ("toniot", "TON-IoT")]
+DS = DS_GENERAL + DS_IOT
+# (subset, file suffix, caption phrase) -- IoT is the primary table, general the appendix
+GROUPS = [(DS_IOT, "iot", "IoT, IIoT, and IoMT"),
+          (DS_GENERAL, "general", "general-purpose network"),
+          (DS, "full", "all")]
 MODELS = [("vanilla", "Vanilla SNN", "results/{d}/SNN_LeakyParallel/latency/seed_*/results.json"),
           ("tree", "Tree-to-Spike", "results/Tree-to-Spike/{d}/seed_*/results.json"),
           ("dnn", "DNN-Tree", "results/DNN-Tree/{d}/seed_*/results.json"),
@@ -97,7 +102,7 @@ def fnum(x, unit=None):
     return f"{s} {unit}" if unit else s
 
 
-def build():
+def build(DS=DS, suffix='full', group='all'):
     data = {}
     for dk, _ in DS:
         data[dk] = {}
@@ -168,7 +173,7 @@ def build():
         r"% \definecolor{bestcell}{HTML}{C6EFCE}  % light forest-green; for light blue use {HTML}{BBDEFB}",
         r"\begin{table*}[!ht]", r"\centering", r"\renewcommand{\arraystretch}{1.1}",
         r"\caption{Classification, binary IDS, and absolute-energy results across all datasets "
-        r"(mean over 5 seeds; subscripts are the across-seed standard deviation). Best mean per "
+        r"over the " + group + " intrusion detection datasets (mean over 5 seeds; subscripts are the across-seed standard deviation). Best mean per "
         r"metric and dataset in \colorbox{bestcell}{\textbf{bold}}; the arrow ($\uparrow$/$\downarrow$) "
         r"next to each metric gives the better direction. \textbf{Params} is the total parameter count "
         r"(K = thousands; identical across seeds, so no std or highlight; Tree-to-Spike and DNN-Tree "
@@ -182,7 +187,7 @@ def build():
         r"E_{\mathrm{Tree}}$): a value of $n\times$ means the model uses $n$ times the energy "
         r"of our approach (derived from Energy, so not highlighted). Latency is wall-clock (batching differs: "
         r"batch-1 for DNN-Tree, batched per-sample otherwise).}",
-        r"\label{tab:results_full}", r"{\scriptsize",
+        rf"\label{{tab:results_{suffix}}}", r"{\scriptsize",
         r"\begin{tabular}{l l r r r r r r r r r r}", r"\toprule",
         r"& & \multicolumn{6}{c}{\textbf{Classification \& Detection}} & "
         r"\multicolumn{4}{c}{\textbf{Efficiency}} \\",
@@ -202,9 +207,10 @@ def build():
         lines.append(r"\midrule")
     lines[-1] = r"\bottomrule"
     lines += [r"\end{tabular}}", r"\end{table*}", ""]
-    (TAB / "table_results_full.tex").write_text("\n".join(lines))
-    print(f"[wrote] {TAB}/table_results_full.tex  ({len(DS)} datasets x {len(MODELS)} models)")
+    (TAB / f"table_results_{suffix}.tex").write_text("\n".join(lines))
+    print(f"[wrote] {TAB}/table_results_{suffix}.tex  ({len(DS)} datasets x {len(MODELS)} models)")
 
 
 if __name__ == "__main__":
-    build()
+    for _ds, _sfx, _grp in GROUPS:
+        build(_ds, _sfx, _grp)

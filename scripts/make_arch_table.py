@@ -23,11 +23,15 @@ from make_results_table import cell as _energy_cell   # shared energy accounting
 
 TAB = REPO / "results" / "Journal_results" / "tables"
 
-DS = [("kddcup99", "KDDCup99"), ("nslkdd", "NSL-KDD"), ("ctu13", "CTU-13"),
-      ("iscxids2012", "ISCX2012"), ("cicids2017", "CIC-IDS2017"),
-      ("cse-cic-ids2018", "CSE-CIC-2018"), ("unswnb15", "UNSW-NB15"),
-      ("ciciot2023", "CICIoT2023"), ("ciciomt2024", "CICIoMT2024"),
-      ("edgeiiot", "Edge-IIoTset"), ("toniot", "TON-IoT")]
+DS_GENERAL = [("kddcup99", "KDDCup99"), ("nslkdd", "NSL-KDD"), ("ctu13", "CTU-13"),
+              ("iscxids2012", "ISCX2012"), ("cicids2017", "CIC-IDS2017"),
+              ("cse-cic-ids2018", "CSE-CIC-2018"), ("unswnb15", "UNSW-NB15")]
+DS_IOT = [("ciciot2023", "CICIoT2023"), ("ciciomt2024", "CICIoMT2024"),
+          ("edgeiiot", "Edge-IIoTset"), ("toniot", "TON-IoT")]
+DS = DS_GENERAL + DS_IOT
+GROUPS = [(DS_IOT, "iot", "IoT, IIoT, and IoMT"),
+          (DS_GENERAL, "general", "general-purpose network"),
+          (DS, "full", "all")]
 MODELS = [("vanilla", "Vanilla SNN", "results/{d}/SNN_LeakyParallel/latency/seed_*/results.json"),
           ("tree", "Tree-to-Spike", "results/Tree-to-Spike/{d}/seed_*/results.json"),
           ("dnn", "DNN-Tree", "results/DNN-Tree/{d}/seed_*/results.json"),
@@ -82,7 +86,7 @@ def _ms(recs, getter):
     return (float(np.mean(vs)), float(np.std(vs))) if vs else (None, None)
 
 
-def build():
+def build(DS=DS, suffix='full', group='all'):
     rows = []
     for dk, dn in DS:
         recs_by = {mk: _recs(patt.format(d=dk)) for mk, _, patt in MODELS}
@@ -115,7 +119,8 @@ def build():
     L = [
         r"% Requires: \usepackage{multirow,booktabs}",
         r"\begin{table*}[!ht]", r"\centering", r"\renewcommand{\arraystretch}{1.05}",
-        r"\caption{4-way model anatomy per dataset: class count, network architecture "
+        rf"\caption{{4-way model anatomy per dataset over the {group} intrusion detection "
+        r"datasets: class count, network architecture "
         r"(layer widths), total parameters, and hidden-layer spikes generated per sample "
         r"(mean$_{\pm\text{std}}$ over 5 seeds). DNN-Tree is the dense iso-architecture "
         r"twin of Tree-to-Spike (identical widths and parameters, ReLU instead of LIF), "
@@ -149,7 +154,7 @@ def build():
         r"not measured serialized artifacts: our int8 stage is a per-tensor fake-quant "
         r"stand-in that quantizes Linear weights while retaining fp32 tensors, so the "
         r"int8 column is a lower bound (biases and encoder thresholds remain fp32).}",
-        r"\label{tab:architecture}", r"{\scriptsize",
+        rf"\label{{tab:architecture_{suffix}}}", r"{\scriptsize",
         r"\begin{tabular}{l c l l r r r r r r}", r"\toprule",
         r"\textbf{Dataset} & \textbf{Classes} & \textbf{Model} & "
         r"\textbf{Architecture (in - hidden - out)} & \textbf{Params} & "
@@ -216,10 +221,11 @@ def build():
         md.append(f"| {dn} | {K} | {mn} | {arch_md} | {p} | {store_md} | {spk_md} | {ttfs_md} | {ee_md} | {ef_md} |")
 
     L += [r"\bottomrule", r"\end{tabular}}", r"\end{table*}", ""]
-    (TAB / "table_architecture.tex").write_text("\n".join(L))
-    (TAB / "table_architecture.md").write_text("\n".join(md) + "\n")
-    print(f"[wrote] {TAB}/table_architecture.tex + .md  ({len(rows)} rows)")
+    (TAB / f"table_architecture_{suffix}.tex").write_text("\n".join(L))
+    (TAB / f"table_architecture_{suffix}.md").write_text("\n".join(md) + "\n")
+    print(f"[wrote] {TAB}/table_architecture_{suffix}.tex + .md  ({len(rows)} rows)")
 
 
 if __name__ == "__main__":
-    build()
+    for _ds, _sfx, _grp in GROUPS:
+        build(_ds, _sfx, _grp)

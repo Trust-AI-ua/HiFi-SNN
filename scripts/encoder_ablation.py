@@ -38,9 +38,14 @@ import matplotlib.pyplot as plt
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-A_DATASETS = ["kddcup99", "nslkdd", "ctu13", "iscxids2012", "cicids2017",
-              "cse-cic-ids2018", "unswnb15", "ciciot2023", "ciciomt2024",
-              "edgeiiot", "toniot"]
+A_GENERAL = ["kddcup99", "nslkdd", "ctu13", "iscxids2012", "cicids2017",
+             "cse-cic-ids2018", "unswnb15"]
+A_IOT = ["ciciot2023", "ciciomt2024", "edgeiiot", "toniot"]
+A_DATASETS = A_GENERAL + A_IOT
+# IoT is the primary table for the paper; general-purpose goes to the appendix
+A_GROUPS = [(A_IOT, "iot", "IoT, IIoT, and IoMT"),
+            (A_GENERAL, "general", "general-purpose network"),
+            (A_DATASETS, "full", "all")]
 DS_NAME = {"kddcup99": "KDDCup99", "nslkdd": "NSL-KDD", "ctu13": "CTU-13",
            "iscxids2012": "ISCX-IDS2012", "cicids2017": "CIC-IDS2017",
            "cse-cic-ids2018": "CSE-CIC-IDS2018", "unswnb15": "UNSW-NB15",
@@ -141,7 +146,8 @@ def aggregate():
     return data
 
 
-def write_table(data):
+def write_table(data, DSL=None, suffix='full', group='all'):
+    DSL = DSL or A_DATASETS
     md = ["### Encoder ablation - what does the teacher actually contribute?\n",
           "Mean over 5 seeds. **SOPs include the input->layer-1 term** (channels x hidden[0]); "
           "**Energy = SOPs × 0.9 pJ.** Arms: **tree** = XGBoost split edges + importance-pruned/"
@@ -158,7 +164,7 @@ def write_table(data):
           "sooner).\n",
           "| Dataset | Encoder | Channels | SOPs/sample | Energy (pJ) | Accuracy | Macro-F1 | TTFS (/20) | Exit step (/20) |",
           "|---|---|--:|--:|--:|--:|--:|--:|--:|"]
-    for ds in A_DATASETS:
+    for ds in DSL:
         for m in MODES + ["gbdt"]:
             c = data[ds][m]
             if c["acc"][0] is None:
@@ -176,7 +182,7 @@ def write_table(data):
             tag = "**tree**" if m == "tree" else m
             md.append(f"| {DS_NAME[ds]} | {tag} | {ch} | {syn:,.0f} | {e:,.0f} | "
                       f"{c['acc'][0]*100:.1f} | {c['f1'][0]*100:.1f} | {ttfs} | {ext} |")
-    (OUT / "tables" / "encoder_ablation.md").write_text("\n".join(md) + "\n")
+    (OUT / "tables" / f"encoder_ablation_{suffix}.md").write_text("\n".join(md) + "\n")
 
     # ---------- LaTeX twin (same data, booktabs + multirow) ----------
     ARM_TEX = {"tree": r"\textbf{tree} (ours)", "quantile": "quantile", "nokd": "no-KD",
@@ -185,7 +191,8 @@ def write_table(data):
     L = [
         r"% Requires: \usepackage{multirow,booktabs}",
         r"\begin{table*}[!ht]", r"\centering", r"\renewcommand{\arraystretch}{1.05}",
-        r"\caption{Encoder ablation: what does the GBDT teacher contribute? Mean over 5 "
+        rf"\caption{{Encoder ablation over the {group} intrusion detection datasets: what "
+        r"does the GBDT teacher contribute? Mean over 5 "
         r"seeds. SOPs include the input-to-first-layer term (channels $\times$ hidden$_0$); "
         r"Energy = SOPs $\times$ 0.9\,pJ. Arms: \textbf{tree} = XGBoost split edges with "
         r"importance-pruned and importance-budgeted channels (ours); \textbf{quantile} = "
@@ -203,14 +210,14 @@ def write_table(data):
         r"even where its macro-F1 leads, and it is a reference, not an accuracy ceiling. TTFS = mean encoder time-to-first-spike "
         r"over all emitted spikes; Exit = mean confidence-triggered early-exit timestep of "
         r"the trained student (both /$T{=}20$, lower = earlier).}",
-        r"\label{tab:encoder_ablation}", r"{\scriptsize",
+        rf"\label{{tab:encoder_ablation_{suffix}}}", r"{\scriptsize",
         r"\begin{tabular}{l l r r r r r r r}", r"\toprule",
         r"\textbf{Dataset} & \textbf{Encoder} & \textbf{Channels} & \textbf{SOPs} & "
         r"\textbf{Energy (pJ)} & \textbf{ACC (\%)} & \textbf{F1-M (\%)} & "
         r"\textbf{TTFS} & \textbf{Exit} \\", r"\midrule",
     ]
     cur = None
-    for ds in A_DATASETS:
+    for ds in DSL:
         for m in MODES + ["gbdt"]:
             c = data[ds][m]
             if c["acc"][0] is None or (m != "gbdt" and c["syn"][0] is None):
@@ -232,8 +239,8 @@ def write_table(data):
                 cur = ds
             L.append(rf"& {ARM_TEX[m]} & {cells} \\")
     L += [r"\bottomrule", r"\end{tabular}}", r"\end{table*}", ""]
-    (OUT / "tables" / "encoder_ablation.tex").write_text("\n".join(L))
-    print(f"[wrote] {OUT/'tables'}/encoder_ablation.md + .tex")
+    (OUT / "tables" / f"encoder_ablation_{suffix}.tex").write_text("\n".join(L))
+    print(f"[wrote] {OUT/'tables'}/encoder_ablation_{suffix}.md + .tex")
 
 
 def plot(data):
@@ -291,7 +298,8 @@ def main():
     if not args.plot:
         run_variants()
     data = aggregate()
-    write_table(data)
+    for _ds, _sfx, _grp in A_GROUPS:
+        write_table(data, _ds, _sfx, _grp)
     plot(data)
     print("\nEncoder ablation summary (mean SOPs/sample | Macro-F1):")
     for ds in A_DATASETS:
