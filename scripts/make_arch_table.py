@@ -38,6 +38,18 @@ def _recs(patt):
     return [json.load(open(f)) for f in sorted(glob.glob(str(REPO / patt)))]
 
 
+# Frozen tree-guided encoder tables (thresholds + channel map) that must ship
+# with the deployed artifact. Tree-to-Spike AND its DNN-Tree twin both consume
+# this encoder; Vanilla SNN (closed-form latency code) and TASNN (internal
+# encoding) store no tables. Measured by scripts/measure_encoder_storage.py.
+_ENC_PATH = REPO / "results" / "Journal_results" / "encoder_storage.json"
+_ENC = json.load(open(_ENC_PATH)) if _ENC_PATH.exists() else {}
+
+
+def _encoder_bytes(mk, dk):
+    return float(_ENC.get(dk, {}).get("bytes", 0)) if mk in ("tree", "dnn") else 0.0
+
+
 def _arch(mk, r):
     """Human-readable layer-width string from one (seed-42) record."""
     c, F, K = r["config"], r["data"]["num_features"], r["data"]["num_classes"]
@@ -96,7 +108,7 @@ def build():
             ee_T = next((r["test_plus"]["early_exit"].get("max_steps") for r in recs
                          if r["test_plus"].get("early_exit")), None)
             efac = (e[mk] / base) if (base and e.get(mk)) else None
-            rows.append((dn, K, mk, mn, _arch(mk, r0), _arch_md(mk, r0), params,
+            rows.append((dn, dk, K, mk, mn, _arch(mk, r0), _arch_md(mk, r0), params,
                          spk, (ttfs, ttfs_T), (ee, ee_T), efac))
 
     # ---------- LaTeX ----------
@@ -128,8 +140,15 @@ def build():
         r"early-exit timestep$/T$ (DNN-Tree is one-shot; TASNN has no early exit). "
         r"\textbf{Rel.\,E} = compute energy relative to Tree-to-Spike on the same dataset "
         r"($n\times$ = $n$ times our energy; $^\dagger$TASNN analytic). "
-        r"\textbf{Storage} = model-storage footprint derived from the parameter count at "
-        r"FP32 / int8 weight representations (4 / 1 bytes per parameter).}",
+        r"\textbf{Storage} = projected deployment footprint at FP32\,/\,int8, in KB: "
+        r"model weights (4 / 1 bytes per parameter) plus, for the models that use the "
+        r"tree-guided encoder, the frozen encoder tables it must ship with "
+        r"($^{\S}$Tree-to-Spike and its DNN-Tree twin: split thresholds at 4 B plus a "
+        r"3 B channel-map entry each; the Vanilla SNN latency code and TASNN store no "
+        r"tables). These are analytical projections from parameter and table counts, "
+        r"not measured serialized artifacts: our int8 stage is a per-tensor fake-quant "
+        r"stand-in that quantizes Linear weights while retaining fp32 tensors, so the "
+        r"int8 column is a lower bound (biases and encoder thresholds remain fp32).}",
         r"\label{tab:architecture}", r"{\scriptsize",
         r"\begin{tabular}{l c l l r r r r r r}", r"\toprule",
         r"\textbf{Dataset} & \textbf{Classes} & \textbf{Model} & "
@@ -158,12 +177,15 @@ def build():
         return (rf"{m:.1f}$_{{\pm{s:.1f}}}$/{T}" if tex else f"{m:.1f} +/- {s:.1f} /{T}")
 
     cur = None
-    for dn, K, mk, mn, arch, arch_md, params, spk, ttfs, ee, efac in rows:
+    for dn, dk, K, mk, mn, arch, arch_md, params, spk, ttfs, ee, efac in rows:
         p = f"{params/1000:.1f}K" if params >= 1000 else f"{params:.0f}"
-        # model-storage footprint from param count: FP32 (4 B/param) / int8 (1 B/param)
-        kb32, kb8 = params * 4 / 1024, params / 1024
-        store_tex = f"{kb32:,.0f} / {kb8:,.0f}"
-        store_md = f"{kb32:,.0f} / {kb8:,.0f}"
+        # deployment storage = weights (fp32 4 B / int8 1 B per parameter)
+        # + frozen tree-guided encoder tables (tree and dnn only; fp32 thresholds)
+        eb = _encoder_bytes(mk, dk)
+        kb32, kb8 = (params * 4 + eb) / 1024, (params * 1 + eb) / 1024
+        mark = r"$^{\S}$" if eb else ""
+        store_tex = f"{kb32:,.1f} / {kb8:,.1f}{mark}"
+        store_md = f"{kb32:,.1f} / {kb8:,.1f}" + (" (incl. enc.)" if eb else "")
         sm, ss = spk
         if sm is None:
             spk_tex, spk_md = "---", "---"
