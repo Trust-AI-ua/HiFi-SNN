@@ -70,6 +70,9 @@ ARM_CFG = {
     "all":      {"encoder_mode": "all"},
 }
 # Paul Tol bright / Okabe-Ito (matches benchmark_4way).
+# display names must match the table arm names exactly
+ARM_LABEL = {"tree": "tree", "quantile": "quantile", "nokd": "no-KD",
+             "uniform": "uniform", "all": "all"}
 COLOR = {"tree": "#228833", "quantile": "#E69F00", "nokd": "#AA3377",
          "uniform": "#4477AA", "all": "#EE6677"}
 OUT = REPO / "results" / "Journal_results"
@@ -251,12 +254,31 @@ def plot(data):
     fig, ax = plt.subplots(figsize=(7.6, 3.4))
     for i, m in enumerate(MODES):
         ys = [(data[ds][m]["syn"][0] or np.nan) for ds in A_DATASETS]
-        ax.bar(x + (i - (len(MODES) - 1) / 2) * w, ys, w, label=m, color=COLOR[m],
+        ax.bar(x + (i - (len(MODES) - 1) / 2) * w, ys, w, label=ARM_LABEL[m], color=COLOR[m],
                edgecolor="black", linewidth=0.4)
     ax.set_yscale("log"); ax.set_xticks(x)
     ax.set_xticklabels([DS_NAME[d] for d in A_DATASETS], rotation=35, ha="right", fontsize=8)
-    ax.set_ylabel("SOPs / sample (log)"); ax.legend(frameon=False, title="encoder")
-    ax.set_title("Spike cost by encoder variant (lower = cheaper)")
+    ax.set_ylabel("SOPs / sample (log)")
+    # the data span (~2k to ~55k) covers barely one decade, so the default log
+    # locator prints a single 10^4 tick: use explicit human-readable decade+half
+    # ticks and suppress the unlabelled minor ticks.
+    from matplotlib.ticker import FixedLocator, FixedFormatter, NullLocator
+    lo = np.nanmin([data[ds][m]["syn"][0] for ds in A_DATASETS for m in MODES
+                    if data[ds][m]["syn"][0]])
+    hi = np.nanmax([data[ds][m]["syn"][0] for ds in A_DATASETS for m in MODES
+                    if data[ds][m]["syn"][0]])
+    cand = [1000, 2000, 3000, 5000, 10000, 20000, 30000, 50000, 100000]
+    ticks = [t for t in cand if lo / 1.6 <= t <= hi * 1.6]
+    ax.yaxis.set_major_locator(FixedLocator(ticks))
+    ax.yaxis.set_major_formatter(FixedFormatter(
+        [f"{t/1000:g}k" if t >= 1000 else f"{t:g}" for t in ticks]))
+    ax.yaxis.set_minor_locator(NullLocator())
+    ax.set_ylim(lo / 1.5, hi * 2.6)          # headroom for the legend row
+    # legend on one row above the axes so it never covers the leftmost bars;
+    # the axes title is dropped because the LaTeX caption carries it.
+    ax.legend(frameon=False, ncol=len(MODES), loc="lower center",
+              bbox_to_anchor=(0.5, 1.0), handlelength=1.4, columnspacing=1.4,
+              fontsize=8.5)
     for ext in ("pdf", "png"):
         fig.savefig(OUT / "figures" / f"encoder_ablation_sops.{ext}")
     plt.close(fig)
@@ -277,7 +299,7 @@ def plot(data):
     ax.set_title("Encoder ablation: accuracy vs spike cost")
     from matplotlib.lines import Line2D
     leg1 = [Line2D([0], [0], marker="o", color="w", markerfacecolor=COLOR[m],
-                   markeredgecolor="black", markersize=8, label=m) for m in MODES]
+                   markeredgecolor="black", markersize=8, label=ARM_LABEL[m]) for m in MODES]
     leg2 = [Line2D([0], [0], marker=marker[d], color="w", markerfacecolor="gray",
                    markeredgecolor="black", markersize=8, label=DS_NAME[d]) for d in A_DATASETS]
     # legends OUTSIDE the axes (right) so they never overlap the markers
