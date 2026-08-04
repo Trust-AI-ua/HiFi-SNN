@@ -666,9 +666,11 @@ def cd_diagram(met, fname):
     fig, ax = plt.subplots(figsize=(6.2, 2.3)); ax.set_xlim(lo - 0.4, hi + 0.4)
     ax.set_ylim(0, 1.7); ax.axis("off")
     ax.plot([lo, hi], [1.3, 1.3], "k-", lw=1.2)
+    # ranks are drawn best-to-the-RIGHT (xpos below), so the tick LABELS must be
+    # reversed too; otherwise a rank-1.7 model sits under a tick reading "3".
     for r in range(lo, hi + 1):
         ax.plot([r, r], [1.3, 1.37], "k-", lw=1.0)
-        ax.text(r, 1.43, str(r), ha="center", fontsize=8)
+        ax.text(r, 1.43, str(hi - (r - lo)), ha="center", fontsize=8)
     ax.text((lo + hi) / 2, 1.55, "average rank (1 = best, right)", ha="center", fontsize=8)
     xpos = lambda r: hi - (r - lo)                     # best rank -> right
     items = sorted(avg.items(), key=lambda kv: kv[1])  # best first

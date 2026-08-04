@@ -66,6 +66,16 @@ class TreeGuidedSpikeEncoder:
         self.out_dim = 0
 
     def fit(self, teacher, n_features: int, X=None):
+        if self.encoder_mode == "raw":
+            # Attribution control (no tree involvement anywhere): one channel per
+            # feature, TTFS applied directly to the already-MinMax'd raw value.
+            # Same T, same student, same schedule as "tree" - only the encoder
+            # changes, which is what isolates the tree-derived representation.
+            self.edges_ = {}
+            self.channels_ = [(j, 0.0) for j in range(n_features)]
+            self.out_dim = len(self.channels_)
+            return self
+
         booster = teacher.get_booster()
         tdf = booster.trees_to_dataframe()
         # collect split thresholds per feature (feature names are 'f0','f1',...)
@@ -124,6 +134,10 @@ class TreeGuidedSpikeEncoder:
     def _levels(self, X: np.ndarray):
         """Map each kept feature value to a bin level in [0,1] via tree thresholds."""
         feats = sorted({j for j, _ in self.channels_})
+        if self.encoder_mode == "raw":
+            # raw control: the loader already MinMax-scales to [0,1], so the value
+            # *is* the level (no binning, no thresholds).
+            return {j: np.clip(X[:, j], 0.0, 1.0) for j in feats}
         lvl = {}
         for j in feats:
             e = self.edges_.get(j, None)

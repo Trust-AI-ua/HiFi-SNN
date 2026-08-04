@@ -63,6 +63,7 @@ DEFAULTS = {
     "a_rank": 0.3,
     "a_sparse": 1e-3,
     "a_fp": 0.5,
+    "class_weighted": False,  # inverse-frequency CE weights on the student (control)
     # training
     "epochs": 10,
     "batch_size": 128,
@@ -124,10 +125,17 @@ def _resolve(cfg: Dict) -> Dict:
 
 
 def distillation_loss(logits, y, teacher_proba, hidden_rate, benign_class=0,
-                      tau=2.0, a_kd=1.0, a_rank=0.3, a_sparse=1e-3, a_fp=0.5):
-    """CE + KD + ranking + spike-sparsity + FP-aware (see Design C reference)."""
+                      tau=2.0, a_kd=1.0, a_rank=0.3, a_sparse=1e-3, a_fp=0.5,
+                      ce_weight=None):
+    """CE + KD + ranking + spike-sparsity + FP-aware (see Design C reference).
+
+    ``ce_weight`` (optional [num_classes] tensor) applies inverse-frequency class
+    weighting to the CE term. The teacher is cost-sensitive while the student's CE
+    is unweighted by default; this switch provides the class-weighted student
+    control that separates knowledge transfer from imbalance-policy transfer.
+    """
     eps = 1e-8
-    ce = F.cross_entropy(logits, y)
+    ce = F.cross_entropy(logits, y, weight=ce_weight)
 
     # KD: soft cross-entropy from the (temperature-sharpened) teacher distribution
     t = teacher_proba.clamp_min(eps) ** (1.0 / tau)
@@ -277,6 +285,14 @@ def run_experiment(cfg: Dict) -> Dict:
         _teacher_proba_global(teacher, Xtr_df, teacher_classes, num_classes),
         dtype=torch.float32)
     yt = torch.tensor(ytr, dtype=torch.long)
+    ce_weight = None
+    if cfg.get("class_weighted", False):
+        counts = np.bincount(ytr, minlength=num_classes).astype(np.float32)
+        w = counts.sum() / (num_classes * np.maximum(counts, 1.0))
+        w[counts == 0] = 0.0                      # absent classes contribute nothing
+        ce_weight = torch.tensor(w, dtype=torch.float32, device=device)
+        print(f"[class-weighted] CE weights min={w[counts>0].min():.3f} "
+              f"max={w.max():.3f}")
     N = len(Xtr)
     bs = cfg["batch_size"]
     training_curve = []
@@ -292,7 +308,7 @@ def run_experiment(cfg: Dict) -> Dict:
             loss, last_parts = distillation_loss(
                 logits, yt[idx].to(device), teacher_proba_all[idx].to(device),
                 hidden_rate, tau=cfg["tau"], a_kd=cfg["a_kd"], a_rank=cfg["a_rank"],
-                a_sparse=cfg["a_sparse"], a_fp=cfg["a_fp"])
+                a_sparse=cfg["a_sparse"], a_fp=cfg["a_fp"], ce_weight=ce_weight)
             optim.zero_grad(); loss.backward(); optim.step()
             running += float(loss.item()); n_batches += 1
         # val accuracy (standard forward)
@@ -380,7 +396,7 @@ def run_experiment(cfg: Dict) -> Dict:
         "config": {k: cfg[k] for k in
                    ["T", "pop_max", "prune_quantile", "jitter", "encoder_mode", "hidden", "beta",
                     "leaky", "teacher_n_estimators", "teacher_max_depth", "teacher_lr",
-                    "tau", "a_kd", "a_rank", "a_sparse", "a_fp", "quantize",
+                    "tau", "a_kd", "a_rank", "a_sparse", "a_fp", "class_weighted", "quantize",
                     "theta_exit", "theta_uncertain", "epochs", "batch_size", "lr",
                     "weight_decay", "val_fraction", "seed", "device"]},
         "hardware": hw,
