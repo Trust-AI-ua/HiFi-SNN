@@ -15,17 +15,18 @@ import glob
 import json
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[1]
-DATASETS = ["ciciot2023", "ciciomt2024", "edgeiiot", "toniot"]
-SEEDS = [42, 43, 44, 45, 46]
-ARMS = ["raw", "tree_only", "prune_only", "alloc_only", "kd_only", "rank_only",
-        "no_sparse", "no_fp", "class_weighted", "class_weighted_nokd", "fp32"]
-TOTAL = len(ARMS) * len(DATASETS) * len(SEEDS)
+sys.path.insert(0, str(REPO))
+# Arm list is imported from the driver so the two can never drift apart.
+from scripts.run_ladder import ARMS as _ARM_CFG, DATASETS, SEEDS  # noqa: E402
+
+ARMS = list(_ARM_CFG)
 
 
 def alive() -> str:
@@ -41,19 +42,24 @@ def alive() -> str:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results", action="store_true", help="also show macro-F1 per arm")
+    ap.add_argument("--arms", nargs="+", default=ARMS,
+                    help="restrict the view to these arms (e.g. raw_full tree_ce)")
     args = ap.parse_args()
+    arms = [a for a in ARMS if a in args.arms]
+    total = len(arms) * len(DATASETS) * len(SEEDS)
 
     done = {}
     for f in glob.glob(str(REPO / "results/ladder/*/*/seed_*/results.json")):
         p = Path(f).parts
         done[(p[-3], p[-4], int(p[-2].split("_")[1]))] = f   # (arm, dataset, seed)
 
+    done = {k: v for k, v in done.items() if k[0] in arms}
     n = len(done)
     print(f"job: {alive()}")
-    print(f"progress: {n}/{TOTAL} runs ({100*n/TOTAL:.1f}%)\n")
+    print(f"progress: {n}/{total} runs ({100*n/total:.1f}%)\n")
 
     print(f"{'arm':22s} " + " ".join(f"{s:>4d}" for s in SEEDS) + "   complete")
-    for a in ARMS:
+    for a in arms:
         cells, tot = [], 0
         for s in SEEDS:
             c = sum(1 for d in DATASETS if (a, d, s) in done)
@@ -77,12 +83,12 @@ def main():
     if rt:
         per = np.median(rt) / 3600
         print(f"\nmedian run time: {per*60:.0f} min")
-        print(f"remaining: {TOTAL-n} runs ~ {(TOTAL-n)*per:.0f} h "
-              f"(~{(TOTAL-n)*per/24:.1f} days at current rate)")
+        print(f"remaining: {total-n} runs ~ {(total-n)*per:.0f} h "
+              f"(~{(total-n)*per/24:.1f} days at current rate)")
 
     if args.results:
         print(f"\n{'arm':22s} {'macro-F1':>9s} {'n':>3s}")
-        for a in ARMS:
+        for a in arms:
             v = [json.load(open(p))["test_plus"]["metrics"]["f1_macro"] * 100
                  for (aa, _, _), p in done.items() if aa == a]
             if v:

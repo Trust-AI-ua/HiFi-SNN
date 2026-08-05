@@ -1,0 +1,187 @@
+{
+  "model": "DNN-Tree",
+  "dataset": "toniot_flow_binary_f1",
+  "neuron": "ReLU",
+  "encoding": "tree-guided-dense",
+  "config": {
+    "T": 20,
+    "pop_max": 3,
+    "prune_quantile": 0.2,
+    "jitter": 0.12,
+    "hidden": [
+      64,
+      64
+    ],
+    "clip_relu": null,
+    "teacher_n_estimators": 200,
+    "teacher_max_depth": 6,
+    "teacher_lr": 0.1,
+    "tau": 2.0,
+    "a_kd": 1.0,
+    "a_rank": 0.3,
+    "a_fp": 0.5,
+    "epochs": 10,
+    "batch_size": 128,
+    "lr": 0.002,
+    "weight_decay": 0.0,
+    "quantize": true,
+    "val_fraction": 0.1,
+    "seed": 44,
+    "device": "cuda"
+  },
+  "hardware": {
+    "device": "cuda",
+    "gpu_name": "NVIDIA H200 NVL",
+    "hostname": "michele-research-vm"
+  },
+  "data": {
+    "num_features": 132,
+    "num_classes": 2,
+    "class_names": [
+      "benign",
+      "attack"
+    ],
+    "class_counts_train": {
+      "benign": 28313,
+      "attack": 95590
+    },
+    "encoder_channels": 50
+  },
+  "model_size": {
+    "total_parameters": 7554,
+    "trainable_parameters": 7554
+  },
+  "training": {
+    "train_time_s": 79.46538400650024,
+    "training_curve": [
+      {
+        "epoch": 1,
+        "train_loss": 0.18288902422674924,
+        "val_accuracy": 0.9950606522844483
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.11431963635562373,
+        "val_accuracy": 0.995351202150069
+      },
+      {
+        "epoch": 3,
+        "train_loss": 0.10906795206025613,
+        "val_accuracy": 0.9954238396164742
+      },
+      {
+        "epoch": 4,
+        "train_loss": 0.10656243622734034,
+        "val_accuracy": 0.9962954892133362
+      },
+      {
+        "epoch": 5,
+        "train_loss": 0.10458001250416533,
+        "val_accuracy": 0.9962954892133362
+      },
+      {
+        "epoch": 6,
+        "train_loss": 0.10309633588002733,
+        "val_accuracy": 0.9964407641461466
+      },
+      {
+        "epoch": 7,
+        "train_loss": 0.1021612182428891,
+        "val_accuracy": 0.9965134016125518
+      },
+      {
+        "epoch": 8,
+        "train_loss": 0.10002133916786388,
+        "val_accuracy": 0.9965860390789569
+      },
+      {
+        "epoch": 9,
+        "train_loss": 0.09949840980866724,
+        "val_accuracy": 0.9968039514781725
+      },
+      {
+        "epoch": 10,
+        "train_loss": 0.09805673691790459,
+        "val_accuracy": 0.9969492264109828
+      }
+    ]
+  },
+  "test_plus": {
+    "n_samples": 45890,
+    "metrics": {
+      "accuracy": 0.996404445412944,
+      "balanced_accuracy": 0.9952198801990089,
+      "f1_macro": 0.9949043088683299,
+      "f1_weighted": 0.9964055901414209,
+      "precision_macro": 0.9945896222668482,
+      "recall_macro": 0.9952198801990089,
+      "matthews_corrcoef": 0.9898093018085081,
+      "cohen_kappa": 0.9898086202126065,
+      "per_class": {
+        "benign": {
+          "precision": 0.9912422655878154,
+          "recall": 0.9930383368300592,
+          "f1": 0.9921394883521509,
+          "support": 10486
+        },
+        "attack": {
+          "precision": 0.9979369789458811,
+          "recall": 0.9974014235679585,
+          "f1": 0.9976691293845089,
+          "support": 35404
+        }
+      },
+      "class_names": [
+        "benign",
+        "attack"
+      ],
+      "roc_auc_weighted": 0.9997886605450315,
+      "confusion_matrix": [
+        [
+          10413,
+          73
+        ],
+        [
+          92,
+          35312
+        ]
+      ]
+    },
+    "binary_ids_metrics": {
+      "binary_accuracy": 0.996404445412944,
+      "detection_rate": 0.9974014235679585,
+      "false_alarm_rate": 0.006961663169940874,
+      "binary_precision": 0.9979369789458811,
+      "binary_f1": 0.997669129384509,
+      "tp": 35312,
+      "fp": 73,
+      "tn": 10413,
+      "fn": 92,
+      "binary_confusion_matrix": [
+        [
+          10413,
+          73
+        ],
+        [
+          92,
+          35312
+        ]
+      ]
+    },
+    "compute": {
+      "macs_per_sample": 7424,
+      "energy_pj_horowitz": 34150.399999999994,
+      "e_mac_pj": 4.6,
+      "paradigm": "dense one-shot ANN (T=1)",
+      "quantized_int8": true
+    },
+    "teacher_upper_bound": {
+      "accuracy": 0.9986707343647854,
+      "f1_macro": 0.9981160121489592,
+      "matthews_corrcoef": 0.9962325742997586
+    },
+    "inference_ms_per_sample_batch1": 0.02642202377319336,
+    "inference_ms_per_sample_batched": 0.00045609474182128906
+  },
+  "test_minus_21": null
+}

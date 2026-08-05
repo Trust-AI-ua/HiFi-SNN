@@ -1,0 +1,215 @@
+{
+  "model": "TASNN",
+  "dataset": "toniot_hostdisjoint_binary_f1",
+  "neuron": "LIF+lateral",
+  "encoding": "MASE",
+  "config": {
+    "num_steps": 16,
+    "d_model": 128,
+    "n_heads": 4,
+    "n_layers": 3,
+    "ff": 256,
+    "dropout": 0.1,
+    "pop_M": 3,
+    "stc_channels": 64,
+    "stc_kernel": 3,
+    "lif_hidden": [
+      128,
+      64
+    ],
+    "lif_beta": 0.9,
+    "lif_v_th": 1.0,
+    "lif_gamma": 0.1,
+    "surrogate_beta": 5.0,
+    "target_rate": 0.1,
+    "w_tr": 1.0,
+    "w_snn": 1.0,
+    "w_kd": 0.5,
+    "w_homeo": 0.1,
+    "w_energy": 0.001,
+    "w_gate": 0.001,
+    "focal_gamma": 2.0,
+    "kd_tau": 3.0,
+    "batch_size": 128,
+    "epochs": 10,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "class_weighted": false,
+    "early_exit_conf": 0.9,
+    "val_fraction": 0.1,
+    "seed": 45,
+    "device": "cuda"
+  },
+  "hardware": {
+    "device": "cuda",
+    "gpu_name": "NVIDIA H200 NVL",
+    "cuda_index": 0,
+    "cuda_visible_devices": "",
+    "hostname": "michele-research-vm"
+  },
+  "data": {
+    "num_features": 120,
+    "num_classes": 2,
+    "class_names": [
+      "benign",
+      "attack"
+    ],
+    "class_counts_train": {
+      "benign": 25141,
+      "attack": 108105
+    },
+    "splits": {
+      "train": 133246,
+      "val": 17074,
+      "test_plus": 33240,
+      "test_minus_21": null
+    }
+  },
+  "model_size": {
+    "total_parameters": 566396,
+    "trainable_parameters": 566396
+  },
+  "training": {
+    "train_time_s": 538.145318031311,
+    "training_curve": [
+      {
+        "epoch": 1,
+        "train_loss": 0.07836354755430583,
+        "val_loss": 0.9447604555692246,
+        "val_accuracy": 0.6723673421576666
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.038394806224863534,
+        "val_loss": 0.8410080780289066,
+        "val_accuracy": 0.688239428370622
+      },
+      {
+        "epoch": 3,
+        "train_loss": 0.038033304510568335,
+        "val_loss": 0.4120195705666026,
+        "val_accuracy": 0.8758346023193159
+      },
+      {
+        "epoch": 4,
+        "train_loss": 0.03454005704453711,
+        "val_loss": 0.8383871324693979,
+        "val_accuracy": 0.6733630080824645
+      },
+      {
+        "epoch": 5,
+        "train_loss": 0.03424609074589155,
+        "val_loss": 0.7117374325310116,
+        "val_accuracy": 0.6886494084573035
+      },
+      {
+        "epoch": 6,
+        "train_loss": 0.032387109213901415,
+        "val_loss": 0.9778746017602398,
+        "val_accuracy": 0.6730701651634063
+      },
+      {
+        "epoch": 7,
+        "train_loss": 0.030161488116839604,
+        "val_loss": 0.9033084791918188,
+        "val_accuracy": 0.6897622115497247
+      },
+      {
+        "epoch": 8,
+        "train_loss": 0.029365626153939624,
+        "val_loss": 0.8068177212974919,
+        "val_accuracy": 0.6716059505681152
+      },
+      {
+        "epoch": 9,
+        "train_loss": 0.02795186607251221,
+        "val_loss": 0.7771306325917813,
+        "val_accuracy": 0.6740072625043927
+      },
+      {
+        "epoch": 10,
+        "train_loss": 0.027428257159663294,
+        "val_loss": 0.5188137971754394,
+        "val_accuracy": 0.6776385147007146
+      }
+    ]
+  },
+  "test_plus": {
+    "n_samples": 33240,
+    "metrics": {
+      "accuracy": 0.9533393501805054,
+      "balanced_accuracy": 0.9095240190514504,
+      "f1_macro": 0.9179569272897541,
+      "f1_weighted": 0.952851462082557,
+      "precision_macro": 0.927020516752777,
+      "recall_macro": 0.9095240190514504,
+      "matthews_corrcoef": 0.8363615444005648,
+      "cohen_kappa": 0.8359375089501233,
+      "per_class": {
+        "benign": {
+          "precision": 0.8874887488748875,
+          "recall": 0.8418715846994536,
+          "f1": 0.8640785207256156,
+          "support": 5856
+        },
+        "attack": {
+          "precision": 0.9665522846306664,
+          "recall": 0.9771764534034473,
+          "f1": 0.9718353338538924,
+          "support": 27384
+        }
+      },
+      "class_names": [
+        "benign",
+        "attack"
+      ],
+      "roc_auc_weighted": 0.9705878442638916,
+      "confusion_matrix": [
+        [
+          4930,
+          926
+        ],
+        [
+          625,
+          26759
+        ]
+      ]
+    },
+    "binary_ids_metrics": {
+      "binary_accuracy": 0.9533393501805054,
+      "detection_rate": 0.9771764534034473,
+      "false_alarm_rate": 0.15812841530054644,
+      "binary_precision": 0.9665522846306664,
+      "binary_f1": 0.9718353338538924,
+      "tp": 26759,
+      "fp": 926,
+      "tn": 4930,
+      "fn": 625,
+      "binary_confusion_matrix": [
+        [
+          4930,
+          926
+        ],
+        [
+          625,
+          26759
+        ]
+      ]
+    },
+    "spike_stats": {
+      "energy_spikes_per_sample": 6.752617328519856,
+      "total_spikes": 224457.0,
+      "spike_density": 0.0021981176199608907,
+      "spike_sparsity": 0.9978018823800391
+    },
+    "inference_time_s": 8.965224027633667,
+    "inference_ms_per_sample": 0.26971191418873847,
+    "early_exit": {
+      "accuracy": 0.9535800240673887,
+      "f1_macro": 0.9184254336844306,
+      "mean_exit_step": 5.681407942238267
+    },
+    "test_loss": 0.09565713185136421
+  },
+  "test_minus_21": null
+}

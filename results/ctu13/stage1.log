@@ -1,0 +1,43 @@
+=== 1. timestamp audit ===
+  rows 801132 parsed 801132 invalid 0
+  online-causal acceptance: True
+
+=== 2. scenario-fold MIP ===
+  feasible=True
+  fold0: test=[np.int64(2), np.int64(4), np.int64(8)] val=[np.int64(1), np.int64(3)] rows={'train': 378980, 'val': 57909, 'test': 364243} botnet%={'train': 0.5501, 'val': 0.4062, 'test': 0.584} maxshare=0.5901 pass=True
+  fold1: test=[np.int64(7), np.int64(9), np.int64(11)] val=[np.int64(1), np.int64(3)] rows={'train': 532279, 'val': 57909, 'test': 210944} botnet%={'train': 0.5759, 'val': 0.4062, 'test': 0.5435} maxshare=0.5793 pass=True
+  fold2: test=[np.int64(1), np.int64(3), np.int64(5), np.int64(10)] val=[np.int64(0)] rows={'train': 648869, 'val': 71348, 'test': 80915} botnet%={'train': 0.5663, 'val': 0.5741, 'test': 0.4488} maxshare=0.3715 pass=True
+  fold3: test=[np.int64(0), np.int64(6), np.int64(12)] val=[np.int64(1), np.int64(3)] rows={'train': 598193, 'val': 57909, 'test': 145030} botnet%={'train': 0.5686, 'val': 0.4062, 'test': 0.5587} maxshare=0.496 pass=True
+
+=== 3. 36-run feature-subset diagnostic ===
+  fold0 legacy_random    base     F1= 99.99 FAR=  0.01
+  fold0 legacy_random    host     F1=100.00 FAR=  0.00
+  fold0 legacy_random    combined F1=100.00 FAR=  0.00
+Traceback (most recent call last):
+  File "/home/student3/HiSNN/.venv/lib/python3.12/site-packages/pandas/core/indexes/base.py", line 3641, in get_loc
+    return self._engine.get_loc(casted_key)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 168, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 197, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7668, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7676, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'SrcAddr'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/student3/HiSNN/scripts/ctu13_stage1.py", line 204, in <module>
+    r = diagnostic(d, fo["folds"])
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/student3/HiSNN/scripts/ctu13_stage1.py", line 164, in diagnostic
+    ch.append(causal_host_features(g))
+              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/student3/HiSNN/src/data/ctu13_causal.py", line 76, in causal_host_features
+    src = df["SrcAddr"].to_numpy()
+          ~~^^^^^^^^^^^
+  File "/home/student3/HiSNN/.venv/lib/python3.12/site-packages/pandas/core/frame.py", line 4378, in __getitem__
+    indexer = self.columns.get_loc(key)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/student3/HiSNN/.venv/lib/python3.12/site-packages/pandas/core/indexes/base.py", line 3648, in get_loc
+    raise KeyError(key) from err
+KeyError: 'SrcAddr'

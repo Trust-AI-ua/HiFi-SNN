@@ -28,9 +28,12 @@ Usage
 from __future__ import annotations
 
 import argparse
+import concurrent.futures as cf
 import json
+import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -77,6 +80,30 @@ ARMS = {
 
     # --- concern 5: predictive effect of the int8 weight grid ---
     "fp32": dict(quantize=False),
+
+    # --- round-2 item 7: clean class-weighting x distillation 2x2 -------------
+    # Ranking is held FIXED at its deployed value in all four cells, so only
+    # class weighting and KD vary. The other three cells already exist:
+    #   CW off / KD on  = full        CW off / KD off = rank_only
+    #   CW on  / KD on  = class_weighted
+    "cw_nokd_rankfixed": dict(class_weighted=True, a_kd=0.0),
+
+    # --- round-2 item 9: is the 10-epoch schedule the instability? -----------
+    "epochs30": dict(epochs=30),
+
+    # --- round-2 item 8: one-factor-at-a-time sensitivity around the deployed
+    # operating point (T=20, q=0.20, M_max=3, delta=0.12, tau=2.0, margin=0.05,
+    # a_kd=1.0, a_rank=0.3, a_sparse=1e-3, a_fp=0.5). T is prioritised because
+    # the temporal-sufficiency analysis shows heavy level collision at T=20.
+    "T10": dict(T=10), "T40": dict(T=40), "T80": dict(T=80),
+    "q10": dict(prune_quantile=0.10), "q40": dict(prune_quantile=0.40),
+    "M2": dict(pop_max=2), "M5": dict(pop_max=5),
+    "d000": dict(jitter=0.0), "d006": dict(jitter=0.06), "d024": dict(jitter=0.24),
+    "tau1": dict(tau=1.0), "tau4": dict(tau=4.0),
+    "akd05": dict(a_kd=0.5), "akd20": dict(a_kd=2.0),
+    "arank01": dict(a_rank=0.1), "arank06": dict(a_rank=0.6),
+    "asparse1e4": dict(a_sparse=1e-4), "asparse1e2": dict(a_sparse=1e-2),
+    "afp025": dict(a_fp=0.25), "afp100": dict(a_fp=1.0),
 }
 ORDER = list(ARMS)
 
@@ -84,9 +111,13 @@ ORDER = list(ARMS)
 def build_cfg(ds: str, arm: str, seed: int) -> dict:
     cfg = yaml.safe_load(open(REPO / f"experiments/Tree-to-Spike/{ds}/config.yaml"))
     cfg.update(ARMS[arm])
+    # The summary CSV is rewritten wholesale by _append_summary, so a shared path
+    # would be corrupted by concurrent workers. Give every run its own file inside
+    # its own result directory; results.json remains the source of truth for all
+    # analysis and the per-run CSVs can be concatenated afterwards if wanted.
     cfg.update(seed=seed,
                results_dir=str(REPO / f"results/ladder/{ds}/{arm}"),
-               summary_csv=str(REPO / "results/ladder/summary.csv"))
+               summary_csv=str(REPO / f"results/ladder/{ds}/{arm}/seed_{seed}/summary.csv"))
     return cfg
 
 
@@ -96,6 +127,8 @@ def main():
     ap.add_argument("--datasets", nargs="+", default=DATASETS, choices=DATASETS)
     ap.add_argument("--seeds", nargs="+", type=int, default=SEEDS)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--workers", type=int, default=1,
+                    help="concurrent runs (CPU-bound: keep workers x 4 <= cores)")
     ap.add_argument("--single", nargs=3, metavar=("ARM", "DATASET", "SEED"),
                     help="internal: run exactly one experiment in this process")
     args = ap.parse_args()
@@ -125,25 +158,45 @@ def main():
         return
 
     t0 = time.time()
-    for i, (arm, ds, seed) in enumerate(todo, 1):
-        el = time.time() - t0
-        eta = (el / max(i - 1, 1)) * (len(todo) - i + 1) / 3600 if i > 1 else float("nan")
-        print(f"\n{'='*70}\n[ladder {i}/{len(todo)}] {arm} / {ds} / seed {seed} "
-              f"| elapsed {el/3600:.2f} h | eta {eta:.1f} h\n{'='*70}", flush=True)
+    done_n = [0]
+    lock = threading.Lock()
+
+    def one(job):
+        arm, ds, seed = job
         # Each run executes in its own process: a segfault or C++ abort inside
         # torch cannot take the queue down with it, and CUDA state is reset
         # between runs. Retried once, since the allocator fault we hit was
         # transient rather than deterministic.
         cmd = [sys.executable, str(Path(__file__).resolve()),
                "--single", arm, ds, str(seed)]
+        env = dict(os.environ)
+        # Keep total CPU demand bounded: N workers x this many threads <= cores.
+        env.setdefault("OMP_NUM_THREADS", str(max(1, 16 // max(args.workers, 1))))
         for attempt in (1, 2):
-            r = subprocess.run(cmd, cwd=str(REPO))
+            r = subprocess.run(cmd, cwd=str(REPO), env=env)
             if r.returncode == 0:
                 break
             print(f"[FAIL] {arm}/{ds}/seed_{seed}: exit {r.returncode}"
                   f"{' (retrying once)' if attempt == 1 else ' (giving up, moving on)'}",
                   flush=True)
             time.sleep(10)
+        with lock:
+            done_n[0] += 1
+            el = time.time() - t0
+            rate = el / max(done_n[0], 1)
+            print(f"[ladder {done_n[0]}/{len(todo)}] finished {arm}/{ds}/seed_{seed} "
+                  f"| elapsed {el/3600:.2f} h | eta {rate*(len(todo)-done_n[0])/3600:.1f} h",
+                  flush=True)
+
+    if args.workers > 1:
+        print(f"[ladder] running {args.workers} concurrent workers", flush=True)
+        with cf.ThreadPoolExecutor(max_workers=args.workers) as ex:
+            list(ex.map(one, todo))
+    else:
+        for job in todo:
+            print(f"\n{'='*70}\n[ladder] {job[0]} / {job[1]} / seed {job[2]}\n{'='*70}",
+                  flush=True)
+            one(job)
 
     print(f"\n[ladder] finished in {(time.time()-t0)/3600:.2f} h", flush=True)
 

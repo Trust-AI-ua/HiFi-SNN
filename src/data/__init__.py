@@ -9,6 +9,8 @@ from src.data.unswnb15 import load_unswnb15
 from src.data.ciciomt2024 import load_ciciomt2024
 from src.data.ciciot2023 import load_ciciot2023
 from src.data.toniot import load_toniot
+from functools import partial as _partial
+from src.data.leakage import load_leakage_bundle
 
 DATASET_LOADERS = {
     "nslkdd": load_nslkdd,
@@ -23,6 +25,28 @@ DATASET_LOADERS = {
     "ciciot2023": load_ciciot2023,
     "toniot": load_toniot,
 }
+
+# Leakage-resistant protocols (round-2 reviewer item 1). Registered as first-class
+# dataset names so every trainer can consume them unchanged:
+#   <ds>_hostdisjoint_binary : constrained source-IP-disjoint 4-fold, binary task
+#   <ds>_flow_binary         : binary flow-level CONTROL (same rows/dedup/encoding,
+#                              random split) -- isolates the partition effect from
+#                              the change in task granularity
+for _ds in ("toniot", "edgeiiot"):
+    DATASET_LOADERS[f"{_ds}_hostdisjoint_binary"] = _partial(
+        load_leakage_bundle, dataset=_ds, split_mode="host", label_mode="binary")
+    DATASET_LOADERS[f"{_ds}_flow_binary"] = _partial(
+        load_leakage_bundle, dataset=_ds, split_mode="flow", label_mode="binary")
+    # Fold-pinned variants: the dataset name fixes the outer partition, freeing the
+    # trainer's `seed` to act purely as an optimisation seed. This is what makes the
+    # 4 folds x 5 seeds design expressible without modifying any trainer.
+    for _f in range(4):
+        DATASET_LOADERS[f"{_ds}_hostdisjoint_binary_f{_f}"] = _partial(
+            load_leakage_bundle, dataset=_ds, split_mode="host",
+            label_mode="binary", fold_override=_f)
+        DATASET_LOADERS[f"{_ds}_flow_binary_f{_f}"] = _partial(
+            load_leakage_bundle, dataset=_ds, split_mode="flow",
+            label_mode="binary", fold_override=_f)
 
 
 def get_dataset(name: str, **kwargs):

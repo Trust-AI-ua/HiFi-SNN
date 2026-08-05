@@ -1,0 +1,160 @@
+"""CTU-13 under three aggregation/partition conditions (round-2 follow-up).
+
+The production CTU-13 loader computes per-SrcAddr host statistics over an entire
+scenario and merges them onto every flow, so a test flow's features are computed
+partly *from test flows*. That is a feature-level leak independent of how rows
+are split, and it is the most likely explanation of the 100.00 macro-F1 ceiling.
+
+Separating the two effects needs three conditions, not two:
+
+  legacy    global per-scenario aggregates + random flow split   (reproduces the
+                                                                  published ceiling)
+  causal    online-causal aggregates       + random flow split   (isolates the
+                                                                  aggregation leak)
+  scenario  online-causal aggregates       + scenario-disjoint   (adds scenario shift)
+
+    delta_aggregation = M(causal)   - M(legacy)
+    delta_scenario    = M(scenario) - M(causal)
+
+Online-causal means: within a scenario, flows are processed in StartTime order and
+each flow's host features are computed from *strictly earlier* flows of the same
+SrcAddr only. State is reset at every scenario boundary and never carried across
+scenarios. The timestamp audit supports this: all 13 scenarios parse at 100%, are
+monotonically ordered, contain no negative intervals, resolve to 1 microsecond,
+and no two scenarios overlap in time.
+"""
+from __future__ import annotations
+
+import glob
+import math
+from collections import defaultdict
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+import numpy as np
+import pandas as pd
+
+REPO = Path(__file__).resolve().parents[2]
+HOST_COLS = ["src_flow_count", "src_unique_dsts", "src_unique_dports",
+             "src_unique_sports", "src_unique_protos", "src_unique_states",
+             "src_total_dur", "src_mean_dur", "src_std_dur",
+             "src_total_pkts", "src_mean_pkts", "src_total_bytes",
+             "src_mean_bytes", "src_total_src_bytes", "src_mean_src_bytes",
+             "src_port_entropy", "src_proto_entropy"]
+
+
+def _entropy_from_counts(counter: Dict, total: int) -> float:
+    if total <= 0:
+        return 0.0
+    h = 0.0
+    for c in counter.values():
+        if c:
+            p = c / total
+            h -= p * math.log2(p)
+    return h
+
+
+def causal_host_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Per-flow host statistics from strictly earlier flows of the same SrcAddr.
+
+    One chronological pass per scenario with running per-source accumulators. The
+    first flow of a source has no history, so its features are zero -- that is the
+    honest online value, not an imputation.
+    """
+    n = len(df)
+    out = {c: np.zeros(n, dtype=np.float64) for c in HOST_COLS}
+    cnt: Dict = defaultdict(int)
+    s_dur: Dict = defaultdict(float); s_dur2: Dict = defaultdict(float)
+    s_pkt: Dict = defaultdict(float); s_byt: Dict = defaultdict(float)
+    s_sby: Dict = defaultdict(float)
+    dsts: Dict = defaultdict(set); dports: Dict = defaultdict(set)
+    sports: Dict = defaultdict(set); protos: Dict = defaultdict(set)
+    states: Dict = defaultdict(set)
+    dport_c: Dict = defaultdict(lambda: defaultdict(int))
+    proto_c: Dict = defaultdict(lambda: defaultdict(int))
+
+    src = df["SrcAddr"].to_numpy()
+    dst = df["DstAddr"].to_numpy(); dp = df["Dport"].to_numpy()
+    sp = df["Sport"].to_numpy(); pr = df["Proto"].to_numpy()
+    st = df["State"].to_numpy()
+    dur = df["Dur"].to_numpy(float); pkt = df["TotPkts"].to_numpy(float)
+    byt = df["TotBytes"].to_numpy(float); sby = df["SrcBytes"].to_numpy(float)
+
+    for i in range(n):
+        s = src[i]
+        k = cnt[s]
+        if k:                                   # emit BEFORE updating -> causal
+            out["src_flow_count"][i] = k
+            out["src_unique_dsts"][i] = len(dsts[s])
+            out["src_unique_dports"][i] = len(dports[s])
+            out["src_unique_sports"][i] = len(sports[s])
+            out["src_unique_protos"][i] = len(protos[s])
+            out["src_unique_states"][i] = len(states[s])
+            out["src_total_dur"][i] = s_dur[s]
+            out["src_mean_dur"][i] = s_dur[s] / k
+            var = max(s_dur2[s] / k - (s_dur[s] / k) ** 2, 0.0)
+            out["src_std_dur"][i] = math.sqrt(var)
+            out["src_total_pkts"][i] = s_pkt[s]
+            out["src_mean_pkts"][i] = s_pkt[s] / k
+            out["src_total_bytes"][i] = s_byt[s]
+            out["src_mean_bytes"][i] = s_byt[s] / k
+            out["src_total_src_bytes"][i] = s_sby[s]
+            out["src_mean_src_bytes"][i] = s_sby[s] / k
+            out["src_port_entropy"][i] = _entropy_from_counts(dport_c[s], k)
+            out["src_proto_entropy"][i] = _entropy_from_counts(proto_c[s], k)
+        cnt[s] = k + 1
+        s_dur[s] += dur[i]; s_dur2[s] += dur[i] * dur[i]
+        s_pkt[s] += pkt[i]; s_byt[s] += byt[i]; s_sby[s] += sby[i]
+        dsts[s].add(dst[i]); dports[s].add(dp[i]); sports[s].add(sp[i])
+        protos[s].add(pr[i]); states[s].add(st[i])
+        dport_c[s][dp[i]] += 1; proto_c[s][pr[i]] += 1
+    return pd.DataFrame(out, index=df.index)
+
+
+def build_conditions(data_dir: Path = None) -> Path:
+    """Emit a parquet with BOTH aggregate variants plus scenario id and time."""
+    data_dir = Path(data_dir or REPO / "dataset/ctu13")
+    out = data_dir / "_three_condition.parquet"
+    if out.exists():
+        return out
+    from src.data.ctu13 import _read_one, _aggregate_per_source
+
+    frames = []
+    for si, f in enumerate(sorted(glob.glob(str(data_dir / "binetflow" / "scenario-*-*.binetflow")))):
+        df = _read_one(Path(f))
+        lbl = df["Label"].astype(str)
+        df = df[lbl.str.contains("Botnet", na=False) | lbl.str.contains("Normal", na=False)].copy()
+        if not len(df):
+            continue
+        for c in ("Dur", "TotPkts", "TotBytes", "SrcBytes", "sTos", "dTos"):
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
+        df["Sport"] = pd.to_numeric(df["Sport"], errors="coerce").fillna(0)
+        df["Dport"] = pd.to_numeric(df["Dport"], errors="coerce").fillna(0)
+        for c in ("Proto", "Dir", "State"):
+            df[c] = df[c].astype(str).str.strip()
+        df["y"] = lbl.loc[df.index].str.contains("Botnet", na=False).astype(np.int64)
+        df["scenario"] = si
+        df["_t"] = pd.to_datetime(df["StartTime"], errors="coerce", format="mixed")
+        df = df.sort_values("_t", kind="stable").reset_index(drop=True)
+
+        legacy = df.merge(_aggregate_per_source(df), on="SrcAddr", how="left")
+        legacy = legacy[HOST_COLS].reset_index(drop=True)
+        legacy.columns = [f"legacy__{c}" for c in HOST_COLS]
+        causal = causal_host_features(df)
+        causal.columns = [f"causal__{c}" for c in HOST_COLS]
+
+        base = df[["Dur", "TotPkts", "TotBytes", "SrcBytes", "sTos", "dTos",
+                   "Sport", "Dport", "Proto", "Dir", "State", "y", "scenario"]]
+        frames.append(pd.concat([base.reset_index(drop=True), legacy, causal], axis=1))
+        print(f"  scenario {si}: {len(df)} flows", flush=True)
+
+    big = pd.concat(frames, ignore_index=True)
+    big.to_parquet(out)
+    print(f"[ctu13] wrote {out}  rows={len(big)}  botnet={int(big.y.sum())}", flush=True)
+    return out
+
+
+if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, str(REPO))
+    build_conditions()
