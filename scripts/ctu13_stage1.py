@@ -16,6 +16,15 @@ sys.path.insert(0, str(REPO))
 OUT = REPO / "results" / "ctu13"; OUT.mkdir(parents=True, exist_ok=True)
 HOST = None  # filled after load
 
+# results/ctu13/SNN_LeakyParallel/ is a leftover phase-1 SNN ablation artifact from
+# 2026-06-25. It is NOT output of this leakage experiment and must never be counted
+# by skip detection: it has the shape <arm>/seed_<n>/results.json, so a naive
+# results/ctu13/*/*/seed_*/results.json glob would read its 5 runs as completed
+# cells of the 300-run matrix and silently skip real work.
+# Skip detection must key on a results.json inside a directory this script owns,
+# never on directory existence under results/ctu13/.
+STALE_DIRS = {"SNN_LeakyParallel"}
+
 GATE = {"min_test_normal": 1000, "min_test_botnet": 1000,
         "max_single_scenario_share_of_test": 0.60,
         "min_val_normal": 500, "min_val_botnet": 500,
@@ -111,8 +120,11 @@ def scenario_folds(d: pd.DataFrame, n_folds: int = 4) -> dict:
         va = best[1]; tr = set(rest) - va
         sel = lambda ss: d.scenario.isin(ss)
         folds[k] = {
-            "test_scenarios": sorted(te), "val_scenarios": sorted(va),
-            "train_scenarios": sorted(tr),
+            # int(), not numpy int64: these round-trip through JSON, and a str
+            # scenario id makes d.scenario.isin(...) match zero rows.
+            "test_scenarios": sorted(int(s) for s in te),
+            "val_scenarios": sorted(int(s) for s in va),
+            "train_scenarios": sorted(int(s) for s in tr),
             "rows": {p: int(sel(s).sum()) for p, s in
                      (("train", tr), ("val", va), ("test", te))},
             "normal": {p: int(((d.y == 0) & sel(s)).sum()) for p, s in
@@ -134,12 +146,53 @@ def scenario_folds(d: pd.DataFrame, n_folds: int = 4) -> dict:
 
 
 # ------------------------------------------------- 3. 36-run RF diagnostic
+def _partition_local_causal(d: pd.DataFrame, partitions, cau_cols: list) -> pd.DataFrame:
+    """Recompute causal host features independently inside each partition.
+
+    Condition B asks what the aggregates look like when a partition may only see
+    its own rows, so the features cannot come from the precomputed causal__*
+    columns (those were built over the whole scenario) -- they must be recomputed,
+    which is why the raw identifier and time columns have to survive into the
+    persisted artifact.
+
+    Results are scattered back positionally through _row_pos. Label-based
+    reindex-after-groupby is correct while the frame carries a unique contiguous
+    RangeIndex, but nothing enforces that invariant, and a silent misalignment
+    here would surface as a plausible metric rather than an error.
+    """
+    from src.data.ctu13_causal import (HOST_COLS, causal_host_features,
+                                       require_raw_columns)
+    require_raw_columns(d)
+    n = len(d)
+    pos_all = d["_row_pos"].to_numpy()
+    if not np.array_equal(pos_all, np.arange(n, dtype=pos_all.dtype)):
+        raise ValueError("_row_pos must be 0..n-1 over the full table")
+
+    H = np.full((n, len(HOST_COLS)), np.nan, dtype=np.float64)
+    seen = np.zeros(n, dtype=np.int64)
+    for part in partitions:
+        # sort by _t, not by index: causal_host_features assumes chronological
+        # arrival, and a random partition destroys the artifact's row order.
+        sub = d.iloc[part].sort_values(["scenario", "_t"], kind="stable")
+        for _, g in sub.groupby("scenario", sort=True):
+            f = causal_host_features(g)
+            pos = g["_row_pos"].to_numpy()
+            H[pos] = f.to_numpy()
+            seen[pos] += 1
+    assert seen.min() == 1 and seen.max() == 1, "every row written exactly once"
+    assert not np.isnan(H).any(), "no unwritten positions"
+    return pd.DataFrame(H, columns=cau_cols, index=d.index)
+
+
 def diagnostic(d: pd.DataFrame, folds: dict) -> list:
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.metrics import f1_score, matthews_corrcoef, confusion_matrix
-    from src.data.ctu13_causal import causal_host_features, HOST_COLS
+    from src.data.ctu13_causal import HOST_COLS, METADATA_COLS
     base = ["Dur","TotPkts","TotBytes","SrcBytes","sTos","dTos","Sport","Dport"]
     LEG=[f"legacy__{c}" for c in HOST_COLS]; CAU=[f"causal__{c}" for c in HOST_COLS]
+    meta = set(METADATA_COLS)
+    assert meta.issubset(d.columns), \
+        f"artifact missing raw columns: {sorted(meta - set(d.columns))}"
     res=[]
     for k, f in folds.items():
         idx = {"A": None, "B": None, "C": None}
@@ -151,24 +204,29 @@ def diagnostic(d: pd.DataFrame, folds: dict) -> list:
         idx["C"] = (np.where(d.scenario.isin(f["train_scenarios"]))[0],
                     np.where(d.scenario.isin(f["val_scenarios"]))[0],
                     np.where(d.scenario.isin(f["test_scenarios"]))[0])
+        # Catches a scenario-id dtype mismatch: the frozen manifest stores ids that
+        # have been through JSON, and isin(["2","4","8"]) against an int64 column
+        # matches zero rows -- an empty partition, not an error.
+        got = dict(zip(("train", "val", "test"), (len(x) for x in idx["C"])))
+        if "rows" in f:
+            assert got == {p: int(f["rows"][p]) for p in got}, (
+                f"fold {k} condition-C sizes {got} != frozen manifest {f['rows']}; "
+                "check scenario-id dtype")
+        assert all(got.values()), f"fold {k} has an empty condition-C partition: {got}"
         for cond, hostcols in (("legacy_random", LEG), ("causal_random", None),
                                ("causal_scenario", CAU)):
             tr, va, te = idx["A" if cond=="legacy_random" else "B" if cond=="causal_random" else "C"]
             if cond == "causal_random":
                 # partition-local causal aggregates: recompute inside each partition
-                parts=[]
-                for part in (tr, va, te):
-                    sub = d.iloc[part].sort_values(["scenario"], kind="stable")
-                    ch = []
-                    for s, g in sub.groupby("scenario", sort=True):
-                        ch.append(causal_host_features(g))
-                    ch = pd.concat(ch); ch.columns = CAU
-                    parts.append(ch.reindex(d.index[part]))
-                H = pd.concat(parts).reindex(d.index)
+                H = _partition_local_causal(d, (tr, va, te), CAU)
                 D = pd.concat([d[base+["y"]], H], axis=1); hc = CAU
             else:
                 D = d; hc = hostcols
             for fs, cols in (("base", base), ("host", hc), ("combined", base+hc)):
+                # Host identity must not reach the classifier: the CTU-13 label is a
+                # property of the host, so SrcAddr as a feature would manufacture the
+                # shortcut this experiment is measuring.
+                assert meta.isdisjoint(cols), f"metadata leaked into {fs} features"
                 X = D[cols].replace([np.inf,-np.inf],0).fillna(0).to_numpy(np.float32)
                 y = d.y.to_numpy()
                 m = RandomForestClassifier(n_estimators=40, n_jobs=8, random_state=42)
@@ -185,14 +243,37 @@ def diagnostic(d: pd.DataFrame, folds: dict) -> list:
     return res
 
 
+def _load_frozen_folds(path: Path) -> dict:
+    """Read a fold manifest back with scenario ids as int, whatever JSON stored."""
+    fo = json.load(open(path))
+    fo["folds"] = {int(k): {**v, **{key: [int(s) for s in v[key]]
+                                    for key in ("train_scenarios", "val_scenarios",
+                                                "test_scenarios")}}
+                   for k, v in fo["folds"].items()}
+    return fo
+
+
 if __name__ == "__main__":
-    print("=== 1. timestamp audit ==="); a = timestamp_audit()
-    json.dump(a, open(OUT/"timestamp_audit.json","w"), indent=2)
+    AUDIT = OUT / "timestamp_audit.json"
+    FOLDS = OUT / "scenario_folds.json"
+    # Both artifacts are FROZEN and results already exist against them. The MIP has
+    # a 120 s time limit and no unique optimum, so re-solving can return a
+    # different-but-feasible assignment and silently invalidate prior results.
+    # Reuse when present; delete the file deliberately to regenerate.
+    print("=== 1. timestamp audit ===")
+    if AUDIT.exists():
+        a = json.load(open(AUDIT)); print(f"  reusing frozen {AUDIT.name}")
+    else:
+        a = timestamp_audit(); json.dump(a, open(AUDIT, "w"), indent=2)
     print(f"  rows {a['total_rows']} parsed {a['total_parsed']} invalid {a['total_invalid']}")
     print(f"  online-causal acceptance: {a['acceptance_online_causal']}")
     d = pd.read_parquet(REPO/"dataset/ctu13/_three_condition.parquet")
-    print("\n=== 2. scenario-fold MIP ==="); fo = scenario_folds(d)
-    json.dump(fo, open(OUT/"scenario_folds.json","w"), indent=2, default=str)
+    print("\n=== 2. scenario-fold MIP ===")
+    if FOLDS.exists():
+        fo = _load_frozen_folds(FOLDS); print(f"  reusing frozen {FOLDS.name}")
+    else:
+        fo = scenario_folds(d)
+        json.dump(fo, open(FOLDS, "w"), indent=2, default=str)
     print(f"  feasible={fo['feasible']}")
     if not fo["feasible"]:
         print("  ", fo["status"]); sys.exit(1)

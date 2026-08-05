@@ -42,6 +42,27 @@ HOST_COLS = ["src_flow_count", "src_unique_dsts", "src_unique_dports",
              "src_mean_bytes", "src_total_src_bytes", "src_mean_src_bytes",
              "src_port_entropy", "src_proto_entropy"]
 
+# Raw identifier/time columns retained in the persisted artifact so causal host
+# features can be recomputed inside an arbitrary partition (condition B). The
+# first build of _three_condition.parquet dropped these, which is why the
+# causal_random diagnostic branch failed with KeyError: 'SrcAddr'.
+#
+# They are metadata, not features: they must never enter a model feature matrix.
+# SrcAddr/DstAddr are host identity, and the CTU-13 label is a property of the
+# host -- feeding them to a classifier would manufacture the exact shortcut this
+# experiment exists to measure.
+METADATA_COLS = ["SrcAddr", "DstAddr", "StartTime", "_t", "_row_pos"]
+
+
+def require_raw_columns(frame: pd.DataFrame) -> None:
+    """Fail loudly before causal recomputation if the artifact lacks raw columns."""
+    required = set(METADATA_COLS)
+    missing = required.difference(frame.columns)
+    if missing:
+        raise ValueError(
+            f"causal_random requires raw aggregation columns; missing: {sorted(missing)}"
+        )
+
 
 def _entropy_from_counts(counter: Dict, total: int) -> float:
     if total <= 0:
@@ -144,11 +165,20 @@ def build_conditions(data_dir: Path = None) -> Path:
         causal.columns = [f"causal__{c}" for c in HOST_COLS]
 
         base = df[["Dur", "TotPkts", "TotBytes", "SrcBytes", "sTos", "dTos",
-                   "Sport", "Dport", "Proto", "Dir", "State", "y", "scenario"]]
+                   "Sport", "Dport", "Proto", "Dir", "State", "y", "scenario",
+                   # Retained for on-demand causal recomputation; see METADATA_COLS.
+                   # _t is required because causal_host_features assumes
+                   # chronological arrival, so a re-sort inside a random partition
+                   # must sort by time and not by index.
+                   "SrcAddr", "DstAddr", "StartTime", "_t"]]
         frames.append(pd.concat([base.reset_index(drop=True), legacy, causal], axis=1))
         print(f"  scenario {si}: {len(df)} flows", flush=True)
 
     big = pd.concat(frames, ignore_index=True)
+    # Assigned once, after the concat, so it addresses the whole table. Consumers
+    # scatter partition-local results back with H[g["_row_pos"]] instead of relying
+    # on index alignment surviving a groupby.
+    big["_row_pos"] = np.arange(len(big), dtype=np.int64)
     big.to_parquet(out)
     print(f"[ctu13] wrote {out}  rows={len(big)}  botnet={int(big.y.sum())}", flush=True)
     return out

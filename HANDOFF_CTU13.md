@@ -9,16 +9,20 @@ is uncommitted; commit or stash before any risky operation)
 
 ## 0. TL;DR for the next session
 
-Do **one** thing first: fix the `causal_random` branch of `diagnostic()` in
-`scripts/ctu13_stage1.py`, then resume the remaining 33 of 36 diagnostic runs.
+The blocking bug is **fixed and the parquet rebuilt** (2026-08-05, commit `926abed`
+checkpointed the pre-fix state). The 36-run diagnostic has been relaunched.
 **Do not launch the 300-run CTU-13 model matrix** until those 36 results are reviewed
 against the go/no-go rule in §6.
 
-> **The root cause is NOT what was assumed.** The handoff brief anticipated a pandas
-> index-alignment bug and proposed a positional-assignment fix. The actual traceback is
-> `KeyError: 'SrcAddr'` — `_three_condition.parquet` **does not contain the raw
-> identifier columns** that `causal_host_features()` needs. Positional realignment would
-> not fix it. See §4 for the real fix.
+> **The root cause was not what the original brief assumed.** That brief anticipated a
+> pandas index-alignment bug and prescribed a positional-assignment fix. The actual
+> traceback was `KeyError: 'SrcAddr'` — `_three_condition.parquet` did not retain the raw
+> identifier columns `causal_host_features()` needs. Positional realignment would not have
+> fixed it. Verified: the `reindex()` call was in fact *correct*, because the frame carries
+> a unique contiguous `RangeIndex` (0..801131). It was fragile, not broken.
+>
+> Two further bugs were found while fixing this, both of which would have bitten on
+> resume. See §4.
 
 ---
 
@@ -30,8 +34,8 @@ against the go/no-go rule in §6.
 | TON-IoT fold manifests | **FROZEN** — 8 files (2 protocols × 4 folds) | `results/leakage/manifests/` |
 | CTU-13 timestamp audit | **COMPLETE, PASSES** | `results/ctu13/timestamp_audit.json` |
 | CTU-13 scenario folds | **FROZEN, all 4 pass gate** | `results/ctu13/scenario_folds.json` |
-| CTU-13 three-condition features | **BUILT** (82.9 MB) | `dataset/ctu13/_three_condition.parquet` |
-| 36-run diagnostic | **3 of 36 done, then crashed** | `results/ctu13/stage1.log` |
+| CTU-13 three-condition features | **REBUILT** with raw cols, 52 cols, 95 MB | `dataset/ctu13/_three_condition.parquet` |
+| 36-run diagnostic | **36 of 36 COMPLETE** | `results/ctu13/diagnostic36.json` |
 | CTU-13 model matrix (300 runs) | **NEVER LAUNCHED** — 0 result dirs | — |
 | ⚠ `results/ctu13/SNN_LeakyParallel/` | stale phase-1 artifact (Jun 25), **not** matrix output | ignore |
 | 700-run sensitivity sweep | **PAUSED at 270/700** — resumable | `results/ladder/` |
@@ -73,11 +77,14 @@ run) — 5 concurrent workers is the practical ceiling.
 | 6 | `results/ctu13/stage1.log` | 3 completed diagnostics + full traceback |
 | 7 | `dataset/ctu13/_three_condition.parquet` | feature table (schema in §5) |
 
-**Launch command for the 36 diagnostics** (no config file; all settings are in-script):
+**Launch command for the 36 diagnostics** (no config file; all settings are in-script;
+~4 min total). Note the log filename — do **not** redirect over `stage1.log`, which holds
+the original traceback, or `stage1_resume.log`, which holds the completed 36:
 ```bash
 cd ~/HiSNN && nohup .venv/bin/python scripts/ctu13_stage1.py \
-  > results/ctu13/stage1.log 2>&1 &
+  > results/ctu13/stage1_$(date +%Y%m%d_%H%M).log 2>&1 &
 ```
+The frozen audit and fold manifest are reused automatically, so re-running is safe.
 Diagnostic model: `RandomForestClassifier(n_estimators=40, n_jobs=8, random_state=42)`.
 
 ---
@@ -126,68 +133,69 @@ Conditions A (`legacy_random`) and C (`causal_scenario`) read precomputed
 `legacy__*` / `causal__*` columns and are unaffected. Only condition B
 (`causal_random`), which must **recompute** aggregates inside each partition, needs them.
 
-### Correct fix (choose one)
+### Fix as applied (2026-08-05) — all three bugs
 
-**Option 1 — rebuild the parquet with the raw columns (recommended).**
-In `src/data/ctu13_causal.py::build_conditions`, add `SrcAddr`, `DstAddr` and `_t` to
-`base`, delete `dataset/ctu13/_three_condition.parquet`, and re-run
-`python -m src.data.ctu13_causal` (~3 min; it prints per-scenario progress).
-Adds ~2 string columns × 801k rows.
+**Bug 1 (live, fixed): missing raw columns.** `build_conditions` now retains
+`SrcAddr`, `DstAddr`, `StartTime`, `_t`, and assigns `_row_pos = arange(n)` once after
+the concat. `METADATA_COLS` and `require_raw_columns()` were added to
+`src/data/ctu13_causal.py`. The parquet was deleted and rebuilt
+(`python -m src.data.ctu13_causal`, ~2 min): **52 columns, 801,132 rows,
+botnet 444,699 — row count and label balance identical to the pre-fix artifact**, so
+the rebuild changed no data, only the retained schema.
 
-**Option 2 — carry the raw columns in a side table** keyed by `_row_pos`, and join them
-in `diagnostic()` before calling `causal_host_features`.
+**Bug 2 (NOT live — hardening only): the positional assignment.** Verified: the
+frame carries a unique contiguous `RangeIndex` (0..801131), so the old
+`ch.reindex(d.index[part])` was *correct* by label. It was fragile, not wrong. The
+positional pattern is now in `_partition_local_causal()` in `scripts/ctu13_stage1.py`
+with `seen`/NaN assertions. **Do not expect it to change any metric** — it did not.
 
-### Then also fix the positional assignment
-The original brief's concern is still valid as a *latent* second bug — the current code
-does `ch.reindex(d.index[part])` after a `groupby`, which is fragile. Apply the
-positional pattern once the KeyError is resolved:
+**Bug 3 (live, found while fixing, would have broken the resume): stringified
+scenario ids.** `scenario_folds()` wrote its manifest with `json.dump(..., default=str)`,
+which turned the numpy int64 scenario ids into **strings**: `"test_scenarios": ["2","4","8"]`.
+Loading that manifest and calling `d.scenario.isin(["2","4","8"])` on an int64 column
+matches **zero rows** — an empty condition-C partition, not an error. It never surfaced
+because the original run held the folds in memory as int64 and crashed at fold 0
+condition B, before condition C ran. Fixed in two places: `scenario_folds()` now casts
+to `int`, and `_load_frozen_folds()` coerces on read. A partition-size assertion against
+the frozen manifest now catches any recurrence.
 
-```python
-frame = frame.reset_index(drop=True)
-frame["_row_pos"] = np.arange(len(frame), dtype=np.int64)
-# ... split into partitions carrying _row_pos ...
-H = np.full((len(frame), len(HOST_COLS)), np.nan, dtype=np.float64)
-seen = np.zeros(len(frame), dtype=np.int64)
-for part_idx in (tr, va, te):
-    sub = frame.iloc[part_idx].sort_values(["scenario", "_t"], kind="stable")
-    for _, g in sub.groupby("scenario", sort=True):
-        f = causal_host_features(g)              # index == g.index
-        H[g["_row_pos"].to_numpy()] = f.to_numpy()
-        seen[g["_row_pos"].to_numpy()] += 1
-assert seen.min() == 1 and seen.max() == 1, "every row written exactly once"
-assert not np.isnan(H).any(), "no unwritten positions"
-```
+**Also added: frozen-artifact protection.** `__main__` previously recomputed the
+timestamp audit and re-solved the fold MIP on every invocation, overwriting both frozen
+files. The MIP has a 120 s time limit and no unique optimum, so re-solving could silently
+return a different-but-feasible assignment and invalidate every result computed against
+it. Both are now reused when present; delete the file deliberately to regenerate.
+
+**Metadata is never a model input.** `SrcAddr` is host identity and the CTU-13 label is
+a property of the host, so feeding it to a classifier would manufacture the very shortcut
+this experiment measures. `diagnostic()` asserts `METADATA_COLS` is disjoint from every
+feature list on every run.
 
 **Ordering requirement:** `causal_host_features` assumes rows arrive in chronological
-order. `build_conditions` sorted by `_t` before writing, so parquet row order is
-already chronological *within scenario*; if you re-sort inside a partition you must
-sort by `_t`, not by index.
+order. `build_conditions` sorts by `_t` before writing, so parquet row order is already
+chronological *within scenario*. A random partition destroys that order, so
+`_partition_local_causal` re-sorts by `["scenario", "_t"]` — by time, never by index.
+This is why `_t` had to survive into the artifact.
 
-### Smoke test before resuming
-```bash
-cd ~/HiSNN && .venv/bin/python -c "
-import sys; sys.path.insert(0,'.')
-import pandas as pd, numpy as np
-from src.data.ctu13_causal import causal_host_features, HOST_COLS
-d = pd.read_parquet('dataset/ctu13/_three_condition.parquet')
-g = d[d.scenario==6].head(5000).copy()          # smallest scenario
-f = causal_host_features(g)
-assert len(f)==len(g) and f.index.equals(g.index)
-assert not f.isna().any().any()
-print('OK', f.shape, 'first row all-zero (no history):', bool((f.iloc[0]==0).all()))
-"
-```
+### Smoke test (passes against the rebuilt parquet)
+`/tmp/.../scratchpad/smoke_causal_random.py` — schema check, `require_raw_columns`,
+`_row_pos == 0..n-1`, metadata/feature disjointness, the original single-scenario check,
+and the full `causal_random` path on a real 3-way random partition (3.6 s for 801k rows).
+
+It also asserts condition B is **not a no-op**: a partition-local recompute matches the
+whole-scenario `causal__*` columns on only 578/801,132 rows (0.1%), and mean
+`src_flow_count` halves (16,070 → 8,459). If those ever converge, condition B is
+measuring nothing and the comparison is void.
 
 ---
 
 ## 5. Parquet schema — `dataset/ctu13/_three_condition.parquet`
 
-* **rows:** 801,132  · **cols:** 47 · **size:** 82.9 MB
+* **rows:** 801,132  · **cols:** 52 (was 47 before the fix) · **size:** 95 MB
 * **index:** `RangeIndex`, unique, contiguous (0..801131)
 * **row order:** grouped by scenario ascending; chronological (`_t`) within scenario
-* **identifier columns for restoring order:** `scenario` + positional index.
-  There is **no** `_row_pos` column yet — add one after `reset_index(drop=True)`.
-* **class balance:** `y=1` (Botnet) 444,699 = 55.5%
+* **`_row_pos`** is present and verified equal to `0..n-1`; scatter partition results
+  with it rather than relying on index alignment surviving a groupby.
+* **class balance:** `y=1` (Botnet) 444,699 = 55.5% (unchanged by the rebuild)
 
 | Group | Columns | dtype |
 |---|---|---|
@@ -196,6 +204,7 @@ print('OK', f.shape, 'first row all-zero (no history):', bool((f.iloc[0]==0).all
 | label / group | `y` i64, `scenario` i64 | |
 | legacy aggregates | `legacy__<17 names>` | i64/f64 |
 | causal aggregates | `causal__<17 names>` | f64 |
+| **metadata — never a model input** | `SrcAddr` str, `DstAddr` str, `StartTime` str, `_t` datetime64[us], `_row_pos` i64 | |
 
 The 17 `HOST_COLS` names (suffixes after `legacy__` / `causal__`):
 `src_flow_count, src_unique_dsts, src_unique_dports, src_unique_sports,
@@ -203,7 +212,8 @@ src_unique_protos, src_unique_states, src_total_dur, src_mean_dur, src_std_dur,
 src_total_pkts, src_mean_pkts, src_total_bytes, src_mean_bytes,
 src_total_src_bytes, src_mean_src_bytes, src_port_entropy, src_proto_entropy`
 
-**MISSING (cause of the bug):** `SrcAddr`, `DstAddr`, `StartTime`, `_t`.
+All five metadata columns are now present (`require_raw_columns()` enforces this before
+any causal recomputation). Their absence was the original cause of the bug.
 
 ---
 
@@ -233,35 +243,75 @@ unequal: scenario 8 holds 26.8% of all flows, so any fold containing it needs �
 the data to satisfy the 60% domination limit — the 24% test target and the domination
 limit cannot both bind, and the domination limit was kept (TON-IoT precedent).
 
-### Diagnostic — 3 of 36 complete
-| fold | condition | features | macro-F1 | FAR |
-|---|---|---|--:|--:|
-| 0 | legacy_random | base | 99.99 | 0.01 |
-| 0 | legacy_random | host | 100.00 | 0.00 |
-| 0 | legacy_random | combined | 100.00 | 0.00 |
+### Diagnostic — 36 of 36 COMPLETE (2026-08-05)
+Raw records: `results/ctu13/diagnostic36.json`. Log: `results/ctu13/stage1_resume.log`
+(the pre-fix `stage1.log` is preserved for its traceback). Mean over 4 folds:
 
-**Failed at:** fold 0, condition `causal_random`, feature subset `base` (the first run of
-that condition). Folds 1–3 and conditions B/C never executed.
+| features | legacy_random | causal_random | causal_scenario | Δ_aggregation | Δ_scenario |
+|---|--:|--:|--:|--:|--:|
+| base F1 | 99.99 | 99.99 | 99.23 | +0.00 | **−0.75** |
+| base FAR | 0.02 | 0.02 | 1.12 | +0.00 | **+1.10** |
+| host F1 | 100.00 | 95.81 | 70.69 | **−4.19** | **−25.12** |
+| host FAR | 0.00 | 4.64 | 12.12 | **+4.64** | **+7.47** |
+| combined F1 | 100.00 | 99.31 | 77.77 | −0.69 | **−21.54** |
+| combined FAR | 0.00 | 0.04 | 9.50 | +0.04 | **+9.47** |
 
-### Prior standalone finding (from an earlier ad-hoc check, not in the 36)
-Host aggregates **alone** on a random split: legacy → 100.00 macro-F1,
-causal → 99.99. Making aggregation causal does **not** remove separability, which
-suggests the ceiling is a **host-associated shortcut** (per-source aggregates encode host
-identity, and label is a property of the host) rather than a future-window leak.
-Use the wording *host-associated shortcut*, not "label leakage through host identity",
-until the feature-subset and host-overlap evidence in §7 supports the stronger claim.
+**The 3 pre-crash runs reproduced exactly** (fold 0 legacy_random 99.99 / 100.00 / 100.00),
+confirming the rebuild altered no data.
 
-### Go/no-go rule for the full matrix
-Launch the 300-run matrix **only if** scenario-disjoint macro-F1 drops ≥1 pp vs
-causal-random, **or** scenario-disjoint FAR rises ≥1 pp. If every feature set stays
->99.5 macro-F1 with negligible FAR change, **stop** and report CTU-13 as a null
-scenario-shift result.
+### ⚠ Report per fold, never the mean — the spread is the finding
+`causal_scenario` macro-F1 by fold:
+
+| fold | test scenarios | base | host | combined |
+|---|---|--:|--:|--:|
+| 0 | 2, 4, 8 | 99.98 | 87.11 | 99.50 |
+| 1 | 7, 9, 11 | 99.27 | **25.72** | **27.40** |
+| 2 | 1, 3, 5, 10 | 97.70 | 89.61 | 97.63 |
+| 3 | 0, 6, 12 | 99.99 | 80.33 | 86.54 |
+
+`combined` spans **27.40 → 99.50**. The 77.77 mean summarises nothing and must not be
+quoted as a point estimate. Fold 1 (test = 7, 9, 11) is a near-total collapse and needs
+explanation before any claim is written; it is the single most informative cell here.
+
+### Corrects the earlier standalone finding — do not reuse it
+An earlier ad-hoc check reported causal host aggregates alone at 99.99 on a random split,
+and concluded that *making aggregation causal does not remove separability*. **That check
+used the precomputed whole-scenario `causal__*` columns, not a partition-local recompute.**
+Condition B, done properly, gives host-only **95.81** (Δ = −4.19, FAR 0.00 → 4.64). The two
+differ on 99.9% of rows. So there *is* a measurable aggregation-leak component; the old
+"no effect" wording is an artifact of the shortcut and is retired.
+
+The sharper reading, which the base column supports: under a **random** split the ceiling
+is carried by the *base flow features* (99.99 in every condition) — no aggregation fix can
+move it. Host aggregates only look decisive because they are redundant with an already
+saturated signal. Under scenario shift they become an active liability: adding them to base
+**costs** 21.5 pp mean macro-F1 (99.23 → 77.77) and raises FAR 1.12 → 9.50. That is
+shortcut reliance inverting under distribution shift, and it is a stronger result than the
+leak framing.
+
+### Go/no-go rule — TRIGGERED on all three feature sets
+Rule: launch **only if** scenario-disjoint macro-F1 drops ≥1 pp vs causal-random **or**
+scenario-disjoint FAR rises ≥1 pp; stop if every feature set stays >99.5 macro-F1 with
+negligible FAR change.
+
+* `combined`: −21.54 pp F1, +9.47 pp FAR → **GO** (both criteria, by >20×)
+* `host`: −25.12 pp F1, +7.47 pp FAR → **GO** (both criteria)
+* `base`: −0.75 pp F1 (below threshold) but **+1.10 pp FAR → GO** (FAR criterion)
+
+CTU-13 is **not** a null scenario-shift result. The 300-run matrix is warranted.
+**It has still not been launched** — that is a deliberate human decision point, and
+fold 1 should be understood first.
 
 ---
 
 ## 7. Queue after the diagnostic (do not reorder)
 
-1. **Review the 36 diagnostic results** against the go/no-go rule.
+1. ~~Review the 36 diagnostic results against the go/no-go rule.~~ **DONE** — triggered
+   on all three feature sets (§6). Matrix is warranted but deliberately not launched.
+   **Next actual step: explain fold 1** (test = 7, 9, 11), where combined collapses to
+   27.40 macro-F1 against 99.50 on fold 0. Until that is understood, no CTU-13 claim
+   should be written, and the host-identity audit in step 2 is the natural instrument
+   for it.
 2. CTU-13 host-identity audit: unique hosts per scenario; hosts in multiple scenarios;
    train/test host overlap per fold; per-host label purity; % of hosts >90/95/99%
    single-class; host-only diagnostic by fold.
