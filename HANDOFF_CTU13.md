@@ -435,11 +435,78 @@ and 7 (41.77) both consistently produce it ✓ → **PROCEED with the frozen fol
 Fold 1 stays in. Scenarios 7 and 9 stay in. Report fold-level *and* scenario-level; never
 average either away.
 
+### F. Folds 0, 2, 3 audited too (2026-08-06) — integrity clean, and one negative result
+`scripts/ctu13_fold_audit.py --folds 0 2 3` (the fold-1 script, generalised) →
+`fold{0,2,3}_audit.json`, log `fold023_audit.log`. **Every integrity check passes in
+every fold**: manifest row and class counts, disjointness, int ids, 0 NaN/inf,
+metadata separation, and the bit-identical-to-pre-fix check. Cross-partition duplicates
+are 1–2 rows per fold. No new integrity problem → the matrix was cleared to launch.
+
+`causal_scenario` combined macro-F1 (5-seed mean) and host overlap by fold:
+
+| fold | test scenarios | combined F1 | test hosts | overlap with train |
+|---|---|--:|--:|--:|
+| 0 | 2, 4, 8 | ~99.5 | 46 | 86.96% |
+| 1 | 7, 9, 11 | **29.93** | 42 | **76.19% (lowest)** |
+| 2 | 1, 3, 5, 10 | ~97.6 | 26 | **100.00%** |
+| 3 | 0, 6, 12 | 86.54 | 30 | 86.67% |
+
+**Host overlap does not explain the spread — if anything it runs the wrong way.** Fold 2
+has *complete* host overlap yet stays near ceiling; fold 1 has the *least* overlap yet
+collapses. So the mechanism is not host *recurrence* per se but host *role inversion*
+plus feature shift. Every host in all 13 scenarios is ≥99% label-pure and 99.7–100% of
+each scenario's flows come from overlapping hosts, so the shortcut is *available*
+everywhere — whether it *misleads* depends on whether the host's role flips.
+
+Per-scenario, combined vs base (all 13 scenarios, 5-seed means). Base is ≥99.5 on
+**12 of 13** scenarios. Host context is a large liability on some and a large rescue on
+others:
+
+* **hurts:** 9 (99.52→17.04), 7 (99.14→41.77), 12 (99.99→73.18), 3 (99.89→84.37),
+  8 (99.98→92.44), 5 (99.99→94.69)
+* **helps:** 10 (**81.47→99.67**, base FAR 41.18→0.95), 11 (79.34→91.04)
+* neutral: 0, 1, 2, 4, 6
+
+Scenario 10 is the sharpest case: the *only* scenario where base features fail, and host
+context fixes it almost completely. Any claim that host context is simply harmful is
+contradicted by scenarios 10 and 11. The defensible claim remains **unstable sign across
+unseen scenarios**.
+
+### G. Duplicate overlap is real, measured, and immaterial
+Reported per run, never assumed zero. Exclusion rate depends on the condition:
+
+| condition | test rows excluded | Δ macro-F1 | Δ FAR |
+|---|--:|--:|--:|
+| legacy_random | **28,620 (14.89%)** | +0.000 pp | +0.000 pp |
+| causal_random | 3 (0.00%) | −0.000 pp | +0.000 pp |
+| causal_scenario | 2 (0.00%) | −0.000 pp | +0.000 pp |
+
+The 14.89% is itself a legacy-aggregation artifact: legacy per-source aggregates are
+constant per `SrcAddr` within a scenario, so same-host flows with equal base features
+collapse to identical vectors. Causal aggregates are per-flow running values, so they
+barely duplicate at all. Either way the effect on the metrics is ≤0.001 pp, so the
+overlap is immaterial — but it is *measured*, and the frozen folds were not rebuilt.
+
 ---
 
-## 10. Revised matrix — 420 runs, NOT YET LAUNCHED
+## 10. Revised matrix — 420 runs, LAUNCHED 2026-08-06
 
-Supersedes the original 300-run plan. Only start once §9 is accepted.
+Supersedes the original 300-run plan. Driver: `scripts/run_ctu13_matrix.py`
+(`--matrix both --workers 4`), log `results/ctu13/matrix.log`, results under
+`results/ctu13/matrix/{condition}/{feature_set}/{model}/fold{f}/seed_{s}/`.
+Idempotent: re-running skips any cell with a `results.json`.
+
+**Cell arithmetic.** Matrix A = 5×3×1×4×5 = 300. Matrix B = 3×2×2×4×5 = **240** cells,
+but its `combined` half (3×2×4×5 = 120) is the *same computation* as the matching
+Matrix A cells, so it is served by the skip-guard. Matrix B therefore adds 120 new runs:
+**300 + 120 = 420 distinct runs**, which is the intended total.
+
+Datasets are registered as `ctu13_<condition>_f<fold>_<base|combined>` (24 names), so the
+dataset name pins condition + fold + feature block and the trainer's `seed` stays a pure
+optimisation seed. Random partitions are keyed on the **fold** (`rng = 1000+fold`,
+identical to the 36-run diagnostic), so every model and seed sees the same partition per
+(condition, fold). Preprocessing reuses TON-IoT's `encode_train_only` — log1p, train-only
+MinMax, train-only vocabularies — so nothing is fitted outside training.
 
 * **Matrix A — model comparison, combined features.** {GBDT teacher, Vanilla SNN,
   Tree-to-Spike, DNN-Tree, TASNN} × {legacy_random, causal_random, causal_scenario} ×

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CTU-13 fold-1 audit: is 27.40 combined macro-F1 a real scenario-shift outcome?
+"""CTU-13 fold audit: is fold 1's 27.40 combined macro-F1 a real scenario-shift outcome?
 
 Fold 1 (test = scenarios 7, 9, 11) collapsed to 27.40 combined macro-F1 while fold 0
 stayed at 99.50. That gap decides how CTU-13 gets reported, so it is explained before
@@ -32,15 +32,14 @@ OLD_PQ = Path("/tmp/claude-1002/-home-student3-HiSNN/"
 from src.data.ctu13_causal import HOST_COLS, METADATA_COLS          # noqa: E402
 from ctu13_stage1 import _load_frozen_folds, _partition_local_causal  # noqa: E402
 
-FOLD = 1
 SEEDS = [42, 43, 44, 45, 46]
-EXPECT_TEST = {7, 9, 11}
 BASE = ["Dur", "TotPkts", "TotBytes", "SrcBytes", "sTos", "dTos", "Sport", "Dport"]
 LEG = [f"legacy__{c}" for c in HOST_COLS]
 CAU = [f"causal__{c}" for c in HOST_COLS]
 FEATURE_SETS = {"base": BASE, "host": CAU, "combined": BASE + CAU}
 
-rep: dict = {"fold": FOLD, "generated": time.strftime("%Y-%m-%d %H:%M:%S")}
+# Set per fold by main() from the frozen manifest; the audit never hardcodes folds.
+EXPECT_TEST: set = set()
 
 
 def sha(obj) -> str:
@@ -80,6 +79,7 @@ def section_a(d: pd.DataFrame, f: dict) -> dict:
                         set(f["test_scenarios"]))
 
     assert te_s == EXPECT_TEST, f"test scenarios {te_s} != {EXPECT_TEST}"
+    a["test_scenarios"] = sorted(te_s)
     assert tr_s.isdisjoint(va_s) and tr_s.isdisjoint(te_s) and va_s.isdisjoint(te_s)
     assert all(isinstance(s, int) for s in tr_s | va_s | te_s), "scenario ids not int"
     print(f"  scenarios: test={sorted(te_s)} val={sorted(va_s)} train={sorted(tr_s)}")
@@ -261,7 +261,7 @@ def section_d(d: pd.DataFrame, parts, preds: dict) -> dict:
     out["fold_host_overlap"] = len(ov)
     out["fold_host_overlap_pct"] = round(100 * len(ov) / max(len(all_test_hosts), 1), 2)
     out["host_disjoint"] = len(ov) == 0
-    print(f"  fold 1 test hosts={len(all_test_hosts)} overlapping train={len(ov)} "
+    print(f"  fold test hosts={len(all_test_hosts)} overlapping train={len(ov)} "
           f"({out['fold_host_overlap_pct']}%)")
     print(f"  scenario protocol is host-disjoint: {out['host_disjoint']} "
           f"-- {'' if out['host_disjoint'] else 'do NOT call it host-disjoint'}")
@@ -341,27 +341,41 @@ def section_e(d: pd.DataFrame, parts) -> dict:
 
 # ======================================================================= main
 if __name__ == "__main__":
-    print("=== CTU-13 fold-1 audit ===")
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--folds", nargs="+", type=int, default=[1])
+    args = ap.parse_args()
+
     fo = _load_frozen_folds(OUT / "scenario_folds.json")
-    f = fo["folds"][FOLD]
     d = pd.read_parquet(PQ)
-    print(f"loaded {len(d)} rows x {len(d.columns)} cols")
+    print(f"loaded {len(d)} rows x {len(d.columns)} cols "
+          f"| manifest sha={fo['manifest_sha256'][:16]}...")
 
-    rep["A_integrity"], parts = section_a(d, f)
-    runs, per_scenario, preds = section_bc(d, f, parts)
-    rep["C_runs"] = runs
-    rep["B_per_scenario"] = per_scenario
-    rep["D_host_identity"] = section_d(d, parts, preds)
-    rep["E_feature_shift"] = section_e(d, parts)
+    for fold in args.folds:
+        f = fo["folds"][fold]
+        EXPECT_TEST = set(f["test_scenarios"])
+        print(f"\n{'='*70}\n=== CTU-13 fold-{fold} audit (test scenarios "
+              f"{sorted(EXPECT_TEST)}) ===\n{'='*70}")
+        rep = {"fold": fold, "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
+               "manifest_sha256": fo["manifest_sha256"]}
 
-    json.dump(rep, open(OUT / "fold1_audit.json", "w"), indent=2, default=str)
+        rep["A_integrity"], parts = section_a(d, f)
+        runs, per_scenario, preds = section_bc(d, f, parts)
+        rep["C_runs"] = runs
+        rep["B_per_scenario"] = per_scenario
+        rep["D_host_identity"] = section_d(d, parts, preds)
+        rep["E_feature_shift"] = section_e(d, parts)
 
-    print("\n=== SUMMARY: fold-level, mean +- sd over 5 seeds ===")
-    r = pd.DataFrame(runs)
-    g = r.groupby(["protocol", "features"])["macro_f1"].agg(["mean", "std", "min", "max"])
-    print(g.round(2).to_string())
-    print("\n=== SUMMARY: per-scenario, causal_scenario, mean over 5 seeds ===")
-    ps = pd.DataFrame(per_scenario)
-    print(ps.pivot_table(index="scope", columns="features",
-                         values=["macro_f1", "FAR"]).round(2).to_string())
-    print(f"\nwrote {OUT/'fold1_audit.json'}")
+        dest = OUT / f"fold{fold}_audit.json"
+        json.dump(rep, open(dest, "w"), indent=2, default=str)
+
+        print(f"\n=== fold {fold} SUMMARY: fold-level, mean/sd over 5 seeds ===")
+        r = pd.DataFrame(runs)
+        print(r.groupby(["protocol", "features"])["macro_f1"]
+               .agg(["mean", "std", "min", "max"]).round(2).to_string())
+        print(f"\n=== fold {fold} SUMMARY: per-scenario, causal_scenario, "
+              f"mean over 5 seeds ===")
+        ps = pd.DataFrame(per_scenario)
+        print(ps.pivot_table(index="scope", columns="features",
+                             values=["macro_f1", "FAR"]).round(2).to_string())
+        print(f"\nwrote {dest}")

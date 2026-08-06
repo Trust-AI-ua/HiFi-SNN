@@ -29,6 +29,55 @@ from sklearn.metrics import (
 )
 
 
+# ---------------------------------------------------------------------------
+# Evaluation context
+# ---------------------------------------------------------------------------
+# Side information about the TEST rows that a dataset loader knows but a trainer
+# does not. Set by the loader, consumed here, so all five models
+# (GBDT / Vanilla SNN / Tree-to-Spike / DNN-Tree / TASNN) gain the same breakdowns
+# without a single trainer edit -- every one of them routes through compute_metrics.
+#
+# Why per-group is not optional on CTU-13: fold 1 averaged a 56% false-alarm
+# scenario against a 0.12% detection-rate scenario into one number. Fold means can
+# combine opposite failure modes and hide both.
+_EVAL_CONTEXT: Dict = {}
+
+
+def set_eval_context(**kw) -> None:
+    """Attach test-row side information. Keys: test_groups, test_dupfree_mask,
+    group_name. Call once per run, from the dataset loader."""
+    _EVAL_CONTEXT.clear()
+    _EVAL_CONTEXT.update({k: v for k, v in kw.items() if v is not None})
+
+
+def clear_eval_context() -> None:
+    _EVAL_CONTEXT.clear()
+
+
+def get_eval_context() -> Dict:
+    return dict(_EVAL_CONTEXT)
+
+
+def _core_block(y_true: np.ndarray, y_pred: np.ndarray) -> Dict:
+    """Compact metric block used for per-group and duplicate-free breakdowns."""
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    tn, fp, fn, tp = int(cm[0, 0]), int(cm[0, 1]), int(cm[1, 0]), int(cm[1, 1])
+    multi = len(np.unique(y_true)) > 1
+    return {
+        "n": int(len(y_true)),
+        "macro_f1": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
+        "mcc": float(matthews_corrcoef(y_true, y_pred)) if multi else None,
+        "DR": tp / (tp + fn) if (tp + fn) else 0.0,
+        "FAR": fp / (fp + tn) if (fp + tn) else 0.0,
+        "confusion_matrix": cm.tolist(),
+        "support_normal": tn + fp,
+        "support_attack": tp + fn,
+        "pred_normal": tn + fn,
+        "pred_attack": fp + tp,
+        "pred_attack_frac": float((fp + tp) / max(len(y_pred), 1)),
+    }
+
+
 def compute_metrics(
     y_true: np.ndarray,
     y_pred: np.ndarray,
@@ -99,6 +148,35 @@ def compute_metrics(
         out["roc_auc_weighted"] = None
 
     out["confusion_matrix"] = confusion_matrix(y_true, y_pred, labels=labels).tolist()
+
+    # ---- context-driven breakdowns (no-ops unless a loader set the context) ----
+    # Length equality is the gate: it fires only for the evaluation whose rows the
+    # context describes, so train/val calls pass through untouched.
+    y_true = np.asarray(y_true); y_pred = np.asarray(y_pred)
+
+    groups = _EVAL_CONTEXT.get("test_groups")
+    if groups is not None and len(groups) == len(y_true):
+        gname = _EVAL_CONTEXT.get("group_name", "group")
+        out["per_group"] = {
+            "group_name": gname,
+            "groups": {str(g): _core_block(y_true[groups == g], y_pred[groups == g])
+                       for g in sorted(np.unique(groups))},
+        }
+
+    mask = _EVAL_CONTEXT.get("test_dupfree_mask")
+    if mask is not None and len(mask) == len(y_true):
+        mask = np.asarray(mask, dtype=bool)
+        full = _core_block(y_true, y_pred)
+        kept = _core_block(y_true[mask], y_pred[mask])
+        # Sensitivity check only. The overlap is not claimed to be zero, and the
+        # frozen folds are NOT rebuilt to remove it.
+        out["duplicate_free"] = {
+            "n_excluded": int((~mask).sum()),
+            "pct_excluded": float(100 * (~mask).mean()),
+            "metrics": kept,
+            "delta_macro_f1_pp": float(100 * (kept["macro_f1"] - full["macro_f1"])),
+            "delta_FAR_pp": float(100 * (kept["FAR"] - full["FAR"])),
+        }
     return out
 
 
