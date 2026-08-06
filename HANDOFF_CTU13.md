@@ -10,9 +10,15 @@ is uncommitted; commit or stash before any risky operation)
 ## 0. TL;DR for the next session
 
 The blocking bug is **fixed and the parquet rebuilt** (2026-08-05, commit `926abed`
-checkpointed the pre-fix state). The 36-run diagnostic has been relaunched.
-**Do not launch the 300-run CTU-13 model matrix** until those 36 results are reviewed
-against the go/no-go rule in §6.
+checkpointed the pre-fix state). The 36-run diagnostic is **complete** and the go/no-go
+rule is **triggered** (§6): CTU-13 is not a null scenario-shift result.
+
+**Decision (2026-08-06): GO, but the original 300-run matrix is superseded and must not
+be launched yet.** Fold 1 collapses to 27.40 combined macro-F1 against 99.50 on fold 0,
+and that must be *explained* before any aggregate is produced. The immediate task is the
+fold-1 integrity + decomposition audit (§9), 30 runs. Only after it passes does the
+revised **420-run** matrix (§10) start. The next task is explanation, not another
+aggregate.
 
 > **The root cause was not what the original brief assumed.** That brief anticipated a
 > pandas index-alignment bug and prescribed a positional-assignment fix. The actual
@@ -69,7 +75,8 @@ run) — 5 concurrent workers is the practical ceiling.
 
 | # | File | Role |
 |---|---|---|
-| 1 | `scripts/ctu13_stage1.py` | audit + scenario MIP + 36-run diagnostic (**has the bug**) |
+| 1 | `scripts/ctu13_stage1.py` | audit + scenario MIP + 36-run diagnostic (**bug fixed**) |
+| 1b | `scripts/ctu13_fold1_audit.py` | fold-1 integrity, decomposition, 30 runs, host + shift audit |
 | 2 | `src/data/ctu13_causal.py` | `causal_host_features()`, `build_conditions()`, `HOST_COLS` |
 | 3 | `src/data/ctu13.py` | original loader; `_aggregate_per_source()` = the legacy leak |
 | 4 | `results/ctu13/timestamp_audit.json` | audit output |
@@ -273,6 +280,24 @@ confirming the rebuild altered no data.
 quoted as a point estimate. Fold 1 (test = 7, 9, 11) is a near-total collapse and needs
 explanation before any claim is written; it is the single most informative cell here.
 
+### Approved wording (use this verbatim; the older phrasings are retired)
+
+> Proper partition-local causal aggregation modestly reduces the random-split performance
+> of the host-context representation, but does not remove the near-ceiling result. Under
+> scenario-disjoint evaluation, however, host-context features become substantially less
+> transferable and can reduce performance when combined with otherwise stable base flow
+> features.
+
+Describe this as **consistent with host-context shortcut reliance** — not as a proven
+mechanism. The mechanism claim needs the five-seed, model-level interaction (§10, Δ_host).
+
+**Retired — delete on sight, do not reuse:**
+* "causal aggregation has no effect";
+* "CTU-13's ceiling is purely host identity leakage";
+* "host-only performance remains exactly at ceiling after causalization".
+
+These appear in no `.tex` draft (checked 2026-08-06); they existed only in this document.
+
 ### Corrects the earlier standalone finding — do not reuse it
 An earlier ad-hoc check reported causal host aggregates alone at 99.99 on a random split,
 and concluded that *making aggregation causal does not remove separability*. **That check
@@ -307,14 +332,14 @@ fold 1 should be understood first.
 ## 7. Queue after the diagnostic (do not reorder)
 
 1. ~~Review the 36 diagnostic results against the go/no-go rule.~~ **DONE** — triggered
-   on all three feature sets (§6). Matrix is warranted but deliberately not launched.
-   **Next actual step: explain fold 1** (test = 7, 9, 11), where combined collapses to
-   27.40 macro-F1 against 99.50 on fold 0. Until that is understood, no CTU-13 claim
-   should be written, and the host-identity audit in step 2 is the natural instrument
-   for it.
-2. CTU-13 host-identity audit: unique hosts per scenario; hosts in multiple scenarios;
-   train/test host overlap per fold; per-host label purity; % of hosts >90/95/99%
-   single-class; host-only diagnostic by fold.
+   on all three feature sets (§6).
+2. ~~Explain fold 1 / CTU-13 host-identity audit.~~ **DONE for fold 1** (§9): integrity
+   clean, collapse real and seed-stable, mechanism = label-pure recurring hosts whose
+   host→label mapping inverts across scenarios. **Remaining:** extend the same host audit
+   to folds 0, 2, 3 so the 27.40–99.50 spread can be explained by host overlap and purity
+   across all folds, not just fold 1. That is the cheapest next step and it does not need
+   the 420 runs.
+   **→ NEXT ACTION: the §10 420-run matrix is cleared to launch but has not been.**
 3. CICIoMT2024 duplicate-free sensitivity — **already known:** 195 duplicate clusters,
    357 overlapping test rows (0.022%), **100% label agreement**. Remaining: re-evaluate
    existing checkpoints on the duplicate-free test subset (no retraining) and report
@@ -327,7 +352,121 @@ fold 1 should be understood first.
 
 ---
 
-## 8. Context the numbers won't convey
+## 9. Fold-1 audit — COMPLETE, verdict PROCEED (2026-08-06)
+
+`scripts/ctu13_fold1_audit.py` → `results/ctu13/fold1_audit.json`,
+log `results/ctu13/fold1_audit.log`. Launch with `python -u` (the script's prints are
+not flushed, so a redirected run shows nothing until it exits).
+
+### A. Integrity — every check passes, so the collapse is NOT a defect
+Test scenarios `{7,9,11}` as frozen; partitions mutually disjoint; scenario ids int;
+row counts *and* per-class counts match the manifest exactly; **0 NaN and 0 inf cells
+checked before the stateless cleanup** (so masking cannot be hiding anything); labels
+come from one shared `d.y`; metadata disjoint from every feature list; no fitted
+preprocessing exists (RF needs no scaling, no categorical encoding is used); manifest
+`sha256=79ec75d7…`. Only **2 of 210,944** test rows have an exact feature duplicate in
+train (0.0009%, hash upper bound).
+
+**The rebuilt `legacy__*`/`causal__*`/`y`/`scenario` blocks are bit-identical to the
+pre-fix parquet** — the rebuild changed schema only, never a feature value.
+
+→ The decision rule's "stop and repair" branch does **not** fire.
+
+### B. The collapse is a prediction inversion, not one hard scenario
+`causal_scenario`, mean over 5 seeds:
+
+| test scenario | class balance | base F1 | combined F1 | host F1 | combined FAR |
+|---|---|--:|--:|--:|--:|
+| 7 | 92.2% **Normal** | 99.14 | **41.77** | 37.45 | **56.20** |
+| 9 | 87.0% **Botnet** | 99.52 | **17.04** | 27.83 | 0.13 |
+| 11 | 22.1% Botnet | 79.34 | 91.04 | 96.16 | 0.00 |
+
+Host context does not merely fail — it fails in **opposite directions**: on scenario 7 it
+predicts Botnet for 54–66% of a 92%-Normal scenario (FAR 56%), and on scenario 9 it
+predicts Normal for ~99.9% of an 87%-Botnet scenario (DR 0.12). Seed-42 error split:
+scenario 7 = 36,634 errors, **all false positives**; scenario 9 = 106,233, **all false
+negatives**; scenario 11 = 856. Base features stay ≥99 on both.
+
+Scenario 11 is the counter-case: host context *helps* there (79.34 → 96.16), because base
+features alone miss half its botnet (DR 50.4). So the block is not globally harmful — it
+is **unstably** signed across unseen scenarios, which is worse for deployment.
+
+### C. Persists across seeds — 30 runs, fold 1 only
+| protocol | features | mean | sd | min | max |
+|---|---|--:|--:|--:|--:|
+| causal_random | base | 99.99 | 0.00 | 99.98 | 99.99 |
+| causal_random | combined | 98.52 | 1.18 | 96.52 | 99.38 |
+| causal_random | host | 94.45 | 1.57 | 92.07 | 96.14 |
+| causal_scenario | base | 99.25 | 0.03 | 99.19 | 99.27 |
+| causal_scenario | combined | **29.93** | 8.13 | 24.55 | 44.19 |
+| causal_scenario | host | **34.72** | 21.24 | 24.61 | 72.71 |
+
+Never recovers in any seed. Note `host` sd = **21.24** (range 24.61–72.71): host-only
+under scenario shift is not just bad, it is wildly unstable. Another reason no mean here
+is quotable. RF-diagnostic interaction: Δ_host = (29.93 − 99.25) − (98.52 − 99.99) =
+**−67.85 pp**.
+
+### D. ⚠ The scenario protocol is NOT host-disjoint
+| scenario | unique hosts | also in fold-1 train | flows from overlapping hosts | ≥99% pure |
+|---|--:|--:|--:|--:|
+| 7 | 24 | 22 (91.7%) | 100.0% | 24/24 |
+| 9 | 28 | 26 (92.9%) | 100.0% | 28/28 |
+| 11 | 23 | 17 (73.9%) | 99.7% | 23/23 |
+
+Fold 1: 42 test hosts, **32 overlap train (76.2%)**. **Never describe the scenario
+protocol as host-disjoint.** This is the mechanism: ~24 hosts per scenario, *every one
+≥99% label-pure*, so the host block is effectively a ~24-way host classifier and the
+label is a host property. The same `147.32.84.x` addresses recur across scenarios in
+different roles, so the learned host→label mapping inverts. Top-5 hosts carry **49.4%**
+of all errors: `147.32.84.170` alone contributes 25,583 false positives, while
+`.204/.205/.206/.208` contribute ~11k false negatives each.
+
+### E. Host features shift ~11–14× more than base features
+Mean Wasserstein (train-standardised), host block vs base block:
+scenario 7 **1.837 vs 0.168**; scenario 9 **2.413 vs 0.168**; scenario 11 0.861 vs 0.223.
+Extremes: `causal__src_unique_dports` SMD 19.88 with **56.8%** of scenario-7 values
+outside the training range; `causal__src_total_src_bytes` SMD 18.79 with **86.9%** of
+scenario-9 values outside it. Base features barely move. Both diagnosed failure modes are
+present: unseen host-context ranges *and* a reversed host-context→label relationship.
+
+### Verdict against the decision rule
+All integrity checks pass ✓ · collapse persists across all 5 seeds ✓ · scenarios 9 (17.04)
+and 7 (41.77) both consistently produce it ✓ → **PROCEED with the frozen folds unchanged.**
+Fold 1 stays in. Scenarios 7 and 9 stay in. Report fold-level *and* scenario-level; never
+average either away.
+
+---
+
+## 10. Revised matrix — 420 runs, NOT YET LAUNCHED
+
+Supersedes the original 300-run plan. Only start once §9 is accepted.
+
+* **Matrix A — model comparison, combined features.** {GBDT teacher, Vanilla SNN,
+  Tree-to-Spike, DNN-Tree, TASNN} × {legacy_random, causal_random, causal_scenario} ×
+  4 folds × seeds 42–46 = **300 runs**.
+* **Matrix B — base-feature control.** {GBDT, Tree-to-Spike, DNN-Tree} ×
+  {base, combined} × {causal_random, causal_scenario} × 4 folds × seeds 42–46 =
+  **120 runs**. This is the model-level test of the liability effect.
+* **No full host-only neural matrix** — the RF/GBDT diagnostic covers that block unless
+  reviewers ask.
+* Keep the 700-run sensitivity sweep **paused** throughout.
+
+Three effects to compute per model/fold/seed:
+`Δ_aggregation = M(causal_random) − M(legacy_random)`;
+`Δ_scenario = M(causal_scenario) − M(causal_random)`;
+`Δ_host = (M_combined,scenario − M_base,scenario) − (M_combined,random − M_base,random)`.
+A large negative Δ_host means the host block is harmless under random splitting and
+harmful under scenario shift. That interaction, not a single-condition comparison, is the
+reportable result.
+
+**Every consumer must load folds through `src.data.ctu13_causal.load_frozen_folds()`** —
+it coerces scenario ids to int, verifies realised partition sizes against the manifest
+(`RuntimeError: Frozen partition mismatch: expected N, got M`), and returns
+`manifest_sha256` for recording into every result file. It never re-solves the MIP.
+
+---
+
+## 11. Context the numbers won't convey
 
 * **TON-IoT final claim is protocol-wide degradation, not an architecture ranking.**
   A pilot with one seed per cell showed Tree-to-Spike degrading least; with 5 seeds per

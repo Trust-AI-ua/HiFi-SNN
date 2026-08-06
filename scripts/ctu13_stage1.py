@@ -184,7 +184,7 @@ def _partition_local_causal(d: pd.DataFrame, partitions, cau_cols: list) -> pd.D
     return pd.DataFrame(H, columns=cau_cols, index=d.index)
 
 
-def diagnostic(d: pd.DataFrame, folds: dict) -> list:
+def diagnostic(d: pd.DataFrame, folds: dict, manifest_sha: str = None) -> list:
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.metrics import f1_score, matthews_corrcoef, confusion_matrix
     from src.data.ctu13_causal import HOST_COLS, METADATA_COLS
@@ -234,6 +234,7 @@ def diagnostic(d: pd.DataFrame, folds: dict) -> list:
                 cm = confusion_matrix(y[te], p, labels=[0,1])
                 far = cm[0,1]/max(cm[0].sum(),1); dr = cm[1,1]/max(cm[1].sum(),1)
                 res.append(dict(fold=int(k), condition=cond, features=fs,
+                    manifest_sha256=manifest_sha,
                     macro_f1=round(f1_score(y[te],p,average="macro")*100,3),
                     mcc=round(matthews_corrcoef(y[te],p)*100,3),
                     DR=round(dr*100,3), FAR=round(far*100,3),
@@ -243,14 +244,11 @@ def diagnostic(d: pd.DataFrame, folds: dict) -> list:
     return res
 
 
-def _load_frozen_folds(path: Path) -> dict:
-    """Read a fold manifest back with scenario ids as int, whatever JSON stored."""
-    fo = json.load(open(path))
-    fo["folds"] = {int(k): {**v, **{key: [int(s) for s in v[key]]
-                                    for key in ("train_scenarios", "val_scenarios",
-                                                "test_scenarios")}}
-                   for k, v in fo["folds"].items()}
-    return fo
+def _load_frozen_folds(path: Path, frame: pd.DataFrame = None) -> dict:
+    """Thin alias; the canonical loader lives in src.data.ctu13_causal so that every
+    consumer (this script, the fold-1 audit, the model matrix) shares one contract."""
+    from src.data.ctu13_causal import load_frozen_folds
+    return load_frozen_folds(path, frame)
 
 
 if __name__ == "__main__":
@@ -270,7 +268,9 @@ if __name__ == "__main__":
     d = pd.read_parquet(REPO/"dataset/ctu13/_three_condition.parquet")
     print("\n=== 2. scenario-fold MIP ===")
     if FOLDS.exists():
-        fo = _load_frozen_folds(FOLDS); print(f"  reusing frozen {FOLDS.name}")
+        fo = _load_frozen_folds(FOLDS, d)
+        print(f"  reusing frozen {FOLDS.name} sha={fo['manifest_sha256'][:16]}... "
+              f"(partition sizes verified)")
     else:
         fo = scenario_folds(d)
         json.dump(fo, open(FOLDS, "w"), indent=2, default=str)
@@ -282,7 +282,7 @@ if __name__ == "__main__":
               f"rows={f['rows']} botnet%={f['botnet_prevalence']} "
               f"maxshare={f['max_scenario_share_of_test']} pass={f['passes']}")
     print("\n=== 3. 36-run feature-subset diagnostic ===")
-    r = diagnostic(d, fo["folds"])
+    r = diagnostic(d, fo["folds"], fo.get("manifest_sha256"))
     json.dump(r, open(OUT/"diagnostic36.json","w"), indent=2)
     df = pd.DataFrame(r)
     print("\n" + df.groupby(["condition","features"])[["macro_f1","FAR"]].mean().round(2).to_string())

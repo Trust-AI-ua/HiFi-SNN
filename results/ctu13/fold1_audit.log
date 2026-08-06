@@ -1,0 +1,159 @@
+=== CTU-13 fold-1 audit ===
+loaded 801132 rows x 52 cols
+
+=== A. integrity ===
+  scenarios: test=[7, 9, 11] val=[1, 3] train=[0, 2, 4, 5, 6, 8, 10, 12]
+  partitions disjoint, ids are int: PASS
+  row counts match frozen manifest: PASS {'train': 532279, 'val': 57909, 'test': 210944}
+  class counts match manifest in all 3 partitions: PASS
+  NaN cells=0 inf cells=0 (checked pre-cleanup, unmasked)
+  label mapping identical across conditions: PASS [0, 1]
+  metadata disjoint from every model feature list: PASS
+  test rows with an exact feature duplicate in train: 2 (0.0009%)  [hash upper bound]
+  train-only preprocessing: N/A, nothing is fitted (see report)
+  frozen manifest sha256: 79ec75d75ae7a6f6...
+  legacy/causal/y/scenario bit-identical to pre-fix parquet: PASS
+  causal block sha256: 1de079f92146e0fc...
+
+=== B+C. per-scenario decomposition over 5 seeds (3 feature sets x 2 protocols x 5 seeds = 30 runs) ===
+  seed42 causal_scenario base     fold     F1= 99.27 FAR=  0.29
+    scenario  7: F1= 99.15 DR= 98.07 FAR=  0.10 pred_botnet=0.077 (N=72822, B=6127)
+    scenario  9: F1= 99.53 DR= 99.95 FAR=  1.29 pred_botnet=0.872 (N=15847, B=106352)
+    scenario 11: F1= 80.23 DR= 50.41 FAR=  0.00 pred_botnet=0.112 (N=7628, B=2168)
+  seed42 causal_scenario host     fold     F1= 25.72 FAR= 48.24
+    scenario  7: F1= 37.07 DR= 99.90 FAR= 63.70 pred_botnet=0.665 (N=72822, B=6127)
+    scenario  9: F1= 13.55 DR=  1.98 FAR=  0.39 pred_botnet=0.018 (N=15847, B=106352)
+    scenario 11: F1= 93.72 DR= 82.15 FAR=  0.13 pred_botnet=0.183 (N=7628, B=2168)
+  seed42 causal_scenario combined fold     F1= 27.40 FAR= 37.93
+    scenario  7: F1= 45.58 DR= 98.03 FAR= 50.14 pred_botnet=0.539 (N=72822, B=6127)
+    scenario  9: F1= 11.61 DR=  0.12 FAR=  0.07 pred_botnet=0.001 (N=15847, B=106352)
+    scenario 11: F1= 85.05 DR= 60.52 FAR=  0.00 pred_botnet=0.134 (N=7628, B=2168)
+  seed42 causal_random   base     fold     F1= 99.98 FAR=  0.02
+  seed42 causal_random   host     fold     F1= 96.14 FAR=  4.29
+  seed42 causal_random   combined fold     F1= 99.38 FAR=  0.03
+  seed43 causal_scenario base     fold     F1= 99.25 FAR=  0.33
+    scenario  7: F1= 99.11 DR= 98.07 FAR=  0.11 pred_botnet=0.077 (N=72822, B=6127)
+    scenario  9: F1= 99.48 DR= 99.95 FAR=  1.48 pred_botnet=0.872 (N=15847, B=106352)
+    scenario 11: F1= 80.06 DR= 50.09 FAR=  0.00 pred_botnet=0.111 (N=7628, B=2168)
+  seed43 causal_scenario host     fold     F1= 24.61 FAR= 48.32
+    scenario  7: F1= 37.01 DR= 99.89 FAR= 63.79 pred_botnet=0.666 (N=72822, B=6127)
+    scenario  9: F1= 11.54 DR=  0.09 FAR=  0.41 pred_botnet=0.001 (N=15847, B=106352)
+    scenario 11: F1= 98.56 DR= 95.99 FAR=  0.12 pred_botnet=0.213 (N=7628, B=2168)
+  seed43 causal_scenario combined fold     F1= 24.55 FAR= 46.63
+    scenario  7: F1= 38.19 DR= 97.85 FAR= 61.66 pred_botnet=0.645 (N=72822, B=6127)
+    scenario  9: F1= 11.61 DR=  0.12 FAR=  0.00 pred_botnet=0.001 (N=15847, B=106352)
+    scenario 11: F1= 82.97 DR= 56.04 FAR=  0.00 pred_botnet=0.124 (N=7628, B=2168)
+  seed43 causal_random   base     fold     F1= 99.99 FAR=  0.02
+  seed43 causal_random   host     fold     F1= 92.07 FAR=  5.16
+  seed43 causal_random   combined fold     F1= 96.52 FAR=  0.03
+  seed44 causal_scenario base     fold     F1= 99.19 FAR=  0.29
+    scenario  7: F1= 99.15 DR= 98.07 FAR=  0.10 pred_botnet=0.077 (N=72822, B=6127)
+    scenario  9: F1= 99.53 DR= 99.95 FAR=  1.29 pred_botnet=0.872 (N=15847, B=106352)
+    scenario 11: F1= 76.17 DR= 42.71 FAR=  0.00 pred_botnet=0.095 (N=7628, B=2168)
+  seed44 causal_scenario host     fold     F1= 25.06 FAR= 46.90
+    scenario  7: F1= 38.23 DR= 99.89 FAR= 61.95 pred_botnet=0.649 (N=72822, B=6127)
+    scenario  9: F1= 11.56 DR=  0.10 FAR=  0.26 pred_botnet=0.001 (N=15847, B=106352)
+    scenario 11: F1= 97.73 DR= 93.40 FAR=  0.09 pred_botnet=0.207 (N=7628, B=2168)
+  seed44 causal_scenario combined fold     F1= 28.37 FAR= 35.96
+    scenario  7: F1= 47.23 DR= 97.99 FAR= 47.51 pred_botnet=0.514 (N=72822, B=6127)
+    scenario  9: F1= 11.59 DR=  0.12 FAR=  0.19 pred_botnet=0.001 (N=15847, B=106352)
+    scenario 11: F1= 94.74 DR= 84.55 FAR=  0.00 pred_botnet=0.187 (N=7628, B=2168)
+  seed44 causal_random   base     fold     F1= 99.99 FAR=  0.01
+  seed44 causal_random   host     fold     F1= 93.78 FAR=  6.82
+  seed44 causal_random   combined fold     F1= 99.00 FAR=  0.02
+  seed45 causal_scenario base     fold     F1= 99.27 FAR=  0.29
+    scenario  7: F1= 99.15 DR= 98.07 FAR=  0.10 pred_botnet=0.077 (N=72822, B=6127)
+    scenario  9: F1= 99.53 DR= 99.95 FAR=  1.29 pred_botnet=0.872 (N=15847, B=106352)
+    scenario 11: F1= 80.04 DR= 50.05 FAR=  0.00 pred_botnet=0.111 (N=7628, B=2168)
+  seed45 causal_scenario host     fold     F1= 25.48 FAR= 47.30
+    scenario  7: F1= 37.91 DR= 99.87 FAR= 62.44 pred_botnet=0.653 (N=72822, B=6127)
+    scenario  9: F1= 12.68 DR=  1.15 FAR=  0.42 pred_botnet=0.011 (N=15847, B=106352)
+    scenario 11: F1= 93.64 DR= 82.10 FAR=  0.18 pred_botnet=0.183 (N=7628, B=2168)
+  seed45 causal_scenario combined fold     F1= 44.19 FAR= 45.47
+    scenario  7: F1= 39.42 DR= 99.54 FAR= 60.07 pred_botnet=0.631 (N=72822, B=6127)
+    scenario  9: F1= 38.82 DR= 31.14 FAR=  0.21 pred_botnet=0.271 (N=15847, B=106352)
+    scenario 11: F1= 94.74 DR= 84.59 FAR=  0.01 pred_botnet=0.187 (N=7628, B=2168)
+  seed45 causal_random   base     fold     F1= 99.99 FAR=  0.01
+  seed45 causal_random   host     fold     F1= 94.95 FAR=  3.03
+  seed45 causal_random   combined fold     F1= 98.43 FAR=  0.03
+  seed46 causal_scenario base     fold     F1= 99.27 FAR=  0.29
+    scenario  7: F1= 99.14 DR= 98.07 FAR=  0.10 pred_botnet=0.077 (N=72822, B=6127)
+    scenario  9: F1= 99.53 DR= 99.95 FAR=  1.29 pred_botnet=0.872 (N=15847, B=106352)
+    scenario 11: F1= 80.23 DR= 50.41 FAR=  0.00 pred_botnet=0.112 (N=7628, B=2168)
+  seed46 causal_scenario host     fold     F1= 72.71 FAR= 48.30
+    scenario  7: F1= 37.03 DR= 99.90 FAR= 63.76 pred_botnet=0.666 (N=72822, B=6127)
+    scenario  9: F1= 89.80 DR= 93.89 FAR=  0.41 pred_botnet=0.818 (N=15847, B=106352)
+    scenario 11: F1= 97.18 DR= 91.88 FAR=  0.12 pred_botnet=0.204 (N=7628, B=2168)
+  seed46 causal_scenario combined fold     F1= 25.14 FAR= 46.65
+    scenario  7: F1= 38.43 DR= 99.89 FAR= 61.64 pred_botnet=0.646 (N=72822, B=6127)
+    scenario  9: F1= 11.59 DR=  0.12 FAR=  0.18 pred_botnet=0.001 (N=15847, B=106352)
+    scenario 11: F1= 97.67 DR= 92.94 FAR=  0.00 pred_botnet=0.206 (N=7628, B=2168)
+  seed46 causal_random   base     fold     F1= 99.99 FAR=  0.02
+  seed46 causal_random   host     fold     F1= 95.28 FAR=  3.53
+  seed46 causal_random   combined fold     F1= 99.25 FAR=  0.03
+
+=== D. host-identity audit ===
+  scenario  7: hosts=    24 overlap_with_train=   22 (91.67%) flows_from_overlap=100.00% >=99% pure=    24
+  scenario  9: hosts=    28 overlap_with_train=   26 (92.86%) flows_from_overlap=100.00% >=99% pure=    28
+  scenario 11: hosts=    23 overlap_with_train=   17 (73.91%) flows_from_overlap=99.74% >=99% pure=    23
+  fold 1 test hosts=42 overlapping train=32 (76.19%)
+  scenario protocol is host-disjoint: False -- do NOT call it host-disjoint
+  seed-42 combined errors=143723; top-5 hosts account for 49.38%
+         147.32.84.170  err=  25583 fp=  25583 fn=      0
+         147.32.84.205  err=  11863 fp=      0 fn=  11863
+         147.32.84.206  err=  11276 fp=      0 fn=  11276
+         147.32.84.204  err=  11143 fp=      0 fn=  11143
+         147.32.84.208  err=  11106 fp=      0 fn=  11106
+  errors by scenario: {7: {'errors': 36634, 'fp': 36513, 'fn': 121}, 9: {'errors': 106233, 'fp': 11, 'fn': 106222}, 11: {'errors': 856, 'fp': 0, 'fn': 856}}
+
+=== E. feature shift, fold-1 train vs each test scenario ===
+
+  -- scenario 7: 6 most-shifted features (of 17 host + 8 base)
+                    feature     smd  wasserstein_std  pct_outside_train_range
+  causal__src_unique_dports 19.8759          19.8760                   56.810
+    causal__src_total_bytes  4.0879           4.0879                   32.206
+     causal__src_total_pkts  2.2632           2.2632                   32.185
+  causal__src_unique_states  1.4398           1.4398                   32.924
+                      Sport  0.9722           0.9722                    0.000
+causal__src_total_src_bytes  0.5018           0.5887                    0.000
+  mean Wasserstein: host block=1.837  base block=0.168
+
+  -- scenario 9: 6 most-shifted features (of 17 host + 8 base)
+                    feature     smd  wasserstein_std  pct_outside_train_range
+causal__src_total_src_bytes 18.7792          18.7792                   86.935
+    causal__src_total_bytes  2.7819           2.8129                    0.000
+  causal__src_proto_entropy -2.6118           2.6687                    0.000
+      causal__src_total_dur  2.1909           2.1909                   25.042
+   causal__src_port_entropy -1.9969           2.0821                    0.467
+  causal__src_unique_states  1.7722           1.7740                    4.899
+  mean Wasserstein: host block=2.413  base block=0.168
+
+  -- scenario 11: 6 most-shifted features (of 17 host + 8 base)
+                    feature     smd  wasserstein_std  pct_outside_train_range
+  causal__src_unique_dports  3.5983           4.6339                   13.832
+        causal__src_std_dur  1.4689           1.4707                    0.000
+   causal__src_port_entropy  0.6189           1.2134                    5.604
+causal__src_total_src_bytes -0.9176           0.9176                    0.000
+     causal__src_total_pkts -0.9059           0.9059                    0.000
+      causal__src_total_dur -0.8913           0.8913                    0.000
+  mean Wasserstein: host block=0.861  base block=0.223
+
+=== SUMMARY: fold-level, mean +- sd over 5 seeds ===
+                           mean    std    min    max
+protocol        features                            
+causal_random   base      99.99   0.00  99.98  99.99
+                combined  98.52   1.18  96.52  99.38
+                host      94.45   1.57  92.07  96.14
+causal_scenario base      99.25   0.03  99.19  99.27
+                combined  29.93   8.13  24.55  44.19
+                host      34.72  21.24  24.61  72.71
+
+=== SUMMARY: per-scenario, causal_scenario, mean over 5 seeds ===
+              FAR                 macro_f1                
+features     base combined   host     base combined   host
+scope                                                     
+scenario_11  0.00     0.00   0.13    79.34    91.04  96.16
+scenario_7   0.10    56.20  63.13    99.14    41.77  37.45
+scenario_9   1.33     0.13   0.38    99.52    17.04  27.83
+
+wrote /home/student3/HiSNN/results/ctu13/fold1_audit.json

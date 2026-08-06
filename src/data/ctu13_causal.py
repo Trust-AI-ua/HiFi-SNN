@@ -64,6 +64,48 @@ def require_raw_columns(frame: pd.DataFrame) -> None:
         )
 
 
+def manifest_sha256(path) -> str:
+    """Hash of a frozen manifest, to be recorded in every result file it produced."""
+    import hashlib
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def load_frozen_folds(path, frame: pd.DataFrame = None) -> dict:
+    """Load a frozen fold manifest. THE loader every consumer must use.
+
+    Never re-solves the MIP: the solver has a time limit and no unique optimum, so
+    re-solving during a training invocation can return a different feasible
+    assignment and silently invalidate results computed against the old one.
+
+    Coerces scenario ids back to int. They were written through
+    json.dump(default=str), and isin(["2","4","8"]) against an int64 column matches
+    zero rows -- an empty partition, not an error.
+
+    When `frame` is given, verifies realised partition sizes against the manifest.
+    Attaches `manifest_sha256` for recording into result files.
+    """
+    import json
+    path = Path(path)
+    fo = json.load(open(path))
+    fo["folds"] = {int(k): {**v, **{key: [int(s) for s in v[key]]
+                                    for key in ("train_scenarios", "val_scenarios",
+                                                "test_scenarios")}}
+                   for k, v in fo["folds"].items()}
+    fo["manifest_sha256"] = manifest_sha256(path)
+
+    if frame is not None:
+        for k, f in fo["folds"].items():
+            for part in ("train", "val", "test"):
+                expected_rows = int(f["rows"][part])
+                actual_rows = int(frame.scenario.isin(f[f"{part}_scenarios"]).sum())
+                if actual_rows != expected_rows:
+                    raise RuntimeError(
+                        f"Frozen partition mismatch: expected {expected_rows}, "
+                        f"got {actual_rows}"
+                    )
+    return fo
+
+
 def _entropy_from_counts(counter: Dict, total: int) -> float:
     if total <= 0:
         return 0.0
