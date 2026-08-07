@@ -727,3 +727,100 @@ Class breakdown of removed rows (full test): DDoS 60,831 (5.70% of class), DoS 2
 duplicate-free mask, inference only from the 110 existing checkpoints, and report
 macro-F1 / MCC / DR / FAR before and after. The provider capture-file partition stays
 unchanged.
+
+---
+
+## 15. CICIoMT2024 duplicate-free re-evaluation — COMPLETE (2026-08-06)
+
+`scripts/ciciomt_dupfree_reeval.py` → `results/ciciomt2024/dupfree_reeval.csv`,
+`dupfree_reeval_per_class.csv`, `dupfree_reeval_full.json`, log `dupfree_reeval.log`.
+**Inference only, nothing retrained, provider capture-file partition unchanged.**
+25 evaluations (5 models × 5 seeds). Per seed the sampling protocol is reproduced exactly
+(`RandomState(seed)` drawing ktr then kte at 25%, then the stratified 10% val split) and
+the mask is built against **that seed's own training partition**; the bundle's test order
+is asserted equal to the reproduced `kte` order before anything is scored.
+
+Removal: **21,090–21,204 rows per seed, 5.224% mean** (vs train+val pool: ~5.25%).
+
+### Reconstruction fidelity — read before quoting TASNN
+| model | mean drift | max |
+|---|--:|--:|
+| GBDT / Vanilla / Tree-to-Spike / DNN-Tree | 0.0000 | **0.0000** |
+| TASNN | +0.0608 | **+0.2386** |
+
+Four of five reconstruct bit-exactly. **TASNN does not** (3 of 25 cells exceed ±0.05 pp),
+so its measured Δ of +0.341 pp is only marginally above its own ~0.24 pp reconstruction
+noise. Do not report the TASNN delta as a clean measurement. Vanilla SNN shows a
+comparable +0.266 pp with **zero** drift, so the effect itself is real independently
+of TASNN.
+
+### The headline: negligible for tree models, small but real for SNNs
+
+| model | macro-F1 before | after | Δ macro-F1 | Δ MCC | Δ BACC | Δ DR | Δ FAR |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| GBDT | 90.541 | 90.540 | **−0.001** | −0.010 | −0.002 | −0.003 | 0.000 |
+| Tree-to-Spike | 89.424 | 89.419 | **−0.005** | −0.013 | −0.009 | −0.012 | 0.000 |
+| DNN-Tree | 89.240 | 89.234 | **−0.006** | −0.016 | −0.010 | −0.011 | 0.000 |
+| Vanilla SNN | 72.608 | 72.874 | **+0.266** | **+1.204** | +0.173 | −0.011 | 0.000 |
+| TASNN | 74.240 | 74.581 | **+0.341** | **+1.404** | +0.300 | −0.013 | 0.000 |
+
+**Δ FAR is exactly 0.000 for every model** — zero Benign rows are duplicated, so benign
+false alarms cannot move. Model ranking is unchanged (GBDT > Tree-to-Spike > DNN-Tree >
+TASNN > Vanilla, before and after).
+
+### ⚠ The diagnostic that matters: the overlap *is* being exploited
+Macro-F1 on the duplicated rows alone versus the unique rows:
+
+| model | duplicated rows | unique rows | gap |
+|---|--:|--:|--:|
+| GBDT | **99.896** | 90.540 | +9.4 |
+| DNN-Tree | **99.882** | 89.234 | +10.6 |
+| Tree-to-Spike | **99.867** | 89.419 | +10.4 |
+| TASNN | 61.428 | 74.581 | **−13.2** |
+| Vanilla SNN | 61.293 | 72.874 | **−11.6** |
+
+The three tree-derived models score **~99.9% on records they have seen verbatim** and
+~89–90% on unseen ones. That is direct evidence of memorisation of the overlap. The two
+SNNs show the *opposite* sign — duplicated rows are harder for them — which is why
+removing those rows raises their scores.
+
+The headline barely moves anyway because the 5.2% removed is concentrated in DDoS and DoS,
+two large classes whose recall is already high, and macro-F1 averages over six classes.
+Memorisation is real; its leverage on this particular metric is small.
+
+### Per-class (mean over seeds and models)
+| class | support | removed | recall before → after | F1 before → after |
+|---|--:|--:|---|---|
+| Benign | 9,425 | **0** | 95.77 → 95.77 | 94.23 → 94.23 |
+| DDoS | 266,456 | 15,167 | 98.91 → 98.85 | 94.49 → 94.56 |
+| DoS | 104,339 | 5,848 | 71.05 → **71.72** | 76.05 → 76.74 |
+| MQTT | 15,945 | 0 | 98.53 → 98.53 | 99.06 → 99.06 |
+| Recon | 6,963 | 68 | 93.59 → 93.53 | 95.06 → 95.01 |
+| Spoofing | 418 | **0** | 50.04 → 50.04 | 40.38 → 40.38 |
+
+No minority class loses a single row: Benign, MQTT and Spoofing removals are exactly zero.
+Spoofing (F1 40.4) is untouched, so the weakest class is unaffected by the correction.
+
+### Verdict against the decision rule
+Mixed, landing in the **0.25–1.0 pp band**: macro-F1 moves <1 pp for every model
+(max 0.36), no minority-class F1 shifts, rankings hold, FAR is identical — but **MCC moves
++1.20 and +1.40 pp for the two SNNs**, which is not nothing.
+
+Recommendation: **keep the provider split as the primary result and promote the
+duplicate-free analysis into the main leakage-audit subsection, not the appendix.** Do not
+make duplicate-free the preferred result: the macro-F1 criterion for that (>1 pp) is not
+met, and the only >1 pp movements are MCC on the two weakest models.
+
+### Required wording — the 0.02% claim is retired
+> The provider-defined CICIoMT2024 partitions are capture-file-disjoint at the filename
+> level, but exact-record matching identifies 86,012 test records also represented in
+> training, corresponding to 5.33% of the full provider test set. Under the study's
+> seed-specific 25% sampling protocol, approximately 5.2% of each evaluated test subset
+> overlaps its corresponding sampled training subset. All overlapping records have
+> consistent labels. Removing them changes macro-F1 by at most 0.36 pp for any model and
+> leaves the benign false-alarm rate exactly unchanged, but the tree-derived models score
+> ~99.9% on the overlapping records against ~89–90% on unique ones, so the overlap is
+> being memorised even though its effect on the aggregate metric is small.
+
+**Never write** "CICIoMT2024 contains only a negligible 0.02% duplicate overlap", and
+never call the partition exact-record-disjoint.
