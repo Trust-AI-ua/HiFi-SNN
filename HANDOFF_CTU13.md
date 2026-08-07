@@ -907,3 +907,77 @@ are saved, so temperature scaling can be done entirely offline if a reviewer ask
 * Use the risk-coverage view (Δ macro-F1 vs normalised executed operations, −1.0 pp
   reference line, selected point marked) rather than mean exit timestep alone.
   `sweep_validation.csv` holds every point needed to draw it.
+
+---
+
+## 17. Deployment baselines, part 1 — Raw MLP and compact GBDT (2026-08-06)
+
+Both complete, 55/55 each, 0 failures. `results/deployment/{raw_mlp_summary,
+compact_gbdt,int8_grid}.csv`.
+
+### Raw MLP answers the representation question: the tree encoder earns its place
+`scripts/run_raw_mlp.py`. Same dense topology as the DNN-Tree twin (`DNNStudent`,
+F→64→64→K), plain cross-entropy, no teacher, no encoder — so the only difference is
+the input representation. Test macro-F1, mean over 5 seeds:
+
+| dataset | F_raw | params | **Raw MLP** | Tree-to-Spike | DNN-Tree | raw − T2S |
+|---|--:|--:|--:|--:|--:|--:|
+| ciciomt2024 | 45 | 7,494 | 79.84 | 89.42 | 89.24 | **−9.59** |
+| ciciot2023 | 46 | 7,688 | 64.92 | 72.22 | 72.43 | **−7.29** |
+| cse-cic-ids2018 | 82 | 9,797 | 72.07 | 75.94 | 65.93 | −3.88 |
+| cicids2017 | 78 | 9,541 | 95.50 | 98.39 | 98.55 | −2.89 |
+| toniot | 115 | 12,234 | 90.25 | 92.98 | 94.06 | −2.73 |
+| unswnb15 | 196 | 17,418 | 40.15 | 41.73 | 44.38 | −1.59 |
+| iscxids2012 | 175 | 15,554 | 97.22 | 98.03 | 98.18 | −0.81 |
+| edgeiiot | 95 | 11,279 | 88.29 | 88.78 | 89.87 | −0.49 |
+| ctu13 | 37 | 6,722 | 100.00 | 100.00 | 100.00 | −0.00 |
+| kddcup99 | 119 | 12,165 | 61.91 | 61.83 | 63.35 | +0.08 |
+| nslkdd | 122 | 12,357 | 59.11 | 58.48 | 62.44 | +0.63 |
+| **mean** | | | **77.20** | **79.80** | **79.86** | **−2.60** |
+
+**Raw MLP loses to Tree-to-Spike on 9 of 11 datasets and to DNN-Tree on 10 of 11.**
+The compact dense twin is competitive *because of* the tree-derived representation, not
+merely because it is small — a same-size raw-feature MLP gives up 2.6 pp on average and
+up to 9.6 pp. This is the answer the DNN-Tree twin alone could not provide.
+
+(An early single-cell nslkdd reading suggested the opposite. nslkdd is one of only two
+datasets where Raw MLP wins, and it is not representative — do not quote it alone.)
+
+Anomaly worth a look: on cse-cic-ids2018 Raw MLP (72.07) **beats DNN-Tree** (65.93) by
+6.1 pp while still losing to Tree-to-Spike (75.94). DNN-Tree underperforms its own
+teacher-derived representation there; unexplained.
+
+### Compact GBDT: large node savings, but the selection transfers poorly
+`scripts/compact_gbdt.py`, validation-only prefix selection, test evaluated once.
+**All 55 cells found a qualifying prefix.** Median round compression **2.74×** (the 25.9×
+mean is an artifact of ctu13 needing a single round), **53.7% fewer nodes** overall.
+
+| dataset | rounds | selected | test F1 full → compact | Δ |
+|---|--:|--:|---|--:|
+| ctu13 | 200 | **1.0** | 100.00 → 99.99 | −0.010 |
+| edgeiiot | 200 | 3.2 | 90.85 → 89.98 | −0.869 |
+| toniot | 200 | 66.0 | 96.67 → 95.75 | −0.926 |
+| cse-cic-ids2018 | 200 | 70.8 | 70.37 → 69.41 | −0.963 |
+| iscxids2012 | 200 | 65.6 | 98.79 → 97.78 | −1.008 |
+| cicids2017 | 200 | 75.2 | 99.58 → 98.54 | −1.043 |
+| ciciomt2024 | 200 | 118.6 | 90.54 → 89.36 | −1.183 |
+| unswnb15 | 200 | 87.4 | 50.62 → 48.61 | **−2.012** |
+
+⚠ **20 of 55 cells lose more than 1.0 pp on test** (4 lose >2 pp), despite every cell
+being selected to lose ≤1.0 pp on validation (max validation drop −0.998 by construction).
+Contrast the early-exit sweep, where only **1 of 55** exceeded the same margin. The
+tree-prefix criterion generalises markedly worse than the confidence-threshold criterion —
+truncating boosting rounds changes the model more fundamentally than exiting a timestep
+early, so validation macro-F1 is a noisier proxy for it. Report the compact-GBDT
+operating point with its test overshoot stated, not as a ≤1 pp guarantee.
+
+### int8-grid status — two planned table rows collapse
+`scripts/eval_int8_grid.py`. DNN-Tree and Tree-to-Spike run with `quantize: true`, which
+projects weights **before** evaluation and saves the checkpoint **after**, so their
+published metrics are already int8-grid and their FP weights are gone. Verified by probing
+each checkpoint (re-projection is a no-op on weights already on the grid): DNN-Tree
+`grid_distance = 0.000000`, Δ macro-F1 `0.0000`; Raw MLP `0.003937`, Δ `−0.169`.
+
+So "DNN-Tree" and "int8-grid DNN-Tree" are the same artifact, as are the two
+Tree-to-Spike rows. An FP DNN-Tree row needs 55 retrains with `quantize: false`.
+**Decision pending.** Terminology stays *int8-grid weights with floating-point execution*.
