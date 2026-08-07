@@ -1057,3 +1057,84 @@ against Tree-to-Spike 74.49–76.86 (spread 2.4) and Raw MLP 71.54–72.66 (spre
 "Raw MLP beats DNN-Tree by 6.1 pp" gap is DNN-Tree optimisation instability on that
 dataset, not a representation effect. Report as dataset-specific heterogeneity with the
 spread shown; no retraining needed.
+
+---
+
+## 19. FROZEN deployment wording — use verbatim, do not re-derive
+
+**Tree-to-Spike is NOT the fastest implementation. Never claim it is.** The measurements
+contradict that directly: DNN-Tree 8,471 MAC / **0.226 ms**; Tree-to-Spike full 7,587 SOP
+/ **2.909 ms**; Tree-to-Spike selected exit 6,091 SOP / **3.199 ms**.
+
+> Lower analytical arithmetic count does not imply lower wall-clock latency in the present
+> software implementation. Sequential timestep execution dominates batch-one CPU latency
+> for Tree-to-Spike.
+
+> Validation-selected early exit reduces executed spike operations but does not reduce CPU
+> latency in the current implementation; per-timestep confidence evaluation and control
+> overhead outweigh the saved simulation steps at batch size one.
+
+**Early exit is not a latency optimisation.** Label the two rows exactly
+`Tree-to-Spike, full T` and `Tree-to-Spike, validation-selected exit`, and state on the
+latter that it reduces analytical SOPs but *increases* measured batch-one CPU latency.
+
+### The real deployment strengths
+53.4 KB total artifact including encoder tables (vs 2.41 MB compact GBDT, 5.04 MB full
+GBDT); best aggregate MCC **90.51**; lowest FAR **3.15**; macro-F1 essentially tied with
+DNN-Tree; lower analytical arithmetic than DNN-Tree; conditional SOP reduction via early
+exit. That profile stands without claiming a latency win.
+
+Frame against GBDT as a trade-off, never as "better":
+> The full GBDT achieves the highest macro-F1, whereas Tree-to-Spike provides substantially
+> smaller model storage together with higher MCC and lower FAR, at the cost of
+> substantially higher software CPU latency.
+
+### Quantisation wording — the "little effect" claim is RETIRED
+Raw MLP int8-grid projection: **−0.97 pp mean**, worst **−9.68 pp**, **12/55 cells >1 pp**.
+Use Raw MLP as evidence that int8-grid projection is **dataset-sensitive**, never as proof
+that quantisation is free.
+
+Apples-to-apples deployment comparison is at matched precision:
+**Raw MLP int8 76.23 · DNN-Tree int8 79.86 · Tree-to-Spike int8 79.80.** The **3.63 pp**
+Raw-MLP-to-DNN-Tree gap is the clean deployment evidence that the tree-derived
+representation contributes beyond the compact dense topology alone.
+**Do not call it a formally isolated causal encoder effect** — the crossed 2×2 remains the
+causal evidence (§11, +8.32 macro-F1 encoder main effect).
+
+---
+
+## 20. Sensitivity sweep resumed (2026-08-06)
+
+Pre-launch verification, all exact: grid **35 arms × 4 datasets × 5 seeds = 700**;
+270 `results.json` on disk; skip guard reports **430 pending**. Nothing regenerated — same
+seeds, splits, arms and hyperparameter ranges; the guard keys on
+`results/ladder/{ds}/{arm}/seed_{s}/results.json`.
+
+```bash
+cd ~/HiSNN && nohup .venv/bin/python -u scripts/run_ladder.py --workers 5 \
+  >> results/ladder_sens.log 2>&1 &
+```
+`results/ladder_sens.log` is append-mode and contains history from earlier sessions —
+read only lines after the most recent `[ladder] 430 runs pending`.
+
+**Completion criteria:** 700 unique configurations, 700 valid records, 0 duplicate keys,
+0 missing keys. Rerun only the exact failing cell if one fails.
+
+### What to extract (do NOT mine it for "best setting" claims)
+Per varied parameter: median macro-F1, IQR/95% interval, MCC, FAR, spike activity,
+operation count, and percentage relative to the default. The question is **whether
+Tree-to-Spike's conclusion is stable over a reasonable neighbourhood of its default**, not
+which cell scores highest. Look for broad plateaus, catastrophic regions, cost trade-offs,
+and whether the default sits inside a stable region rather than on an isolated optimum.
+A default that is not the numerical best but sits on a broad plateau at lower cost is
+defensible and often preferable.
+
+**Statistics:** this is a sensitivity sweep, not 430 independent experiments. Dataset is
+the generalisation unit; seeds are within-configuration optimisation repetitions; use
+paired comparisons where configurations share dataset and seed. Most of the grid belongs
+in the appendix.
+
+### After the sweep — no further model training is required
+1. validate 700/700 completeness · 2. sensitivity tables/figures · 3. regenerate the
+deployment table · 4. freeze the Pareto plot · 5. reproducibility extraction ·
+6. manuscript and rebuttal.
