@@ -13,12 +13,19 @@ The blocking bug is **fixed and the parquet rebuilt** (2026-08-05, commit `926ab
 checkpointed the pre-fix state). The 36-run diagnostic is **complete** and the go/no-go
 rule is **triggered** (§6): CTU-13 is not a null scenario-shift result.
 
-**Decision (2026-08-06): GO, but the original 300-run matrix is superseded and must not
-be launched yet.** Fold 1 collapses to 27.40 combined macro-F1 against 99.50 on fold 0,
-and that must be *explained* before any aggregate is produced. The immediate task is the
-fold-1 integrity + decomposition audit (§9), 30 runs. Only after it passes does the
-revised **420-run** matrix (§10) start. The next task is explanation, not another
-aggregate.
+**STATUS 2026-08-06: the 420-run matrix is COMPLETE** (18.8 h, 0 failures). Fold 1 was
+audited first and the collapse is genuine scenario shift, not a defect (§9). Results and
+interpretation are in **§12** — read that before writing anything.
+
+Three things from §12 that a fresh session will otherwise get wrong:
+1. **Do not rank architectures.** Tree-to-Spike has the worst mean Δ_scenario, but paired
+   against GBDT by fold the sign *flips* on fold 3. n=4 folds, sd 23.7.
+2. **Do not quote base-only scores without the duplicate caveat.** Up to 45.9% of fold-1
+   base test rows are exact repeats of training rows.
+3. **Report per scenario.** Failures are architecture × scenario specific and they invert:
+   GBDT is near-perfect where the neural models collapse, and vice versa.
+
+**Next action: the CTU-13 queue item is done — move to §7 step 3 (CICIoMT2024).**
 
 > **The root cause was not what the original brief assumed.** That brief anticipated a
 > pandas index-alignment bug and prescribed a positional-assignment fix. The actual
@@ -42,7 +49,7 @@ aggregate.
 | CTU-13 scenario folds | **FROZEN, all 4 pass gate** | `results/ctu13/scenario_folds.json` |
 | CTU-13 three-condition features | **REBUILT** with raw cols, 52 cols, 95 MB | `dataset/ctu13/_three_condition.parquet` |
 | 36-run diagnostic | **36 of 36 COMPLETE** | `results/ctu13/diagnostic36.json` |
-| CTU-13 model matrix (300 runs) | **NEVER LAUNCHED** — 0 result dirs | — |
+| CTU-13 model matrix (420 runs) | **COMPLETE** — 420/420, 0 failures, 18.8 h | `results/ctu13/matrix/` |
 | ⚠ `results/ctu13/SNN_LeakyParallel/` | stale phase-1 artifact (Jun 25), **not** matrix output | ignore |
 | 700-run sensitivity sweep | **PAUSED at 270/700** — resumable | `results/ladder/` |
 
@@ -76,7 +83,9 @@ run) — 5 concurrent workers is the practical ceiling.
 | # | File | Role |
 |---|---|---|
 | 1 | `scripts/ctu13_stage1.py` | audit + scenario MIP + 36-run diagnostic (**bug fixed**) |
-| 1b | `scripts/ctu13_fold1_audit.py` | fold-1 integrity, decomposition, 30 runs, host + shift audit |
+| 1b | `scripts/ctu13_fold_audit.py` | per-fold integrity, decomposition, host + shift audit (`--folds N ...`) |
+| 1c | `scripts/run_ctu13_matrix.py` | 420-run matrix driver (`--matrix both --workers 4`) |
+| 1d | `scripts/ctu13_matrix_analysis.py` | three effects + per-scenario + duplicate sensitivity |
 | 2 | `src/data/ctu13_causal.py` | `causal_host_features()`, `build_conditions()`, `HOST_COLS` |
 | 3 | `src/data/ctu13.py` | original loader; `_aggregate_per_source()` = the legacy leak |
 | 4 | `results/ctu13/timestamp_audit.json` | audit output |
@@ -533,6 +542,27 @@ it coerces scenario ids to int, verifies realised partition sizes against the ma
 
 ---
 
+## 11. Context the numbers won't convey
+
+* **TON-IoT final claim is protocol-wide degradation, not an architecture ranking.**
+  A pilot with one seed per cell showed Tree-to-Spike degrading least; with 5 seeds per
+  fold that ordering dissolved. All five models lose 8–10 macro-F1 and gain 12–19 pp FAR
+  under source-IP-disjoint evaluation. Do not revive the ranking claim.
+* **Only 1 of 4 target-domain datasets supports a new group-disjoint protocol**
+  (TON-IoT). CICIoMT2024 has provider capture separation; CICIoT2023 and Edge-IIoTset are
+  infeasible (documented in `rebuttal2_response.tex`, `tab:audit`).
+* **The paper's central evidence is the encoder attribution**, not generalization or
+  efficiency: encoder main effect **+8.32 macro-F1** (95% CI [+3.56, +13.00]), objective
+  main effect −0.33 (null), interaction −0.11 (null), from a complete 2×2.
+* **Response letters:** `rebuttal_response.tex` (round 1, superseded on affected points),
+  `rebuttal2_response.tex` (round 2, governs where they disagree — see its
+  `tab:withdrawn`).
+* Several assumptions have failed audit in this project (Edge-IIoT chronology, TON-IoT
+  host semantics, CICIoMT2024 "zero overlap", and this parquet schema). **Verify before
+  asserting.**
+
+---
+
 ## 12. Matrix results — 420/420 complete, 0 failures, 18.8 h (2026-08-06)
 
 `scripts/ctu13_matrix_analysis.py` → `matrix_runs.csv`, `matrix_scenarios.csv`,
@@ -605,22 +635,3 @@ the form "architecture X transfers better" is contradicted by another scenario i
 same table.
 
 ---
-
-## 11. Context the numbers won't convey
-
-* **TON-IoT final claim is protocol-wide degradation, not an architecture ranking.**
-  A pilot with one seed per cell showed Tree-to-Spike degrading least; with 5 seeds per
-  fold that ordering dissolved. All five models lose 8–10 macro-F1 and gain 12–19 pp FAR
-  under source-IP-disjoint evaluation. Do not revive the ranking claim.
-* **Only 1 of 4 target-domain datasets supports a new group-disjoint protocol**
-  (TON-IoT). CICIoMT2024 has provider capture separation; CICIoT2023 and Edge-IIoTset are
-  infeasible (documented in `rebuttal2_response.tex`, `tab:audit`).
-* **The paper's central evidence is the encoder attribution**, not generalization or
-  efficiency: encoder main effect **+8.32 macro-F1** (95% CI [+3.56, +13.00]), objective
-  main effect −0.33 (null), interaction −0.11 (null), from a complete 2×2.
-* **Response letters:** `rebuttal_response.tex` (round 1, superseded on affected points),
-  `rebuttal2_response.tex` (round 2, governs where they disagree — see its
-  `tab:withdrawn`).
-* Several assumptions have failed audit in this project (Edge-IIoT chronology, TON-IoT
-  host semantics, CICIoMT2024 "zero overlap", and this parquet schema). **Verify before
-  asserting.**
