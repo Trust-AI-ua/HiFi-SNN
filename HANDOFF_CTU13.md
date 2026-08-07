@@ -824,3 +824,86 @@ met, and the only >1 pp movements are MCC on the two weakest models.
 
 **Never write** "CICIoMT2024 contains only a negligible 0.02% duplicate overlap", and
 never call the partition exact-record-disjoint.
+
+---
+
+## 16. Validation-selected early exit — COMPLETE, Tree-to-Spike, 11 datasets × 5 seeds (2026-08-06)
+
+`scripts/extract_prefix.py` → `results/prefix_outputs/` (55 cells, 12.85 GB, **0 refused**).
+`scripts/early_exit_sweep.py` → `results/early_exit/{sweep_validation,selected_test,
+class_conditional,calibration}.csv`.
+
+Cost: **110 forward passes**, not 440. All eight thresholds replayed offline from cached
+prefix logits.
+
+**Two verification gates, both clean.** Every cell's final prefix logit reproduces the
+stored macro-F1/MCC/FAR exactly (dF1 = dMCC = dFAR = 0.00e+00, 55/55). The offline replay
+was also checked against the model's own `predict_early_exit` at θ=0.9: **4096/4096
+predictions and exit steps identical**, so the replay is the same function the network
+implements, not a reimplementation of it.
+
+### Headline: the mechanism is rejected on nearly half the cells
+
+**Early exit DISABLED in 26 of 55 cells (47%)** under the −1.0 pp absolute validation rule.
+
+| dataset | disabled | selected θ | Δ macro-F1 | Δ MCC | mean exit /20 | SOP reduction |
+|---|--:|---|--:|--:|--:|--:|
+| ciciot2023 | **5/5** | — | 0.000 | 0.000 | 20.00 | 0% |
+| edgeiiot | **5/5** | — | 0.000 | 0.000 | 20.00 | 0% |
+| nslkdd | **5/5** | — | 0.000 | 0.000 | 20.00 | 0% |
+| unswnb15 | **5/5** | — | 0.000 | 0.000 | 20.00 | 0% |
+| toniot | 3/5 | 0.99 | −0.438 | −0.456 | 16.21 | 15.4% |
+| iscxids2012 | 2/5 | 0.85, 0.99 | −0.164 | −0.320 | 7.24 | 50.5% |
+| kddcup99 | 1/5 | 0.99 | −0.001 | +0.002 | 2.31 | **57.2%** |
+| ctu13 | 0/5 | 0.5–0.95 | −0.054 | −0.108 | 1.15 | **68.3%** |
+| ciciomt2024 | 0/5 | 0.95, 0.99 | −0.253 | −0.351 | 7.64 | **53.5%** |
+| cse-cic-ids2018 | 0/5 | 0.8–0.95 | −0.447 | **−1.271** | 11.57 | 36.7% |
+| cicids2017 | 0/5 | 0.95, 0.99 | −0.330 | −0.538 | 13.11 | 31.1% |
+
+(Δ columns for enabled cells only.) **Only 1 of 55 cells exceeds −1.0 pp on test**
+(cse-cic-ids2018 seed 46, −1.002, right at the boundary) — validation selection transfers
+to test almost perfectly, which is the main evidence that the protocol is sound.
+
+Selected thresholds cluster at **0.95–0.99**, far above the retired fixed θ=0.9.
+
+### Savings come from benign traffic, and the mechanism picks the easy samples
+
+| | mean exit | exits before T | error among early exits | error among full-window |
+|---|--:|--:|--:|--:|
+| benign | 8.02 | **88.8%** | **0.17%** | 5.31% |
+| attack | 11.25 | 70.9% | 16.58% | 38.32% |
+
+Benign flows exit earlier and far more often, and their early exits are essentially
+error-free. In both groups the early-exited samples are *much* more accurate than the ones
+that run to T, so confidence is selecting genuinely easy inputs rather than gambling.
+The compute saving is therefore mostly "benign traffic is cheap", which is the honest
+framing for a deployment claim.
+
+### ⚠ Minority attack classes pay a real price the macro average hides
+Mean per-class recall change on enabled cells:
+TON-IoT **ransomware −3.83 pp**, CSE-CIC-IDS2018 **dos −2.29**, CICIoMT2024 **MQTT −1.85**,
+KDD probe −0.86, TON-IoT mitm −0.72. A 0.4 pp macro-F1 change can still cost a rare attack
+class nearly 4 points of recall. Report per-class recall alongside any early-exit claim.
+
+### Calibration — why this is adaptive computation, not calibrated confidence
+ECE of the prefix posterior (mean over datasets and seeds):
+
+| t | ECE | mean confidence | accuracy |
+|---|--:|--:|--:|
+| 1 | **23.32%** | 67.71 | 66.61 |
+| 10 | 12.05% | 91.66 | 83.57 |
+| 20 | **3.65%** | 95.49 | 94.16 |
+
+The posterior is severely miscalibrated early (ECE 23.3% at t=1, still 12.1% at the
+midpoint) and only becomes trustworthy at the full window. The threshold must be described
+as an adaptive-computation knob, **never** as a calibrated confidence level. Prefix logits
+are saved, so temperature scaling can be done entirely offline if a reviewer asks.
+
+### Reporting guidance
+* Lead with "validation-selected early exit is **rejected on 47% of cells**; where it
+  qualifies it removes 15–68% of synaptic operations for ≤0.45 pp mean macro-F1."
+* **Never** reuse the fixed θ=0.9 headline. On nslkdd θ=0.9 costs ~9 pp of validation
+  macro-F1, and no threshold there qualifies at all.
+* Use the risk-coverage view (Δ macro-F1 vs normalised executed operations, −1.0 pp
+  reference line, selected point marked) rather than mean exit timestep alone.
+  `sweep_validation.csv` holds every point needed to draw it.
