@@ -349,8 +349,10 @@ fold 1 should be understood first.
    across all folds, not just fold 1. That is the cheapest next step and it does not need
    the 420 runs.
    **→ NEXT ACTION: the §10 420-run matrix is cleared to launch but has not been.**
-3. CICIoMT2024 duplicate-free sensitivity — **already known:** 195 duplicate clusters,
-   357 overlapping test rows (0.022%), **100% label agreement**. Remaining: re-evaluate
+3. CICIoMT2024 duplicate-free sensitivity — ⚠ **the inherited figure is WRONG, see §14.**
+   Recorded here was "195 duplicate clusters, 357 overlapping test rows (0.022%)". Direct
+   measurement gives **~21,000 overlapping test rows per seed (5.2%)** — ~59× larger.
+   100% label agreement does hold. Remaining: re-evaluate
    existing checkpoints on the duplicate-free test subset (no retraining) and report
    ΔM for macro-F1/MCC/DR/FAR. If |ΔM| < 0.1 pp, state the overlap is immaterial.
 4. Validation-selected early-exit sweep, θ ∈ {0.50,0.60,0.70,0.80,0.85,0.90,0.95,0.99};
@@ -635,3 +637,93 @@ the form "architecture X transfers better" is contradicted by another scenario i
 same table.
 
 ---
+
+---
+
+## 13. Matched-mask duplicate correction — FINAL CTU-13 computation (2026-08-06)
+
+`scripts/ctu13_common_mask_correction.py` → `results/ctu13/matrix_common_mask.csv`,
+log `common_mask.log`. **Inference only** — no SNN retrained. Student weights loaded from
+the saved checkpoints; the XGBoost teacher is refit only because it was never serialised.
+
+**Reconstruction fidelity: 0.0000 pp drift on all 240 cells** (max |drift| 0.0000, tolerance
+0.05). The rebuilt models reproduce the stored full-test macro-F1 exactly, so the masked
+metrics are exact, not approximate.
+
+One common mask per (condition, fold): `M_common = ¬(dup_base ∨ dup_combined)`. Both
+representations are scored on exactly those rows.
+
+### Δ_host, matched vs the earlier own-mask bound
+
+| model | raw | own-mask bound (superseded) | **matched** |
+|---|--:|--:|--:|
+| DNN-Tree | −4.06 | −2.97 | **−7.90** |
+| GBDT | −7.98 | −7.86 | **−7.01** |
+| Tree-to-Spike | −16.36 | −13.85 | **−9.70** |
+
+**The own-mask bound was wrong in both directions** — it understated DNN-Tree by 2.7× and
+overstated Tree-to-Spike by 1.7×. Own-mask corrections are not a conservative
+approximation of a matched one; do not reuse that shortcut anywhere else.
+
+### Verdict against the decision rule
+Negative for all three models → **the host-context interaction is robust**. Report the
+matched magnitudes above, not the raw ones.
+
+Two qualifications that must travel with the claim:
+* **Per-fold signs still flip.** DNN-Tree is **+7.75** on fold 3, Tree-to-Spike +0.22 on
+  fold 0. The interaction is negative *on average*, not in every partition.
+* **Matched evaluation collapses the between-architecture spread** from 12.3 pp
+  (−4.06…−16.36) to 2.7 pp (−7.01…−9.70). Once the duplicate advantage is removed the
+  host-context liability is close to uniform across architectures — further evidence
+  against any architecture ranking, and a cleaner result than the raw numbers suggested.
+
+### Components on the common mask (macro-F1, mean over folds+seeds)
+
+| model | base random | combined random | base scenario | combined scenario |
+|---|--:|--:|--:|--:|
+| DNN-Tree | 99.87 | 99.50 | **95.89** | 87.62 |
+| GBDT | 99.99 | 99.94 | **99.53** | 92.47 |
+| Tree-to-Spike | 99.89 | 98.78 | **94.50** | 83.68 |
+
+On a matched, duplicate-free test set, dropping the host-context block gains **7–11 pp**
+under scenario shift while costing ~0–1 pp under random splitting.
+
+**CTU-13 is now closed as a training experiment.**
+
+---
+
+## 14. ⚠ CICIoMT2024 overlap — the inherited figure is wrong by ~59×
+
+`scripts/ciciomt_dupfree_mask.py` → `results/ciciomt2024/dupfree_summary.json`,
+`dupfree_test_mask.npy`.
+
+Recorded in §7 (inherited, untraceable to any script): *195 duplicate clusters, 357
+overlapping test rows, 0.022%*. Direct measurement of canonical input hashes:
+
+| basis | test rows | duplicated in train | % |
+|---|--:|--:|--:|
+| full provider test set | 1,614,182 | 86,012 | **5.33%** |
+| per-seed, as the runs actually evaluate (`subsample_fraction=0.25`) | 403,545 | ~21,000 | **~5.2%** |
+
+Per-seed: 20,973 / 21,090 / 21,195 / 21,204 / 21,101 for seeds 42–46. The reproduction is
+verified — 403,545 matches the stored `n_samples` exactly, and both train and test are
+subsampled to 25% with a seed-dependent `RandomState(seed)` draw, so the mask **must** be
+built per seed against the *subsampled* train set.
+
+**100% label agreement holds** (86,012/86,012), so this is exact-record repetition, not
+label noise.
+
+### Why this matters
+A model-free worst-case bound (removing r rows from a class of support s moves that class's
+recall by at most r/s): **worst single class ≤5.86 pp, macro-averaged ≤2.38 pp**. That is
+far above the 0.1 pp "immaterial" threshold, so **the prepared conclusion —
+"removing those records does not materially change the results" — cannot be asserted
+without the actual re-evaluation.** It may still turn out true; it is no longer a formality.
+
+Class breakdown of removed rows (full test): DDoS 60,831 (5.70% of class), DoS 24,422
+(5.86%), Recon 759 (2.74%), Benign / MQTT / Spoofing 0.
+
+**Next step:** re-evaluate the 5 model families × 5 seeds on the seed-aligned
+duplicate-free mask, inference only from the 110 existing checkpoints, and report
+macro-F1 / MCC / DR / FAR before and after. The provider capture-file partition stays
+unchanged.
