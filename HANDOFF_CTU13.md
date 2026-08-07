@@ -533,6 +533,79 @@ it coerces scenario ids to int, verifies realised partition sizes against the ma
 
 ---
 
+## 12. Matrix results — 420/420 complete, 0 failures, 18.8 h (2026-08-06)
+
+`scripts/ctu13_matrix_analysis.py` → `matrix_runs.csv`, `matrix_scenarios.csv`,
+`matrix_delta_{aggregation,scenario,host}.csv`.
+
+### Effect 1 — aggregation is real but small
+Δ_aggregation (causal_random − legacy_random, combined, pp macro-F1):
+GBDT −0.11 · Vanilla −0.31 · **Tree-to-Spike −1.37** · DNN-Tree −0.49 · TASNN −0.29.
+`legacy_random` is **100.00 for four of five models**; `causal_random` is 98.6–99.9.
+So causalising aggregation costs ~0.1–1.4 pp and **the random-split ceiling survives it**.
+The ceiling is not explained by future-window aggregation.
+
+### Effect 2 — scenario shift hits every architecture
+Δ_scenario (causal_scenario − causal_random, combined, pp): GBDT −8.32 · Vanilla −7.68 ·
+**Tree-to-Spike −19.24** · DNN-Tree −6.95 · TASNN −8.74. By fold, all models:
+fold 0 ≈ 0, fold 1 −19.8 to −56.4, fold 2 −0.7 to −13.4, fold 3 −1.7 to −12.8.
+
+**Do not rank architectures on this.** Tree-to-Spike has the worst mean, but paired by
+fold against GBDT the difference is −0.22, −36.53, −12.68, **+5.74** — the sign flips on
+fold 3, n=4 folds, sd 23.7. Same trap as the TON-IoT pilot ordering that dissolved.
+
+### Effect 3 — host-context interaction, negative but overstated
+Δ_host = (comb_scen − base_scen) − (comb_rand − base_rand):
+
+| model | raw | duplicate-corrected |
+|---|--:|--:|
+| DNN-Tree | −4.06 | **−2.97** |
+| GBDT | −7.98 | **−7.86** |
+| Tree-to-Spike | −16.36 | **−13.85** |
+
+Negative for all three: the host block is ~harmless under random splitting and harmful
+under scenario shift. Sign still flips by fold (DNN-Tree **+7.81** on fold 3).
+
+### ⚠ The base representation has severe duplicate leakage — read before quoting base
+`dupfree_excluded_pct` by condition × feature set:
+
+| condition | features | mean excluded | max |
+|---|---|--:|--:|
+| causal_scenario | **base** | 15.5% | **45.9% (fold 1)** |
+| causal_random | **base** | 17.4% | 17.5% |
+| legacy_random | combined | 15.0% | 15.1% |
+| causal_* | combined | ~0.00% | 0.008% |
+
+With only 8 coarse flow features, distinct flows collide into identical vectors, so up to
+**45.9% of fold-1 test rows are exact repeats of training rows**. Removing them costs up
+to **17.10 pp** (Tree-to-Spike fold 1 base: 95.08 → 77.98). Base-only scenario-disjoint
+scores are therefore **inflated**, and Δ_host is overstated because base enjoys a
+memorisation channel that combined does not.
+
+Caveat on the correction: dup-free base and dup-free combined exclude *different* row
+sets, so the corrected Δ_host is a bound, not a matched comparison. A matched version
+needs a common mask over both representations — cheap to add, but it needs saved
+per-row predictions, which the trainers do not currently write.
+
+### Per-scenario — failures are architecture × scenario specific
+`causal_scenario` / combined macro-F1 (mean over seeds), the result that matters most:
+
+| scenario | botnet% | GBDT | Vanilla | Tree-to-Spike | DNN-Tree | TASNN | spread |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| 7 | 7.8 | **98.20** | 39.35 | 56.50 | 41.24 | 38.60 | **59.6** |
+| 9 | 87.0 | 61.05 | **99.73** | **27.18** | 99.38 | 98.87 | **72.6** |
+| 10 | 75.0 | 99.42 | 96.20 | 60.85 | 65.39 | 94.71 | 38.6 |
+| 12 | 55.6 | 73.31 | **99.92** | 84.06 | 96.24 | 87.74 | 26.6 |
+| 1 | 69.7 | 100.00 | 78.84 | 78.64 | 96.95 | 85.47 | 21.4 |
+
+The other 8 scenarios are ≥93 for every model. **No architecture is uniformly robust.**
+GBDT is near-perfect on scenario 7 (FAR 0.31) where all four neural models collapse
+(FAR 38.7–60.7), and is the *second worst* on scenario 9 and worst on 12. Any claim of
+the form "architecture X transfers better" is contradicted by another scenario in the
+same table.
+
+---
+
 ## 11. Context the numbers won't convey
 
 * **TON-IoT final claim is protocol-wide degradation, not an architecture ranking.**
