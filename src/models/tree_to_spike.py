@@ -221,6 +221,47 @@ class SNNStudent(nn.Module):
         return logits, total_spikes, spike_sites, synops
 
     @torch.no_grad()
+    def forward_prefix(self, spikes: torch.Tensor):
+        """Per-timestep prefix state, so early-exit analysis becomes post-processing.
+
+        One full-window pass yields everything needed to replay ANY threshold,
+        recompute calibration, or re-derive class-conditional exit behaviour
+        offline -- instead of one inference run per threshold.
+
+        Returns a dict of CPU tensors:
+          prefix_logits [B,T,K]  z^(t) = (1/t) sum_{s<=t} U3^(s), the same quantity
+                                 forward() returns at t=T and predict_early_exit()
+                                 thresholds on. prefix_logits[:, -1] == forward() logits.
+          cum_spk1/cum_spk2 [B,T]  cumulative per-sample hidden spikes
+          cum_sops      [B,T]    cumulative per-sample synaptic operations, using the
+                                 same accounting as forward()'s `synops`
+                                 (spk1*fanout1 + spk2*fanout2), so exiting at t has a
+                                 real measured cost rather than a t/T approximation
+          cum_in_spikes [B,T]    cumulative encoder input spikes per sample
+        """
+        T, B, _ = spikes.shape
+        dev = spikes.device
+        m1, m2, m3 = self.lif1.init_leaky(), self.lif2.init_leaky(), self.lif3.init_leaky()
+        mem_sum = torch.zeros(B, self.fc3.out_features, device=dev)
+        c1 = torch.zeros(B, device=dev); c2 = torch.zeros(B, device=dev)
+        cin = torch.zeros(B, device=dev)
+        pl = torch.empty(B, T, self.fc3.out_features, device=dev)
+        k1 = torch.empty(B, T, device=dev); k2 = torch.empty(B, T, device=dev)
+        kin = torch.empty(B, T, device=dev)
+        for t in range(T):
+            s1, m1 = self.lif1(self.fc1(spikes[t]), m1)
+            s2, m2 = self.lif2(self.fc2(s1), m2)
+            s3, m3 = self.lif3(self.fc3(s2), m3)
+            mem_sum = mem_sum + m3
+            pl[:, t, :] = mem_sum / (t + 1)
+            c1 = c1 + s1.sum(dim=1); c2 = c2 + s2.sum(dim=1)
+            cin = cin + spikes[t].sum(dim=1)
+            k1[:, t] = c1; k2[:, t] = c2; kin[:, t] = cin
+        return {"prefix_logits": pl.cpu(), "cum_spk1": k1.cpu(), "cum_spk2": k2.cpu(),
+                "cum_sops": (k1 * self.fanouts[1] + k2 * self.fanouts[2]).cpu(),
+                "cum_in_spikes": kin.cpu()}
+
+    @torch.no_grad()
     def predict_early_exit(self, spikes: torch.Tensor, theta_exit: float = 0.9,
                            theta_uncertain: float = 0.5):
         """SNN-only inference with confidence-triggered early exit. Returns
