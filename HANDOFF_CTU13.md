@@ -981,3 +981,79 @@ each checkpoint (re-projection is a no-op on weights already on the grid): DNN-T
 So "DNN-Tree" and "int8-grid DNN-Tree" are the same artifact, as are the two
 Tree-to-Spike rows. An FP DNN-Tree row needs 55 retrains with `quantize: false`.
 **Decision pending.** Terminology stays *int8-grid weights with floating-point execution*.
+
+---
+
+## 18. Deployment baselines — COMPLETE (2026-08-06)
+
+`scripts/deployment_measure.py` + `deployment_summary.py` →
+`results/deployment/{deployment_summary,deployment_per_dataset,deployment_measurements,
+int8_grid,compact_gbdt,raw_mlp_summary}.csv` and `deployment_pareto.png`.
+
+Predictive metrics are means over 11 datasets × 5 seeds. Systems cost is measured on
+seed 42: batch-1, **single thread** (`torch.set_num_threads(1)`), 500-sample warm-up,
+2,000 timed samples from a deterministic common subset, same machine.
+
+| Model | Macro-F1 | MCC | FAR | Artifact | Ops/cmp | CPU p50 | CPU p95 |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| Full GBDT | **82.13** | 88.29 | 6.91 | 5.04 MB | 7,636 cmp | 2.332 ms | 2.379 |
+| Compact GBDT | 81.32 | 87.67 | 7.52 | 2.41 MB | 3,076 cmp | 2.187 ms | 2.230 |
+| Raw MLP (FP32) | 77.20 | 84.42 | 4.34 | 47.6 KB | 10,979 MAC | **0.014 ms** | 0.014 |
+| Raw MLP (int8-grid) | 76.23 | 82.75 | 4.92 | 47.6 KB | 10,979 MAC | **0.014 ms** | 0.014 |
+| DNN-Tree (int8-grid) | 79.86 | 88.85 | 3.31 | 50.2 KB | 8,471 MAC | 0.226 ms | 0.232 |
+| Tree-to-Spike full T | 79.80 | **90.51** | **3.15** | 53.4 KB | 7,587 SOP | 2.909 ms | 2.941 |
+| **Tree-to-Spike selected exit** | 79.68 | 90.27 | 3.18 | 53.4 KB | **6,091 SOP** | 3.199 ms | 3.231 |
+
+### ⚠ Measured latency contradicts the analytical operation counts
+Tree-to-Spike executes **fewer** analytical operations than DNN-Tree (7,587 SOP vs
+8,471 MAC) yet is **12.9× slower** in batch-1 CPU wall-clock (2.909 vs 0.226 ms), and
+**208× slower** than the Raw MLP. The timestep loop, not arithmetic volume, dominates
+single-sample CPU cost. Any efficiency claim resting on SOP counts alone is contradicted
+by the measured number on this hardware.
+
+**Early exit reduces operations but *increases* latency.** Selected exit cuts executed
+SOPs 7,587 → 6,091 (−19.7%) while p50 rises 2.909 → 3.199 ms (**+10%**). The per-timestep
+softmax and bookkeeping in `predict_early_exit` cost more than the timesteps saved at
+batch 1. Early exit is an *energy/operations* optimisation here, not a latency one — say
+so explicitly.
+
+### Other results worth keeping
+* **Artifact size is where the neural models win decisively:** 47–53 KB against 2.4–5.0 MB
+  for the ensembles, a ~50–100× reduction, and the Tree-to-Spike encoder tables are
+  included in its 53.4 KB.
+* **Full GBDT has the best macro-F1 (82.13) but the worst FAR (6.91).** Tree-to-Spike has
+  the best MCC (90.51) and best FAR (3.15) — on a class-imbalanced IDS task those matter
+  more than macro-F1, and this is the strongest remaining argument for the spiking model.
+* **Compact GBDT** buys 2.1× smaller artifact and 2.5× fewer comparisons for −0.80 pp
+  macro-F1, but see §17: its validation-selected margin does not hold on test in 20/55 cells.
+
+### ⚠ int8-grid projection is NOT cheap — earlier single-cell reading was wrong
+Across all 55 Raw MLP cells the projection costs **−0.97 pp mean macro-F1**, worst
+**−9.68 pp**, with **12/55 cells losing >1 pp** (ciciomt2024 −4.47, ciciot2023 −3.30,
+toniot −2.01). An earlier nslkdd-only probe showed −0.169 pp and was quoted as evidence
+that projection has a small effect; **that generalisation is retired.**
+
+Consequence for the comparison: DNN-Tree and Tree-to-Spike are reported *post*-projection,
+so their FP numbers would presumably be higher. Comparing like with like at int8-grid,
+Raw MLP 76.23 vs DNN-Tree 79.86 is a **3.63 pp** representation gap — larger than the
+2.66 pp gap computed against the FP Raw MLP. The §17 conclusion strengthens rather than
+weakens.
+
+### Checkpoint precision status (verified in weight space, no data needed)
+| model | already on int8 grid | max grid distance |
+|---|--:|--:|
+| DNN-Tree | **55/55** | 0.000e+00 |
+| Tree-to-Spike | 54/55 | 8.57e-08 (float32 residue) |
+| Raw MLP | 0/55 | 3.94e-03 |
+
+Footnote for the table: *DNN-Tree and Tree-to-Spike are evaluated from checkpoints saved
+after int8-grid weight projection, so FP and post-training int8 rows would be numerically
+duplicate; no independent floating-point checkpoint was retained. This is int8-grid weight
+projection with floating-point execution, not integer-only inference.*
+
+### CSE-CIC-IDS2018 anomaly resolved as seed instability
+DNN-Tree per-seed macro-F1 there: **48.57, 63.02, 76.44, 66.91, 74.72** (spread 27.9 pp)
+against Tree-to-Spike 74.49–76.86 (spread 2.4) and Raw MLP 71.54–72.66 (spread 1.1). The
+"Raw MLP beats DNN-Tree by 6.1 pp" gap is DNN-Tree optimisation instability on that
+dataset, not a representation effect. Report as dataset-specific heterogeneity with the
+spread shown; no retraining needed.
