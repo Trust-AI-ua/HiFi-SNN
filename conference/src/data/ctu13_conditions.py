@@ -1,7 +1,9 @@
 """CTU-13 three-condition protocols as first-class datasets.
 
-Registers the conditions the RandomForest diagnostic established, so every trainer
-consumes them unchanged:
+Registers the three conditions established by an offline diagnostic, so the SNN
+trainer consumes them unchanged. That diagnostic was a one-off measurement of the
+partition itself, not a baseline model, and no non-spiking model is trained or
+reported anywhere in this study:
 
   legacy_random     global per-scenario aggregates + random flow split
   causal_random     partition-local causal aggregates + random flow split

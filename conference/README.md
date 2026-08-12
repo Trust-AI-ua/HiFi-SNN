@@ -1,12 +1,29 @@
 # Rethinking Network Anomaly Detection with Spiking Neural Networks
 
 Self-contained code and results for the conference paper: a controlled ablation
-pairing **9 snntorch neuron models × 3 spike encodings = 27 variants**, trained
+pairing **9 snnTorch neuron models × 3 spike encodings = 27 variants**, trained
 on four intrusion-detection benchmarks (NSL-KDD, KDDCup99, CIC-IDS2017, CTU-13)
 over five seeds.
 
 Everything needed to reproduce the study lives in this directory. The **only**
 external dependency is the raw datasets, which are not redistributed here.
+
+## Scope
+
+This is a **controlled intra-SNN design-space study implemented entirely in
+snnTorch**. Every model here is a spiking network; the axes of variation are the
+neuron model and the spike encoding, and the question is which configuration
+gives the strongest quality–efficiency operating point for intrusion detection.
+
+Deliberately out of scope, with zero runs in the plan: XGBoost, Random Forest,
+Logistic Regression, conventional DNN/MLP baselines, Tree-to-Spike, DNN-Tree,
+TASNN, GBDT teachers, knowledge distillation, and teacher–student comparisons.
+The efficiency analysis stays inside the spiking design space as well — there is
+no SNN-vs-ANN MAC comparison. `src/models/` exports `SNN` and nothing else, by
+design rather than by omission. See `PREREGISTRATION.md` §0.
+
+Those model families do exist in the parent HiSNN repository; they belong to the
+journal line of work, which asks a different question.
 
 ```
 conference/

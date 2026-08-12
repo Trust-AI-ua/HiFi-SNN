@@ -39,7 +39,7 @@ BOOTSTRAP_DESIGN = {
     "interval_type": "percentile",
     "alpha": ALPHA,
     "units": "percentage points (pp)",
-    "sign_convention": "arm minus reference (e.g. T2S - DNN-Tree)",
+    "sign_convention": "arm minus reference (e.g. LP/latency - LP/rate)",
 }
 
 

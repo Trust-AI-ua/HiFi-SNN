@@ -33,9 +33,9 @@ from sklearn.metrics import (
 # Evaluation context
 # ---------------------------------------------------------------------------
 # Side information about the TEST rows that a dataset loader knows but a trainer
-# does not. Set by the loader, consumed here, so all five models
-# (GBDT / Vanilla SNN / Tree-to-Spike / DNN-Tree / TASNN) gain the same breakdowns
-# without a single trainer edit -- every one of them routes through compute_metrics.
+# does not. Set by the loader, consumed here, so every SNN configuration gains the
+# same breakdowns without a single trainer edit -- all 27 route through
+# compute_metrics.
 #
 # Why per-group is not optional on CTU-13: fold 1 averaged a 56% false-alarm
 # scenario against a 0.12% detection-rate scenario into one number. Fold means can
