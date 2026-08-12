@@ -1,0 +1,442 @@
+{
+  "model": "Tree-to-Spike",
+  "dataset": "toniot",
+  "neuron": "Leaky",
+  "encoding": "tree-guided-latency",
+  "config": {
+    "T": 20,
+    "pop_max": 3,
+    "prune_quantile": 0.2,
+    "jitter": 0.24,
+    "encoder_mode": "tree",
+    "hidden": [
+      64,
+      64
+    ],
+    "beta": 0.9,
+    "leaky": true,
+    "teacher_n_estimators": 200,
+    "teacher_max_depth": 6,
+    "teacher_lr": 0.1,
+    "tau": 2.0,
+    "a_kd": 1.0,
+    "a_rank": 0.3,
+    "a_sparse": 0.001,
+    "a_fp": 0.5,
+    "class_weighted": false,
+    "quantize": true,
+    "theta_exit": 0.9,
+    "theta_uncertain": 0.5,
+    "epochs": 10,
+    "batch_size": 128,
+    "lr": 0.002,
+    "weight_decay": 0.0,
+    "val_fraction": 0.1,
+    "seed": 45,
+    "device": "cuda"
+  },
+  "hardware": {
+    "device": "cuda",
+    "gpu_name": "NVIDIA H200 NVL",
+    "cuda_index": 0,
+    "cuda_visible_devices": "",
+    "hostname": "michele-research-vm"
+  },
+  "data": {
+    "num_features": 115,
+    "num_classes": 10,
+    "class_names": [
+      "normal",
+      "backdoor",
+      "ddos",
+      "dos",
+      "injection",
+      "mitm",
+      "password",
+      "ransomware",
+      "scanning",
+      "xss"
+    ],
+    "class_counts_train": {
+      "normal": 36000,
+      "backdoor": 14400,
+      "ddos": 14400,
+      "dos": 14400,
+      "injection": 14400,
+      "mitm": 750,
+      "password": 14400,
+      "ransomware": 14400,
+      "scanning": 14400,
+      "xss": 14400
+    },
+    "encoder_channels": 73,
+    "splits": {
+      "train": 151950,
+      "val": 16884,
+      "test_plus": 42209,
+      "test_minus_21": null
+    }
+  },
+  "model_size": {
+    "total_parameters": 9546,
+    "trainable_parameters": 9546
+  },
+  "training": {
+    "train_time_s": 697.4257192611694,
+    "training_curve": [
+      {
+        "epoch": 1,
+        "train_loss": 1.2440842866446034,
+        "val_accuracy": 0.9417791992418858,
+        "loss_ce": 0.13385890424251556,
+        "loss_kd": 0.35538312792778015,
+        "loss_rank": 0.03731275349855423,
+        "loss_sparse": 0.23987165093421936,
+        "loss_fp": 0.031376346945762634
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.5681697029357005,
+        "val_accuracy": 0.9585406301824212,
+        "loss_ce": 0.08223487436771393,
+        "loss_kd": 0.2879256010055542,
+        "loss_rank": 0.02833274006843567,
+        "loss_sparse": 0.24880021810531616,
+        "loss_fp": 0.05846148729324341
+      },
+      {
+        "epoch": 3,
+        "train_loss": 0.5235895757572819,
+        "val_accuracy": 0.9632196162046909,
+        "loss_ce": 0.33336305618286133,
+        "loss_kd": 0.6131013035774231,
+        "loss_rank": 0.02056865021586418,
+        "loss_sparse": 0.2431640625,
+        "loss_fp": 0.01553748082369566
+      },
+      {
+        "epoch": 4,
+        "train_loss": 0.4981959434069367,
+        "val_accuracy": 0.964818763326226,
+        "loss_ce": 0.044473499059677124,
+        "loss_kd": 0.19138704240322113,
+        "loss_rank": 0.02229628711938858,
+        "loss_sparse": 0.24997210502624512,
+        "loss_fp": 0.009334325790405273
+      },
+      {
+        "epoch": 5,
+        "train_loss": 0.47802401231194186,
+        "val_accuracy": 0.9680762852404643,
+        "loss_ce": 0.03902289643883705,
+        "loss_kd": 0.2167784571647644,
+        "loss_rank": 0.026643836870789528,
+        "loss_sparse": 0.25468748807907104,
+        "loss_fp": 0.013068894855678082
+      },
+      {
+        "epoch": 6,
+        "train_loss": 0.4686231428525263,
+        "val_accuracy": 0.9670694148306088,
+        "loss_ce": 0.08879271894693375,
+        "loss_kd": 0.4754645824432373,
+        "loss_rank": 0.029310574755072594,
+        "loss_sparse": 0.24656808376312256,
+        "loss_fp": 0.06078580021858215
+      },
+      {
+        "epoch": 7,
+        "train_loss": 0.460589623009717,
+        "val_accuracy": 0.9642857142857143,
+        "loss_ce": 0.06491576880216599,
+        "loss_kd": 0.19509132206439972,
+        "loss_rank": 0.029477939009666443,
+        "loss_sparse": 0.26208147406578064,
+        "loss_fp": 0.002833425998687744
+      },
+      {
+        "epoch": 8,
+        "train_loss": 0.45161697183193183,
+        "val_accuracy": 0.966891731817105,
+        "loss_ce": 0.042196523398160934,
+        "loss_kd": 0.19388160109519958,
+        "loss_rank": 0.04843351989984512,
+        "loss_sparse": 0.2649274468421936,
+        "loss_fp": 0.0
+      },
+      {
+        "epoch": 9,
+        "train_loss": 0.44520888639369394,
+        "val_accuracy": 0.9723406775645581,
+        "loss_ce": 0.040143854916095734,
+        "loss_kd": 0.3782055974006653,
+        "loss_rank": 0.020034871995449066,
+        "loss_sparse": 0.24282924830913544,
+        "loss_fp": 0.031971048563718796
+      },
+      {
+        "epoch": 10,
+        "train_loss": 0.4392891006939339,
+        "val_accuracy": 0.9697938877043355,
+        "loss_ce": 0.3814288079738617,
+        "loss_kd": 0.5460222959518433,
+        "loss_rank": 0.014487279579043388,
+        "loss_sparse": 0.2561663091182709,
+        "loss_fp": 0.17651420831680298
+      }
+    ]
+  },
+  "test_plus": {
+    "n_samples": 42209,
+    "metrics": {
+      "accuracy": 0.9706934540027008,
+      "balanced_accuracy": 0.9333524880382775,
+      "f1_macro": 0.9329617352454596,
+      "f1_weighted": 0.9706904728810031,
+      "precision_macro": 0.9329796326941476,
+      "recall_macro": 0.9333524880382775,
+      "matthews_corrcoef": 0.9664104917971157,
+      "cohen_kappa": 0.9663707639707149,
+      "per_class": {
+        "normal": {
+          "precision": 0.9798387096774194,
+          "recall": 0.9963,
+          "f1": 0.9880007933359778,
+          "support": 10000
+        },
+        "backdoor": {
+          "precision": 0.9913172909947904,
+          "recall": 0.999,
+          "f1": 0.9951438177063877,
+          "support": 4000
+        },
+        "ddos": {
+          "precision": 0.9462953754351069,
+          "recall": 0.9515,
+          "f1": 0.9488905509847918,
+          "support": 4000
+        },
+        "dos": {
+          "precision": 0.9732795563398033,
+          "recall": 0.96525,
+          "f1": 0.9692481486130288,
+          "support": 4000
+        },
+        "injection": {
+          "precision": 0.9762340036563071,
+          "recall": 0.9345,
+          "f1": 0.9549112274875463,
+          "support": 4000
+        },
+        "mitm": {
+          "precision": 0.583710407239819,
+          "recall": 0.6172248803827751,
+          "f1": 0.6,
+          "support": 209
+        },
+        "password": {
+          "precision": 0.9940010432968179,
+          "recall": 0.95275,
+          "f1": 0.9729384733214195,
+          "support": 4000
+        },
+        "ransomware": {
+          "precision": 0.9729330708661418,
+          "recall": 0.9885,
+          "f1": 0.9806547619047619,
+          "support": 4000
+        },
+        "scanning": {
+          "precision": 0.9739063699155794,
+          "recall": 0.95175,
+          "f1": 0.9627007206979391,
+          "support": 4000
+        },
+        "xss": {
+          "precision": 0.9382804995196926,
+          "recall": 0.97675,
+          "f1": 0.9571288584027438,
+          "support": 4000
+        }
+      },
+      "class_names": [
+        "normal",
+        "backdoor",
+        "ddos",
+        "dos",
+        "injection",
+        "mitm",
+        "password",
+        "ransomware",
+        "scanning",
+        "xss"
+      ],
+      "roc_auc_weighted": 0.9988232135927331,
+      "confusion_matrix": [
+        [
+          9963,
+          1,
+          8,
+          7,
+          0,
+          9,
+          0,
+          4,
+          6,
+          2
+        ],
+        [
+          3,
+          3996,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          42,
+          3,
+          3806,
+          6,
+          43,
+          3,
+          1,
+          26,
+          2,
+          68
+        ],
+        [
+          49,
+          3,
+          28,
+          3861,
+          4,
+          28,
+          1,
+          1,
+          19,
+          6
+        ],
+        [
+          15,
+          0,
+          79,
+          4,
+          3738,
+          4,
+          4,
+          1,
+          4,
+          151
+        ],
+        [
+          42,
+          0,
+          0,
+          14,
+          3,
+          129,
+          4,
+          2,
+          2,
+          13
+        ],
+        [
+          10,
+          20,
+          9,
+          56,
+          2,
+          35,
+          3811,
+          0,
+          51,
+          6
+        ],
+        [
+          29,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3954,
+          17,
+          0
+        ],
+        [
+          4,
+          8,
+          59,
+          10,
+          2,
+          12,
+          12,
+          75,
+          3807,
+          11
+        ],
+        [
+          11,
+          0,
+          33,
+          9,
+          37,
+          0,
+          1,
+          1,
+          1,
+          3907
+        ]
+      ]
+    },
+    "binary_ids_metrics": {
+      "binary_accuracy": 0.9942666256011751,
+      "detection_rate": 0.9936353193206867,
+      "false_alarm_rate": 0.0037,
+      "binary_precision": 0.9988452295496395,
+      "binary_f1": 0.9962334630350195,
+      "tp": 32004,
+      "fp": 37,
+      "tn": 9963,
+      "fn": 205,
+      "binary_confusion_matrix": [
+        [
+          9963,
+          37
+        ],
+        [
+          205,
+          32004
+        ]
+      ]
+    },
+    "spike_stats": {
+      "energy_spikes_per_sample": 630.1887038309366,
+      "total_spikes": 26599635.0,
+      "spike_density": 0.2461674624339596,
+      "spike_sparsity": 0.7538325375660404,
+      "synops_per_sample": 13159.321564570242
+    },
+    "early_exit": {
+      "accuracy": 0.8872515340330261,
+      "f1_macro": 0.8417191637359075,
+      "mean_exit_step": 10.169987443436234,
+      "max_steps": 20,
+      "uncertain_frac": 0.01596815844961975
+    },
+    "teacher_upper_bound": {
+      "accuracy": 0.9891492335757777,
+      "f1_macro": 0.9629811428596924,
+      "matthews_corrcoef": 0.9875706596754353
+    },
+    "inference_ms_per_sample": 2.1213764529675685,
+    "inference_time_s": 89.5411787033081
+  },
+  "test_minus_21": null
+}
