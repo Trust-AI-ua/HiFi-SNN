@@ -1,0 +1,483 @@
+% =====================================================================
+% main_points.tex -- FROZEN interpretation points for manuscript integration
+% Generated 2026-08-12. Training program CLOSED; no further model runs.
+%
+% Every number here traces to a committed artifact in this directory or to
+% results/ under the repo root. Do not restate a number from memory: cite the
+% file. Superseded values are listed in Section "Retired claims" and must not
+% reappear anywhere in the manuscript, appendix or rebuttal.
+% =====================================================================
+
+\section*{Evidence hierarchy (preserve this order)}
+
+\begin{enumerate}
+  \item \textbf{Primary mechanism.} Tree-guided encoding, $+8.32$ pp causal main
+        effect on macro-F1 (95\% CI $[+3.56, +13.00]$), from the complete crossed
+        $2\times2$. Objective main effect $-0.33$ (null); interaction $-0.11$ (null).
+  \item \textbf{Independent corroboration.} The \texttt{raw\_full} sensitivity arm,
+        which changes \emph{only} \texttt{encoder\_mode} and leaves the full objective
+        intact, costs $-8.26$ pp with a 95\% paired interval of $[-17.93, -1.21]$ that
+        excludes zero. This is \emph{independent corroboration} of the $2\times2$
+        encoder effect from a different design on different datasets. \textbf{Do not
+        pool the two estimates as though they were one experiment.}
+  \item \textbf{Objective role.} Little aggregate macro-F1 contribution, but
+        substantial false-alarm control (see below).
+  \item \textbf{Robustness.} A broad hyperparameter plateau; nominal improvements are
+        statistically indistinguishable from the default.
+  \item \textbf{Protocol validity.} TON-IoT and CTU-13 both show strong
+        split-dependent generalisation effects \emph{without} establishing a
+        universally superior architecture.
+  \item \textbf{Deployment.} Compact storage, strong MCC/FAR, lower analytical SOP
+        count, but a slower current CPU implementation.
+  \item \textbf{Early exit.} Conditional SOP savings, automatically disabled when
+        validation cannot preserve quality, and \textbf{not} a latency improvement.
+  \item \textbf{Quantisation.} Dataset-sensitive for the Raw MLP; no detectable
+        Tree-to-Spike loss on the four-dataset FP32 sensitivity subset.
+\end{enumerate}
+
+% ---------------------------------------------------------------------
+\section*{Robustness (sensitivity sweep, 700/700 cells)}
+
+Integrity: 700 unique configurations, 700 valid records, 0 duplicate keys, 0 missing
+keys. 35 arms $\times$ 4 datasets $\times$ 5 seeds, completed in 61.53 h with 0
+failures. Comparisons are paired on (dataset, seed) against the shipped default run;
+dataset is the generalisation unit and seeds are within-configuration optimisation
+repetitions. The 700 cells are never treated as independent samples.
+
+Default reference (median over 4 datasets $\times$ 5 seeds): macro-F1 $89.64$,
+MCC $96.99$, FAR $0.41\%$, $8{,}236$ synaptic operations per sample, spike
+density $10.36\%$.
+
+\begin{quote}
+Across 25 hyperparameter perturbations spanning timesteps, channel budget, pruning
+quantile, jitter, distillation temperature and all four loss weights, no setting
+changed macro-F1 by more than $2.06$ pp, $68\%$ of perturbations stayed within
+$\pm1$ pp of the default, and every paired 95\% interval overlapped zero except the
+encoder ablations. The default configuration therefore lies on a broad plateau rather
+than at an isolated optimum, which supports stability around the chosen design rather
+than post hoc hyperparameter optimisation.
+\end{quote}
+
+\noindent\textbf{Reporting constraint.} The nominally best arms --- \texttt{T80}
+$+1.33$, \texttt{T40} $+1.23$, \texttt{epochs30} $+1.18$ pp --- all have intervals
+including zero and \textbf{must not be presented as improvements} or as grounds for
+changing the default.
+
+\paragraph{Retain $T=20$.} \texttt{T40} and \texttt{T80} cost roughly $2.4\times$ and
+$4.0\times$ the SOPs for nominal gains whose intervals include zero. That makes
+$T=20$ a sensible cost--performance choice without claiming it is mathematically
+optimal.
+
+% ---------------------------------------------------------------------
+\section*{The objective controls false alarms, not macro-F1}
+
+\begin{quote}
+The objective's practical contribution is \emph{not} an aggregate macro-F1 mechanism.
+Removing the false-positive-aware term (\texttt{no\_fp}) changes macro-F1 by only
+$+0.15$ pp while median FAR rises from $0.41\%$ to $2.13\%$, a factor of $5.2$.
+\end{quote}
+
+\noindent An ablation table reporting macro-F1 alone would make the objective look
+useless. \textbf{Report macro-F1 and FAR side by side} (Fig.~\ref{fig:objfar},
+Tab.~\ref{tab:sensitivity}). Class-weighted variants show the same pattern: FAR
+$2.24$--$3.16\%$ at essentially unchanged macro-F1.
+
+% ---------------------------------------------------------------------
+\section*{Efficiency opportunity --- do NOT adopt as the deployed default}
+
+\begin{quote}
+Increasing sparsity regularisation to $10^{-2}$ reduced synaptic operations to
+approximately $45.5\%$ of the default with no detectable macro-F1 loss
+($-0.15$ pp) in the sensitivity study, suggesting a promising operating point for
+future validation-selected deployment optimisation.
+\end{quote}
+
+\noindent This operating point was discovered \emph{using the completed sensitivity
+sweep}. Adopting it as the final deployed model would be post hoc test-set selection.
+It is an efficiency opportunity for future work, not a result of this manuscript.
+
+% ---------------------------------------------------------------------
+\section*{Scope qualifier (state this explicitly wherever these numbers appear)}
+
+The sensitivity reference values, the \texttt{raw\_full} corroboration and the
+\texttt{fp32} quantisation comparison all come from the \textbf{four-dataset
+sensitivity subset} (CICIoT2023, CICIoMT2024, Edge-IIoTset, TON-IoT), \emph{not} the
+full eleven-dataset study.
+
+For quantisation, the supportable claim is exactly:
+\begin{quote}
+Across the four sensitivity datasets, int8-grid projection did not produce a
+detectable Tree-to-Spike macro-F1 loss ($+0.17$ pp, 95\% CI $[-0.70, +1.90]$).
+\end{quote}
+It does \textbf{not} establish this across all eleven datasets, because floating-point
+checkpoints are unavailable for the other seven: DNN-Tree and Tree-to-Spike run with
+\texttt{quantize:\,true}, which projects weights before evaluation and saves the
+checkpoint afterwards. Verified in weight space: DNN-Tree $55/55$ checkpoints exactly
+on the int8 grid, Tree-to-Spike $54/55$ (one at $8.57\times10^{-8}$ relative, a
+float32 residue), Raw MLP $0/55$.
+
+By contrast the Raw MLP, trained without projection, loses $-0.97$ pp on average
+(worst $-9.68$ pp; $12/55$ cells above $1$ pp), so int8-grid projection is
+\textbf{dataset-sensitive} and is never described as essentially free.
+
+Terminology throughout: \textbf{int8-grid weight projection with floating-point
+execution}, never integer-only inference.
+
+% ---------------------------------------------------------------------
+\section*{Deployment --- frozen wording}
+
+\begin{quote}
+Lower analytical arithmetic count does not imply lower wall-clock latency in the
+present software implementation. Sequential timestep execution dominates batch-one
+CPU latency for Tree-to-Spike.
+\end{quote}
+
+\begin{quote}
+Validation-selected early exit reduces executed spike operations but does not reduce
+CPU latency in the current implementation; per-timestep confidence evaluation and
+control overhead outweigh the saved simulation steps at batch size one.
+\end{quote}
+
+\noindent Measured: DNN-Tree $8{,}471$ MAC / $0.226$ ms; Tree-to-Spike full
+$7{,}587$ SOP / $2.909$ ms; Tree-to-Spike selected exit $6{,}091$ SOP / $3.199$ ms.
+\textbf{Tree-to-Spike must never be presented as the fastest implementation.} Label
+the two rows \texttt{Tree-to-Spike, full $T$} and \texttt{Tree-to-Spike,
+validation-selected exit}, and state on the latter that it lowers analytical SOPs but
+\emph{increases} measured batch-one CPU latency.
+
+The trade-off against the ensemble is stated as:
+\begin{quote}
+The full GBDT achieves the highest macro-F1, whereas Tree-to-Spike provides
+substantially smaller model storage together with higher MCC and lower FAR, at the
+cost of substantially higher software CPU latency.
+\end{quote}
+
+\noindent Deployment strengths: $53.4$ KB total artifact including encoder tables,
+against $2.41$ MB (compact GBDT) and $5.04$ MB (full GBDT); best aggregate MCC
+$90.51$; lowest FAR $3.15$; macro-F1 essentially tied with DNN-Tree.
+
+\paragraph{Raw MLP control.} At matched int8-grid precision, Raw MLP $76.23$ vs
+DNN-Tree $79.86$ vs Tree-to-Spike $79.80$: a $3.63$ pp gap showing the tree-derived
+representation contributes beyond the compact dense topology alone. Raw MLP loses on
+$9/11$ datasets to Tree-to-Spike and $10/11$ to DNN-Tree. \textbf{This is a
+deployment/control baseline, not a formally isolated causal encoder effect} --- it
+differs in representation \emph{and} training setup. The crossed $2\times2$ remains
+the causal evidence.
+
+\paragraph{CSE-CIC-IDS2018 heterogeneity.} Raw MLP exceeds DNN-Tree by $\approx6.1$ pp
+there while Tree-to-Spike still exceeds Raw MLP. Per-seed DNN-Tree macro-F1 is
+$48.57, 63.02, 76.44, 66.91, 74.72$ (spread $27.9$ pp) against Tree-to-Spike
+$74.49$--$76.86$ (spread $2.4$) and Raw MLP $71.54$--$72.66$ (spread $1.1$). Report as
+dataset-specific heterogeneity driven by DNN-Tree optimisation instability; invent no
+mechanism.
+
+% ---------------------------------------------------------------------
+\section*{Early exit --- frozen wording}
+
+\begin{quote}
+Validation-selected early exit provides substantial conditional savings on datasets
+for which a safe operating point exists, while automatically reverting to full-window
+inference on nearly half of dataset--seed cells.
+\end{quote}
+
+\noindent Disabled in $26/55$ cells ($47\%$); four datasets reject it outright
+(CICIoT2023, Edge-IIoTset, NSL-KDD, UNSW-NB15, all $5/5$). Where it qualifies:
+$15$--$68\%$ fewer SOPs for $\leq0.45$ pp mean macro-F1. Only $1/55$ cells exceeded
+the predeclared $1$ pp margin on test, so validation selection transfers almost
+perfectly. Selected thresholds concentrate at $0.95$--$0.99$; \textbf{the retired
+fixed $\theta=0.9$ headline must not reappear} (on NSL-KDD it would cost $\approx9$ pp
+and no threshold qualifies at all).
+
+Savings come from benign traffic: benign exits at step $8.02$ with $88.8\%$ exiting
+early and $0.17\%$ error among early exits; attacks exit at $11.25$ with $70.9\%$
+early and $16.58\%$ error. \textbf{Keep the minority-class caveat visible:} TON-IoT
+ransomware $-3.83$ pp recall, CSE-CIC-IDS2018 dos $-2.29$, CICIoMT2024 MQTT $-1.85$.
+
+Calibration justifies the framing --- ECE $23.32\%$ at $t{=}1$, $12.05\%$ at
+$t{=}10$, $3.65\%$ at $t{=}20$ --- so the threshold is an adaptive-computation knob,
+not a calibrated confidence level.
+
+% ---------------------------------------------------------------------
+\section*{Protocol validity I --- CTU-13 scenario-disjoint evaluation}
+
+\paragraph{Protocol construction.} 801{,}132 flows across 13 scenarios, botnet
+prevalence $55.5\%$. Timestamp audit passes: 801{,}132/801{,}132 parsed, 0 invalid, all
+13 scenarios sort to valid chronological sequences, no scenario pair overlaps in time,
+1\,\textmu s resolution. Four scenario-disjoint folds from a MIP under a preregistered
+gate ($\geq$1000 of each class in test, $\leq60\%$ single-scenario share, 3--4 test
+scenarios, $\geq$6 training scenarios, $\geq$500 of each class in validation); all four
+pass and scenario overlap between train/val/test is \textbf{0} in every fold. Folds are
+deliberately unequal because scenario 8 alone holds $26.8\%$ of all flows.
+
+\paragraph{Three-condition diagnostic (RandomForest, 36 runs), means over 4 folds.}
+\begin{center}\small
+\begin{tabular}{lrrrrr}\toprule
+features & legacy rand. & causal rand. & causal scen. & $\Delta_{\mathrm{agg}}$ &
+$\Delta_{\mathrm{scen}}$ \\\midrule
+base F1      & 99.99 & 99.99 & 99.23 & $+0.00$ & $-0.75$ \\
+base FAR     &  0.02 &  0.02 &  1.12 & $+0.00$ & $+1.10$ \\
+host F1      & 100.00 & 95.81 & 70.69 & $-4.19$ & $-25.12$ \\
+host FAR     &  0.00 &  4.64 & 12.12 & $+4.64$ & $+7.47$ \\
+combined F1  & 100.00 & 99.31 & 77.77 & $-0.69$ & $-21.54$ \\
+combined FAR &  0.00 &  0.04 &  9.50 & $+0.04$ & $+9.47$ \\
+\bottomrule\end{tabular}\end{center}
+
+\noindent Approved wording, use verbatim:
+\begin{quote}
+Proper partition-local causal aggregation modestly reduces the random-split performance
+of the host-context representation, but does not remove the near-ceiling result. Under
+scenario-disjoint evaluation, however, host-context features become substantially less
+transferable and can reduce performance when combined with otherwise stable base flow
+features.
+\end{quote}
+Describe this as \textbf{consistent with host-context shortcut reliance}, not as a proven
+mechanism.
+
+\paragraph{$\!$Report per fold, never the mean.} \texttt{causal\_scenario} combined
+macro-F1 by fold: fold 0 (sc.\ 2,4,8) $99.50$; fold 1 (sc.\ 7,9,11) $\mathbf{27.40}$;
+fold 2 (sc.\ 1,3,5,10) $97.63$; fold 3 (sc.\ 0,6,12) $86.54$. The range is
+$27.40$--$99.50$ and \textbf{the $77.77$ four-fold mean must never be quoted as a point
+estimate}.
+
+\paragraph{Fold-1 integrity and seed stability.} All integrity checks pass, so the
+collapse is not a defect: manifest row and per-class counts match exactly, partitions
+mutually disjoint, 0 NaN and 0 inf cells checked \emph{before} the stateless cleanup,
+metadata disjoint from every feature list, no fitted preprocessing, and the rebuilt
+feature blocks are bit-identical to the pre-fix artifact. Only 2 of 210{,}944 test rows
+have an exact feature duplicate in train. Over 30 runs (5 seeds), \texttt{causal\_scenario}
+combined is $29.93 \pm 8.13$ (range $24.55$--$44.19$) and host-only $34.72 \pm 21.24$
+(range $24.61$--$72.71$); it never recovers in any seed.
+
+\paragraph{Mechanism --- prediction inversion, not one hard scenario.}
+\begin{center}\small
+\begin{tabular}{lrrrrr}\toprule
+test scenario & class balance & base F1 & combined F1 & host F1 & combined FAR \\\midrule
+7  & 92.2\% Normal & 99.14 & $\mathbf{41.77}$ & 37.45 & $\mathbf{56.20}$ \\
+9  & 87.0\% Botnet & 99.52 & $\mathbf{17.04}$ & 27.83 & 0.13 \\
+11 & 22.1\% Botnet & 79.34 & 91.04 & 96.16 & 0.00 \\
+\bottomrule\end{tabular}\end{center}
+Host context fails in \emph{opposite directions}: Botnet for $54$--$66\%$ of a
+$92\%$-Normal scenario, Normal for $\sim99.9\%$ of an $87\%$-Botnet scenario (DR $0.12$).
+Seed-42 errors split as scenario 7 $=36{,}634$ \emph{all false positives}, scenario 9
+$=106{,}233$ \emph{all false negatives}, scenario 11 $=856$.
+
+\paragraph{$\!$The protocol is NOT host-disjoint.} $32$ of $42$ fold-1 test hosts
+($76.2\%$) also appear in training, and $99.7$--$100\%$ of each scenario's flows come from
+overlapping hosts. Each scenario has only $\sim$23--28 unique source hosts and
+\textbf{every one is $\geq99\%$ label-pure}, so the host block acts as a $\sim$24-way host
+classifier while the label is a host property. The same \texttt{147.32.84.x} addresses
+recur across scenarios in different roles, so the learned host$\rightarrow$label mapping
+inverts. Top-5 hosts carry $49.4\%$ of all errors ($147.32.84.170$ alone contributes
+$25{,}583$ false positives). \textbf{Always call this scenario-disjoint CTU-13
+evaluation, never host-disjoint.}
+
+\paragraph{Host overlap does not explain the spread.} Fold 2 has \emph{complete}
+($100.00\%$) host overlap yet stays near ceiling ($97.63$); fold 1 has the \emph{least}
+($76.19\%$) yet collapses ($29.93$). The mechanism is host \emph{role inversion} plus
+feature shift, not host recurrence. Host-block distribution shift is $11$--$14\times$ the
+base block (mean train-standardised Wasserstein $1.837$ and $2.413$ on scenarios 7 and 9
+vs $0.168$ for base); \texttt{causal\_src\_unique\_dports} has SMD $19.88$ with $56.8\%$
+of scenario-7 values outside the training range.
+
+\paragraph{Counter-cases --- host context is not uniformly harmful.} Base is $\geq99.5$ on
+\textbf{12 of 13} scenarios. Host context hurts on 9, 7, 12, 3, 8, 5 but \emph{helps} on
+scenario 10 ($81.47 \rightarrow 99.67$, base FAR $41.18 \rightarrow 0.95$ --- the only
+scenario where base fails) and scenario 11 ($79.34 \rightarrow 91.04$). The defensible
+claim is \textbf{unstable sign across unseen scenarios}, which is worse for deployment
+than a uniform penalty.
+
+\paragraph{Model matrix, 420/420 runs, 0 failures, 18.8 h.}
+$\Delta_{\mathrm{aggregation}}$ (combined): GBDT $-0.11$, Vanilla $-0.31$, Tree-to-Spike
+$-1.37$, DNN-Tree $-0.49$, TASNN $-0.29$; \texttt{legacy\_random} is $100.00$ for four of
+five models, so \textbf{the random-split ceiling survives causalisation} and is not
+explained by future-window aggregation.
+$\Delta_{\mathrm{scenario}}$: GBDT $-8.32$, Vanilla $-7.68$, Tree-to-Spike $-19.24$,
+DNN-Tree $-6.95$, TASNN $-8.74$ --- \textbf{every architecture degrades}.
+\textbf{Do not rank them:} paired by fold, Tree-to-Spike minus GBDT is
+$-0.22, -36.53, -12.68, \mathbf{+5.74}$; the sign flips on fold 3 with $n=4$ folds and
+sd $23.7$, the same trap as the TON-IoT pilot ordering that dissolved.
+
+\paragraph{Matched-mask host-context interaction (final CTU-13 computation).} Inference
+only; reconstruction verified at \textbf{0.0000 pp drift on all 240 cells}. One common
+mask per (condition, fold), $\mathcal{M}=\neg(\mathrm{dup}_{\mathrm{base}} \vee
+\mathrm{dup}_{\mathrm{combined}})$, so both representations are scored on identical rows.
+$\Delta_{\mathrm{host}}^{\mathrm{matched}}$: DNN-Tree $\mathbf{-7.90}$, GBDT
+$\mathbf{-7.01}$, Tree-to-Spike $\mathbf{-9.70}$ --- negative for all three, so the
+interaction is \textbf{robust}. Quote these, not the raw $-4.06/-7.98/-16.36$ or the
+superseded own-mask bound $-2.97/-7.86/-13.85$, which was wrong in \emph{both} directions.
+Matched evaluation collapses the between-architecture spread from $12.3$ pp to
+$\mathbf{2.7}$ pp, further evidence against any ranking. Per-fold signs still flip
+(DNN-Tree $+7.75$ on fold 3). On the common mask, dropping the host block gains
+$\mathbf{7}$--$\mathbf{11}$ pp under scenario shift (base scenario $94.50$--$99.53$ vs
+combined $83.68$--$92.47$) while costing $\sim$0--1 pp under random splitting.
+
+\paragraph{$\!$Base-representation duplicate leakage --- state before quoting base.} With
+only 8 coarse flow features, distinct flows collide: $15.5\%$ of base test rows are exact
+repeats of training rows on average, rising to $\mathbf{45.9\%}$ on fold 1, and removing
+them costs up to $\mathbf{17.10}$ pp (Tree-to-Spike fold-1 base $95.08 \rightarrow 77.98$).
+Combined has $\sim$0\%. Base-only scenario-disjoint scores are therefore inflated.
+
+\paragraph{Per-scenario, architecture $\times$ scenario specific and inverting.}
+\begin{center}\small
+\begin{tabular}{lrrrrrrr}\toprule
+scenario & botnet\% & GBDT & Vanilla & Tree-to-Spike & DNN-Tree & TASNN & spread \\\midrule
+7  &  7.8 & $\mathbf{98.20}$ & 39.35 & 56.50 & 41.24 & 38.60 & $\mathbf{59.6}$ \\
+9  & 87.0 & 61.05 & $\mathbf{99.73}$ & $\mathbf{27.18}$ & 99.38 & 98.87 & $\mathbf{72.6}$ \\
+10 & 75.0 & 99.42 & 96.20 & 60.85 & 65.39 & 94.71 & 38.6 \\
+12 & 55.6 & 73.31 & $\mathbf{99.92}$ & 84.06 & 96.24 & 87.74 & 26.6 \\
+1  & 69.7 & 100.00 & 78.84 & 78.64 & 96.95 & 85.47 & 21.4 \\
+\bottomrule\end{tabular}\end{center}
+The other 8 scenarios are $\geq93$ for every model. \textbf{No architecture is uniformly
+robust}: GBDT is near-perfect on scenario 7 (FAR $0.31$) where all four neural models
+collapse (FAR $38.7$--$60.7$), and is among the worst on 9 and 12. The strongest CTU-13
+claim is therefore:
+\begin{quote}
+Near-perfect random-split performance conceals scenario-specific prediction inversions,
+and no architecture is uniformly robust across held-out scenarios.
+\end{quote}
+
+% ---------------------------------------------------------------------
+\section*{Protocol validity II --- TON-IoT source-endpoint-disjoint evaluation}
+
+\begin{quote}
+Under source-IP-disjoint evaluation all five architectures lose $8$--$10$ macro-F1 and
+gain $12$--$19$ pp FAR. The effect is \textbf{protocol-wide degradation, not an
+architecture ranking}.
+\end{quote}
+A pilot with one seed per cell showed Tree-to-Spike degrading least; with 5 seeds per fold
+that ordering \textbf{dissolved}. \textbf{Do not revive the ranking claim.} Package frozen
+at 200/200 runs, 0 failures, with 8 frozen fold manifests.
+
+\paragraph{Protocol feasibility.} Only \textbf{1 of 4} target-domain datasets supports a
+new group-disjoint protocol (TON-IoT). CICIoMT2024 has provider capture separation;
+CICIoT2023 and Edge-IIoTset are infeasible (documented in \texttt{rebuttal2\_response.tex},
+\texttt{tab:audit}).
+
+% ---------------------------------------------------------------------
+\section*{CICIoMT2024 exact-record overlap (leakage audit subsection, not appendix)}
+
+Required wording:
+\begin{quote}
+The provider-defined CICIoMT2024 partitions are capture-file-disjoint at the filename
+level, but exact-record matching identifies 86{,}012 test records also represented in
+training, corresponding to $5.33\%$ of the full provider test set. Under the study's
+seed-specific $25\%$ sampling protocol, approximately $5.2\%$ of each evaluated test
+subset overlaps its corresponding sampled training subset. All overlapping records have
+consistent labels. Removing them changes macro-F1 by at most $0.36$ pp for any model and
+leaves the benign false-alarm rate exactly unchanged, but the tree-derived models score
+$\sim99.9\%$ on the overlapping records against $\sim89$--$90\%$ on unique ones, so the
+overlap is being memorised even though its effect on the aggregate metric is small.
+\end{quote}
+
+\noindent Per-seed removal $20{,}973$--$21{,}204$ of $403{,}545$ ($5.224\%$ mean); label
+agreement $86{,}012/86{,}012 = 100\%$. Duplicate-free re-evaluation was inference only
+from existing checkpoints, provider partition unchanged, 25 evaluations.
+
+\begin{center}\small
+\begin{tabular}{lrrrrr}\toprule
+model & macro-F1 before $\rightarrow$ after & $\Delta$F1 & $\Delta$MCC & dup.\ rows &
+unique rows \\\midrule
+GBDT          & $90.541 \rightarrow 90.540$ & $-0.001$ & $-0.010$ & $\mathbf{99.896}$ & 90.540 \\
+Tree-to-Spike & $89.424 \rightarrow 89.419$ & $-0.005$ & $-0.013$ & $\mathbf{99.867}$ & 89.419 \\
+DNN-Tree      & $89.240 \rightarrow 89.234$ & $-0.006$ & $-0.016$ & $\mathbf{99.882}$ & 89.234 \\
+Vanilla SNN   & $72.608 \rightarrow 72.874$ & $+0.266$ & $\mathbf{+1.204}$ & 61.293 & 72.874 \\
+TASNN         & $74.240 \rightarrow 74.581$ & $+0.341$ & $\mathbf{+1.404}$ & 61.428 & 74.581 \\
+\bottomrule\end{tabular}\end{center}
+
+\noindent$\Delta$FAR is \textbf{exactly $0.000$ for every model} because zero Benign rows
+are duplicated. Model ranking is unchanged. Removals concentrate in DDoS ($15{,}167$) and
+DoS ($5{,}848$) with Recon $68$; \textbf{Benign, MQTT and Spoofing lose exactly zero rows},
+so the weakest class (Spoofing, F1 $40.4$) is untouched.
+
+\paragraph{Verdict.} Retain the provider capture-file split as the primary predictive
+result and promote this duplicate-free analysis to the main leakage-audit subsection. Do
+not make duplicate-free the preferred result: no model moves $>1$ pp macro-F1 and no
+minority-class F1 shifts.
+
+\paragraph{TASNN caveat.} Four of five models reconstruct bit-exactly (0.0000 pp drift);
+\textbf{TASNN does not} (up to $+0.2386$ pp in 3 of 25 cells), which is close to its own
+measured $\Delta$ of $+0.341$. \textbf{Report TASNN's structural overlap but do not quote
+its exact duplicate-free delta.} Vanilla SNN establishes the same opposite-sign effect at
+zero drift.
+
+% ---------------------------------------------------------------------
+\section*{Compact GBDT --- a validation-selected baseline, not a guarantee}
+
+Validation-only tree-prefix selection (doubling grid then binary search for the true
+smallest qualifying prefix); all 55 cells found one. Median round compression
+$\mathbf{2.74\times}$ (the $25.9\times$ mean is an artifact of CTU-13 needing a single
+round), $53.7\%$ fewer nodes overall.
+
+\noindent\textbf{Disclose the overshoot:} $\mathbf{20/55}$ cells lose more than $1.0$ pp
+on \emph{test} (4 lose $>2$ pp; worst UNSW-NB15 $-2.01$) despite every cell being selected
+to lose at most $1.0$ pp on validation (max validation drop $-0.998$ by construction).
+Describe it as a \textbf{validation-selected compressed baseline}, never as a model
+guaranteed to stay within 1 pp on test.
+
+\paragraph{Informative contrast.} Under the same nominal tolerance, validation-selected
+temporal early exit exceeded the margin in only $\mathbf{1/55}$ cells against compact
+GBDT's $\mathbf{20/55}$. Report the empirical difference; do not overstate why.
+
+% ---------------------------------------------------------------------
+\section*{Reproducibility --- environment of record}
+
+\begin{center}\small
+\begin{tabular}{ll}\toprule
+Python 3.12.3 & torch 2.12.0+cu130 (CUDA 13.0) \\
+numpy 2.4.4 & pandas 3.0.2 \\
+scikit-learn 1.8.0 & scipy 1.17.1 \\
+xgboost 3.2.0 & snntorch 0.9.4 \\
+\bottomrule\end{tabular}\end{center}
+
+\noindent Hardware: 1$\times$ NVIDIA H200 NVL (143 GB), 16 CPU cores, 125 GB RAM.
+Sensitivity sweep completed in $61.53$ h with 0 failures; CTU-13 matrix in $18.8$ h with
+0 failures; frozen fold manifests are hashed (CTU-13 scenario manifest
+\texttt{sha256=79ec75d7\ldots}) and the hash is recorded into every result file produced
+against it.
+
+% ---------------------------------------------------------------------
+\section*{Retired claims --- must not reappear anywhere}
+
+\begin{itemize}
+  \item ``Causal aggregation has no effect'' / ``CTU-13's ceiling is purely host
+        identity leakage'' / ``host-only performance remains exactly at ceiling after
+        causalisation.''
+  \item ``CICIoMT2024 contains only a negligible $0.02\%$ duplicate overlap''
+        (195 clusters / 357 rows). Measured: $86{,}012$ of $1{,}614{,}182$ full
+        provider test records ($5.33\%$), $\approx5.2\%$ per evaluated seed subset,
+        $100\%$ label agreement.
+  \item Describing any CTU-13 protocol as \emph{host-disjoint} --- $76.2\%$ of fold-1
+        test hosts also appear in training. Use \emph{scenario-disjoint CTU-13
+        evaluation}.
+  \item ``Host identity is a formal label leak.'' Use \emph{host-associated shortcut
+        reliance}.
+  \item The fixed $\theta=0.9$ early-exit headline.
+  \item ``int8-grid quantisation has little effect'' as a general statement.
+  \item Any unqualified four-fold mean for CTU-13 scenario-disjoint results (the
+        $77.77$ mean spans $27.40$--$99.50$).
+  \item Any architecture ranking from CTU-13 or TON-IoT scenario/host-disjoint
+        results.
+\end{itemize}
+
+% ---------------------------------------------------------------------
+\section*{Artifacts in this directory}
+
+\begin{tabular}{ll}
+\texttt{fig\_sensitivity\_forest.png} & paired $\Delta$ macro-F1 with 95\% intervals,
+35 arms \\
+\texttt{fig\_sensitivity\_cost\_quality.png} & SOP\% vs $\Delta$ macro-F1, default
+marked \\
+\texttt{fig\_objective\_far.png} & median FAR by objective ablation \\
+\texttt{fig\_deployment\_pareto.png} & macro-F1 vs measured batch-one CPU latency \\
+\texttt{tab\_sensitivity.tex} & 35-arm sensitivity table \\
+\texttt{tab\_deployment.tex} & seven-row deployment comparison \\
+\texttt{tab\_early\_exit.tex} & validation-selected early exit per dataset \\
+\texttt{tab\_raw\_mlp.tex} & Raw MLP control, FP and int8-grid \\
+\texttt{sensitivity\_by\_arm.csv}, \texttt{sensitivity\_cells.csv} & sweep source data \\
+\texttt{deployment\_summary.csv}, \texttt{int8\_grid.csv} & deployment source data \\
+\texttt{compact\_gbdt.csv}, \texttt{selected\_test.csv} & compact GBDT, early exit \\
+\end{tabular}
+
+\bigskip
+\noindent Regenerate everything with
+\texttt{python scripts/make\_journal\_figures.py}.
