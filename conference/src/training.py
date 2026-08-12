@@ -166,45 +166,83 @@ def _eval(model, loader, encoder, num_steps, device, loss_fn=None):
                 n_samples=n_samples, infer_time_s=infer_time_s, mean_loss=mean_loss)
 
 
-def _eval_prefix(model, loader, encoder, num_steps, device):
-    """Second evaluation pass that additionally collects the cumulative
-    output-spike counts at every timestep.
+def _eval_prefix(model, loader, encoder, num_steps, device, loss_fn=None):
+    """The authoritative final evaluation: metrics *and* per-timestep artifacts
+    from a single forward computation.
 
-    Deliberately a separate pass rather than a replacement for ``_eval``. The
-    metrics of record keep flowing through the unchanged ``forward`` path, so
-    the numbers stay comparable to the v1 sweep, and the artifact path is
-    verified against them instead of being trusted. The extra pass costs a
-    fraction of a minute against a run measured in tens of minutes.
+    This must be one pass, not two. **Rate encoding is a Bernoulli draw**
+    (`src/encoding/rate.py`), so a second pass over the same loader encodes a
+    different spike train and produces different logits. An earlier two-pass
+    design — metrics from ``forward``, artifacts from ``_output_spike_train`` —
+    failed loudly on every rate-encoded run for exactly that reason. Deriving
+    both from one draw makes the saved prefix and the reported macro-F1
+    describe the same evaluation by construction, which is what the downstream
+    early-readout, fixed-FAR and per-class analyses assume.
 
-    Returns cum_out [N, T, C] as float (cast to uint8 at write time), plus the
-    terminal logits so the caller can assert they match ``forward``.
+    The two code paths are still cross-checked, but on a *shared* input: for the
+    first batch we additionally run ``forward`` on the same spike tensor and
+    require identical logits. That verifies the implementations agree without
+    needing two identical stochastic draws.
+
+    Timing brackets ``torch.cuda.synchronize()`` and covers this recording path,
+    so v2 inference times are internally comparable across variants but are not
+    comparable to the v1 sweep's ``forward``-only timings. v1 and v2 numbers are
+    never mixed in one table (PREREGISTRATION.md §6), so that is a documented
+    consequence rather than a lost measurement.
     """
     model.eval()
-    cum_chunks, pred_chunks, true_chunks = [], [], []
-    input_spikes = 0.0
-    hidden_spikes = 0.0
-    output_spikes = 0.0
+    cum_chunks, pred_chunks, true_chunks, score_chunks = [], [], [], []
+    input_spikes = hidden_spikes = output_spikes = 0.0
+    total_sites = 0
+    running_loss, n_batches = 0.0, 0
+    checked = False
+    cuda = device.type == "cuda"
+    if cuda:
+        torch.cuda.synchronize()
+    start = time.time()
     with torch.no_grad():
         for X, y in loader:
-            X = X.to(device)
+            X = X.to(device); y = y.to(device)
             spikes = encoder(X, num_steps)
-            out_stack, spike_total, hidden_total, _sites = \
-                model._output_spike_train(spikes)          # [T, B, C]
-            cum = out_stack.cumsum(dim=0).permute(1, 0, 2)  # [B, T, C]
-            cum_chunks.append(cum.cpu().numpy())
-            pred_chunks.append(cum[:, -1, :].argmax(dim=1).cpu().numpy())
-            true_chunks.append(y.numpy())
+            out_stack, spike_total, hidden_total, sites = \
+                model._output_spike_train(spikes)           # [T, B, C]
+            logits = out_stack.sum(dim=0)                   # == cum[:, -1, :]
+            if not checked:
+                fwd_logits, _, _ = model(spikes)
+                if not torch.equal(fwd_logits, logits):
+                    raise RuntimeError(
+                        "_output_spike_train disagrees with forward() on an "
+                        "identical spike train — the recording path has "
+                        "diverged from the model of record.")
+                checked = True
+            cum = out_stack.cumsum(dim=0).permute(1, 0, 2)   # [B, T, C]
+            cum_chunks.append(cum.to(torch.uint8).cpu().numpy())
+            pred_chunks.append(logits.argmax(dim=1).cpu().numpy())
+            score_chunks.append(logits.float().cpu().numpy())
+            true_chunks.append(y.cpu().numpy())
+            if loss_fn is not None:
+                running_loss += float(loss_fn(logits, y).item())
+                n_batches += 1
             input_spikes += float(spikes.sum().item())
             hidden_spikes += float(hidden_total.item())
             # `spike_total` counts hidden + output; the difference isolates the
             # readout layer without a third accumulator inside the model.
             output_spikes += float(spike_total.item() - hidden_total.item())
-    cum_out = np.concatenate(cum_chunks, axis=0)
+            total_sites += int(sites)
+    if cuda:
+        torch.cuda.synchronize()
+    infer_time_s = time.time() - start
+    y_true = np.concatenate(true_chunks)
     return {
-        "cum_out": cum_out,
+        "cum_out": np.concatenate(cum_chunks, axis=0),
         "y_pred": np.concatenate(pred_chunks),
-        "y_true": np.concatenate(true_chunks),
-        "terminal_logits": cum_out[:, -1, :],
+        "y_true": y_true,
+        "y_score": np.concatenate(score_chunks, axis=0),
+        "total_spikes": hidden_spikes + output_spikes,
+        "total_sites": total_sites,
+        "n_samples": int(len(y_true)),
+        "infer_time_s": infer_time_s,
+        "mean_loss": running_loss / max(n_batches, 1) if loss_fn is not None else None,
         "input_spikes": input_spikes,
         "hidden_spikes": hidden_spikes,
         "output_spikes": output_spikes,
@@ -308,30 +346,25 @@ def run_experiment(cfg: Dict) -> Dict:
               f"train_loss={train_loss:.4f} val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
     train_time_s = time.time() - train_start
 
-    # ---------- final evaluation on both test sets ----------
-    test_eval = _eval(model, bundle.test_loader, encoder, num_steps, device, loss_fn=loss_fn)
+    # ---------- final evaluation: metrics and artifacts from one pass ----------
+    # Artifacts are written unconditionally. A run without them cannot feed the
+    # early-readout, fixed-FAR, per-class or SOP analyses, and discovering that
+    # after a sweep means retraining it.
+    test_eval = _eval_prefix(model, bundle.test_loader, encoder, num_steps,
+                             device, loss_fn=loss_fn)
     test_record = _build_record_for_split(test_eval, bundle.class_names)
     test_record["test_loss"] = test_eval["mean_loss"]
 
-    # ---------- artifacts for the no-retraining analyses ----------
-    # Written unconditionally: a run without them cannot feed the early-readout,
-    # fixed-FAR, per-class or SOP analyses, and discovering that after a sweep
-    # means retraining it.
-    prefix = _eval_prefix(model, bundle.test_loader, encoder, num_steps, device)
-    if not np.array_equal(prefix["terminal_logits"], test_eval["y_score"]):
-        raise RuntimeError(
-            "prefix readout at t=T does not reproduce the model's logits — the "
-            "artifact path has diverged from forward(); refusing to write "
-            "artifacts that would silently misreport every downstream analysis.")
-    save_test_prefix(results_dir, np.arange(len(prefix["y_true"])),
-                     prefix["y_true"], prefix["y_pred"], prefix["cum_out"])
+    save_test_prefix(results_dir, np.arange(len(test_eval["y_true"])),
+                     test_eval["y_true"], test_eval["y_pred"], test_eval["cum_out"])
 
     val_eval_final = _eval(model, bundle.val_loader, encoder, num_steps, device)
     save_val_scores(results_dir, val_eval_final["y_true"], val_eval_final["y_score"])
 
     test_record["spike_accounting"] = spike_accounting(
-        prefix["input_spikes"], prefix["hidden_spikes"], prefix["output_spikes"],
-        prefix["y_true"].shape[0], model.synaptic_fanout())
+        test_eval["input_spikes"], test_eval["hidden_spikes"],
+        test_eval["output_spikes"], test_eval["n_samples"],
+        model.synaptic_fanout())
 
     test21_record: Optional[Dict] = None
     if bundle.test21_loader is not None:
