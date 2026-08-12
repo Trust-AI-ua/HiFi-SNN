@@ -86,40 +86,105 @@ two preregistered folds and exist to rank neuron families against one another
 under a strict protocol. Those rows are a comparative confirmation, not a
 CTU-13 performance number, and their captions say so.
 
-\subsection{Mechanism: latency concentrates class evidence earlier}
+\subsection{Temporal evidence accumulation and spike efficiency}
 \label{sec:res-readout}
 
-% results/analysis/early_readout/summary.csv, figures readout_*.pdf
-Terminal macro-F1 alone would leave the encoding recommendation resting on a
-modest and dataset-dependent margin. The anytime readout gives a mechanistic
-account instead. On \NUM{protocol}, latency coding reaches $99\%$ of its
-terminal macro-F1 at a median of $T_{99}=3$ timesteps, against $T_{99}=20$ for
-rate. Truncating the readout at $T_{99}$ discards $74.2\%$ of latency's output
-spikes but only $24.2\%$ of rate's.
+This section establishes two findings that are easy to conflate and are not the
+same claim: \emph{when} each encoding resolves its decision, and \emph{how much
+event activity} it costs to do so. The first turns out to be protocol-dependent;
+the second is consistent.
 
-The timing advantage is not uniform across initialisations and we do not present
-it as such: latency's $T_{99}$ has an interquartile range of $2$--$9$ and a full
-range of $2$--$23$ across five seeds, against $20$--$21$ and $17$--$23$ for rate.
-The distributions are largely disjoint but one latency seed converges no faster
-than rate. Figure~\NUM{fig} plots every seed individually rather than a mean
-band for this reason.
+\paragraph{Evidence accumulation is protocol-dependent.}
+% results/analysis/early_readout/summary.csv
+On strict NSL-KDD evaluation, latency coding reaches $99\%$ of its terminal
+macro-F1 at a median of $T_{99}=3$ timesteps against $20$ for rate, a
+substantial opportunity for truncated inference. This behaviour does not hold
+uniformly across datasets. Table~\ref{tab:readout} reports all four evaluated
+protocols: latency also resolves earlier on CTU-13 fold~0, while rate reaches
+its terminal operating point earlier on KDDCup99 and on CTU-13 fold~1. The
+temporal benefit of latency coding therefore depends on the underlying traffic
+distribution, and we report it as a dataset-specific result rather than as a
+general property of the code.
 
+\begin{table}[t]
+\centering
+\caption{Terminal quality and convergence step by protocol, \texttt{LeakyParallel},
+five seeds. $T_{99}$ is the median first timestep reaching $99\%$ of that
+configuration's own terminal macro-F1. Latency resolves earlier on two protocols
+and later on two, so the temporal advantage observed on NSL-KDD is the strongest
+case rather than the typical one.}
+\label{tab:readout}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{l l r r l}
+\toprule
+Protocol & Best terminal encoding & LP/latency $T_{99}$ & LP/rate $T_{99}$ & Earlier \\
+\midrule
+NSL-KDD v2   & latency         & \textbf{3}  & 20          & latency \\
+KDDCup99 v2  & latency         & 19          & \textbf{14} & rate    \\
+CTU-13 f0    & latency         & \textbf{14} & 17          & latency \\
+CTU-13 f1    & \textbf{delta}  & 15          & \textbf{6}  & rate    \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+The across-seed spread must be read with the medians. On NSL-KDD latency's
+$T_{99}$ has an interquartile range of $2$--$9$ and a full range of $2$--$23$,
+against $20$--$21$ and $17$--$23$ for rate; the distributions are largely
+disjoint but one latency seed converges no faster than rate. We plot every seed
+individually rather than a mean band, because the quantity is discrete and
+skewed and a symmetric ribbon would misrepresent it.
+
+We also note that a short $T_{99}$ measures rapid attainment of a
+configuration's \emph{own} terminal performance and does not imply high-quality
+early inference. Delta reaches $T_{99}=1$ on NSL-KDD while its terminal score
+sits $6.5$ pp below latency's: that is rapid stabilisation at a weaker solution,
+not an early-inference advantage.
+
+\paragraph{Latency provides a consistently sparser event representation.}
 % results/analysis/efficiency/summary.csv
-The synaptic-operation accounting explains the mechanism directly. Latency emits
-$14.6$ input spikes per sample --- one per feature, by construction --- while
-rate's Bernoulli draw emits $238.6$ over the same window; with an input fanout
-of $128$ the input layer dominates the operation count. The result is
-$3{,}363$ SOPs per sample for latency against $32{,}502$ for rate, a factor of
-$9.7$, at \emph{higher} terminal quality. Latency is therefore Pareto-optimal
-against rate on quality, decision latency and operation count simultaneously.
+The efficiency picture, unlike the timing picture, is uniform across protocols.
+Three quantities must be distinguished, because only the first is structural.
 
-This matters for how much weight the delta result has to carry. Delta reaches
-$99\%$ of its terminal score at $T_{99}=1$, but that terminal score is
-$6.5$ pp below latency's: it stabilises early on a worse answer, which is not an
-early-inference advantage. Consistent with our pre-registration, the encoding
-conclusion rests on the latency-versus-rate comparison, and delta's weakness is
-reported as a property of applying a temporal-contrast code to static per-flow
-vectors rather than as evidence for latency.
+\emph{Input activity} is a property of the code itself: latency emits at most one
+spike per encoded feature, whereas rate draws Bernoulli samples at every one of
+the $T$ timesteps. Measured, latency emits $12.5$--$22.2$ input spikes per
+sample against rate's $238.6$--$309.1$, a ratio of $13.9\times$ to $19.7\times$
+across the four protocols.
+
+\emph{Whole-network spike count} is not structurally guaranteed, since different
+input timing produces different hidden-layer firing, and the measured advantage
+is correspondingly much smaller: $1.9\times$ to $2.5\times$. Latency's sparser
+input is partly compensated by increased hidden activity.
+
+\emph{Synaptic operations} weight each spike by the fanout it drives, and because
+the input projection is $128$ wide it is dominated by the input layer. Latency
+requires $9.7\times$ to $13.0\times$ fewer SOPs per sample than rate on every
+protocol evaluated. This is the one efficiency claim that generalises, and it is
+measured rather than inferred from the input-sparsity argument alone.
+
+Delta is cheaper still, at $0.68$--$0.91$ of latency's SOPs, which is consistent
+with its sparse transient representation. Latency is Pareto-optimal against both
+alternatives on three of the four protocols; the exception is CTU-13 fold~1,
+discussed next.
+
+\paragraph{The principal exception.}
+% results/analysis/efficiency/summary.csv, early_readout/summary.csv
+On CTU-13 fold~1 --- the hardest scenario-disjoint fold, on which the strict
+four-fold estimate is lowest --- delta encoding achieves the highest terminal
+macro-F1 ($0.8825$) and latency trails by $11.2$ percentage points ($0.7702$),
+with rate marginally ahead of latency ($0.7750$). This is the only protocol on
+which latency is not the strongest encoding, and it is not a single-seed
+reversal: the across-seed standard deviations are $0.0067$, $0.0050$ and
+$0.0041$ respectively.
+
+We report this without offering a mechanism. The present data establish
+\emph{that} the encoding preference inverts under this scenario shift, not
+\emph{why}, and a post-hoc explanation would not be supported by any experiment
+in this study. The observation is nonetheless consequential for the reading of
+the delta results generally: delta is weaker under the evaluated static-flow
+representation in aggregate, but demonstrably capable of winning under a
+sufficiently difficult protocol, so it should not be characterised as
+categorically unsuited to this task.
 
 \subsection{Where the advantage does not extend}
 \label{sec:res-limits}
@@ -172,9 +237,13 @@ The study supports three claims, each stated at the strength the evidence
 carries and no further.
 
 \textbf{First}, \texttt{LeakyParallel} with latency encoding is the top-ranked
-configuration in the complete $27$-configuration \texttt{snnTorch} screening
-study, at the head of a leading group of configurations that a Nemenyi test
-cannot separate from it.
+configuration across the complete $27$-configuration \texttt{snnTorch} screening
+study, and remains the strongest encoding overall in the strict
+\texttt{LeakyParallel} confirmation --- ranking first with a mean rank of $1.55$
+and the highest terminal macro-F1 in $13$ of $20$ dataset--seed blocks ---
+although its advantage is heterogeneous across datasets and scenario folds. It
+sits at the head of a leading group that a Nemenyi test cannot separate from it,
+and it is not the strongest encoding on CTU-13 fold~1.
 
 \textbf{Second}, the ranking is not explained by exact train--test duplication.
 Removing duplicated test records leaves the encoding ordering unchanged ---
@@ -182,11 +251,16 @@ latency $>$ rate $>$ delta both before and after --- and preserves the
 latency--rate margin, which moves from $+1.045$ to $+0.976$ pp on KDDCup99
 despite $57.53\%$ of that test set being removed.
 
-\textbf{Third}, latency coding's practical advantage is not solely terminal
-accuracy. On strict NSL-KDD evaluation it reaches near-terminal macro-F1
-substantially earlier than rate coding --- median $T_{99}$ of $3$ against $20$
-timesteps --- enabling large reductions in spike activity under truncated
-readout, and it does so at roughly a ninth of the synaptic-operation cost.
+\textbf{Third}, latency coding's practical advantage is not that it
+universally reaches decisions earlier. Its temporal advantage is pronounced on
+some distributions --- on strict NSL-KDD evaluation it reaches near-terminal
+macro-F1 at a median of $3$ timesteps against $20$ for rate --- while other
+protocols favour rate for earlier convergence, and one difficult CTU-13 scenario
+favours delta in terminal quality. What does generalise is event sparsity:
+latency requires $9.7\times$ to $13.0\times$ fewer synaptic operations than rate
+on every protocol evaluated. Predictive ranking, temporal behaviour and event
+efficiency are three separate properties, and this study separates them rather
+than treating them as one phenomenon.
 
 The scope of that advantage must be stated with it. It does not imply open-set
 robustness: all evaluated encodings show substantially reduced detection on
