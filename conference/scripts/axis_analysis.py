@@ -46,6 +46,17 @@ PRIMARY = "f1_macro"
 CHAMPION_NEURON = "LeakyParallel"
 CHAMPION_ENCODING = "latency"
 
+#: Protocols each axis is expected to cover once the run program completes.
+#: A result missing any of these is INTERIM and must not be quoted as final --
+#: CIC-IDS2017 adds five paired blocks to the encoding axis, and the CTU-13
+#: folds are exactly where B1 already shows the simple narrative is most likely
+#: to be challenged.
+EXPECTED = {
+    "encoding": ["nslkdd_v2", "kddcup99_v2", "cicids2017_v2",
+                 "ctu13_v2_f0", "ctu13_v2_f1"],
+    "neuron": ["nslkdd_v2", "kddcup99_v2", "ctu13_v2_f0", "ctu13_v2_f1"],
+}
+
 CTU_CAVEAT = (
     "CTU-13 rows are a neuron-axis comparative confirmation on two "
     "preregistered scenario-disjoint folds. They are NOT the strict CTU-13 "
@@ -112,8 +123,14 @@ def main() -> int:
     mr.to_csv(out / "mean_rank.csv")
 
     champion = CHAMPION_NEURON if args.axis == "neuron" else CHAMPION_ENCODING
+    present = set(df.protocol.unique())
+    missing = [p for p in EXPECTED[args.axis] if p not in present]
+    status = "INTERIM" if missing else "COMPLETE"
+
     summary = {
         "axis": args.axis,
+        "status": status,
+        "missing_protocols": missing,
         "held_fixed": held,
         "scope_note": (f"Ranking is among {args.axis}s with {held}. This is a "
                        "targeted confirmation, NOT a v2 ranking of the 27 "
@@ -136,7 +153,10 @@ def main() -> int:
         summary["ctu13_caveat"] = CTU_CAVEAT
     (out / "summary.json").write_text(json.dumps(summary, indent=2))
 
-    print(f"=== v2 {args.axis}-axis confirmation ({held}) ===")
+    print(f"=== v2 {args.axis}-axis confirmation [{status}] ({held}) ===")
+    if missing:
+        print(f"!! INTERIM — missing {', '.join(missing)}. These numbers will "
+              f"change when those protocols land; do not quote them as final.")
     print(summary["scope_note"])
     print(f"\nprotocols: {', '.join(summary['protocols'])}")
     print(f"blocks: {summary['n_blocks']}  levels: {summary['n_levels']}\n")

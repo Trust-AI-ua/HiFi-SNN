@@ -148,19 +148,30 @@ Three quantities must be distinguished, because only the first is structural.
 \emph{Input activity} is a property of the code itself: latency emits at most one
 spike per encoded feature, whereas rate draws Bernoulli samples at every one of
 the $T$ timesteps. Measured, latency emits $12.5$--$22.2$ input spikes per
-sample against rate's $238.6$--$309.1$, a ratio of $13.9\times$ to $19.7\times$
-across the four protocols.
+sample against rate's $238.6$--$309.1$: rate emits $13.9\times$ to $19.7\times$
+more input spikes than latency across the four protocols.
 
 \emph{Whole-network spike count} is not structurally guaranteed, since different
-input timing produces different hidden-layer firing, and the measured advantage
-is correspondingly much smaller: $1.9\times$ to $2.5\times$. Latency's sparser
-input is partly compensated by increased hidden activity.
+input timing produces different downstream firing, and the measured advantage is
+correspondingly much smaller: rate emits only $1.9\times$ to $2.5\times$ more
+total spikes than latency. The reason is that under latency coding the hidden
+layer accounts for roughly $85\%$ of all spikes, and hidden firing differs
+between the two encodings by only $1.15\times$ to $1.31\times$, so the large
+input-layer saving is diluted in the total.
 
-\emph{Synaptic operations} weight each spike by the fanout it drives, and because
-the input projection is $128$ wide it is dominated by the input layer. Latency
-requires $9.7\times$ to $13.0\times$ fewer SOPs per sample than rate on every
-protocol evaluated. This is the one efficiency claim that generalises, and it is
-measured rather than inferred from the input-sparsity argument alone.
+\emph{Synaptic operations} weight each spike by the fanout it drives. This is
+where the input saving reappears, because latency's reduction in input activity
+occurs \emph{before} the high-fanout input-to-hidden projection: input spikes
+drive $128$ synapses each while hidden spikes drive only $5$. Input activity
+accounts for $55$--$67\%$ of latency's operations but $94$--$96\%$ of rate's, and
+the result is that rate requires $9.7\times$ to $13.0\times$ more synaptic
+operations per sample than latency on every protocol evaluated. The reduction in
+operations is therefore an order of magnitude larger than the reduction in raw
+spike count --- \emph{where} spikes occur matters more than how many there are.
+This is the one efficiency claim that generalises, and it is measured rather
+than inferred from the input-sparsity argument alone. We report it as an
+operation-count measure of compute demand; any conversion to energy remains a
+proxy (Section~\ref{sec:eff}).
 
 Delta is cheaper still, at $0.68$--$0.91$ of latency's SOPs, which is consistent
 with its sparse transient representation. Latency is Pareto-optimal against both
@@ -239,9 +250,10 @@ carries and no further.
 \textbf{First}, \texttt{LeakyParallel} with latency encoding is the top-ranked
 configuration across the complete $27$-configuration \texttt{snnTorch} screening
 study, and remains the strongest encoding overall in the strict
-\texttt{LeakyParallel} confirmation --- ranking first with a mean rank of $1.55$
-and the highest terminal macro-F1 in $13$ of $20$ dataset--seed blocks ---
-although its advantage is heterogeneous across datasets and scenario folds. It
+\texttt{LeakyParallel} confirmation --- ranking first with a mean rank of
+\NUM{rank} and the highest terminal macro-F1 in \NUM{wins} of \NUM{blocks}
+protocol--seed blocks --- although its advantage is heterogeneous across
+datasets and scenario folds. It
 sits at the head of a leading group that a Nemenyi test cannot separate from it,
 and it is not the strongest encoding on CTU-13 fold~1.
 
