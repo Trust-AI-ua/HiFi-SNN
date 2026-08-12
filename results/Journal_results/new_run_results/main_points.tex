@@ -36,6 +36,154 @@
 \end{enumerate}
 
 % ---------------------------------------------------------------------
+% PRIORITY BLOCK -- the six most important quantitative results.
+% Provenance tags: [verified] recomputed from raw result files on 2026-08-12;
+% [response record] taken from the reviewer-response record and not
+% independently recomputable from committed artifacts.
+% ---------------------------------------------------------------------
+\section*{1. The predeclared one-point dense-twin non-inferiority objective FAILED}
+
+\textbf{This is the manuscript's original central objective and it was not met. State it
+plainly.} On the four IoT/IIoT/IoMT target-domain datasets the paired
+Tree-to-Spike\,$-$\,DNN-Tree macro-F1 difference is $\mathbf{-0.55}$ pp
+\textup{[verified]}, with hierarchical-bootstrap 95\% CI $\mathbf{[-1.92, +1.03]}$
+\textup{[response record]}.
+
+\begin{quote}
+Because the lower bound of the 95\% interval extends below $-1$ pp, the predeclared
+one-point non-inferiority criterion \textbf{was not established}.
+\end{quote}
+
+\noindent Any 2-pp margin analysis is \textbf{post hoc only} and must be labelled as such.
+Per-dataset paired differences: CICIoT2023 $-0.22$, CICIoMT2024 $+0.18$, Edge-IIoTset
+$-1.09$, TON-IoT $-1.08$.
+
+\paragraph{$\!$Do not confuse these two numbers.} The formal target-domain result
+($-0.55$ pp, NI not established) is distinct from the eleven-dataset \emph{descriptive}
+comparison of $79.80$ vs $79.86$, a difference of only $\mathbf{-0.06}$ pp. Reporting the
+$-0.06$ pp figure in place of the non-inferiority verdict would misrepresent the outcome.
+
+% ---------------------------------------------------------------------
+\section*{2. Eleven-dataset headline comparison and its statistical companion}
+
+Means over 11 datasets $\times$ 5 seeds \textup{[verified]}:
+
+\begin{center}\small
+\begin{tabular}{lrrr}\toprule
+model & macro-F1 & MCC & FAR (\%) \\\midrule
+Vanilla SNN            & 76.46 & 0.836 & 4.11 \\
+\textbf{Tree-to-Spike} & \textbf{79.80} & \textbf{0.905} & \textbf{3.15} \\
+DNN-Tree               & 79.86 & 0.888 & 3.31 \\
+TASNN adaptation       & 73.77 & 0.837 & 4.72 \\
+\bottomrule\end{tabular}\end{center}
+
+\noindent Tree-to-Spike gains $\mathbf{+3.33}$ pp over Vanilla SNN and $\mathbf{+6.03}$ pp
+over the evaluated TASNN adaptation, while trailing DNN-Tree by $\mathbf{0.06}$ pp
+descriptively. It holds the \emph{best} MCC and the \emph{lowest} FAR of the four.
+
+\paragraph{Friedman and Nemenyi \textup{[verified]}.} Friedman
+$p = 9.31\times10^{-4}$ (macro-F1), $9.80\times10^{-4}$ (accuracy),
+$7.20\times10^{-3}$ (MCC). Nemenyi critical difference $\mathbf{CD = 1.41}$ at
+$\alpha=0.05$ for $k=4$, $N=11$. Macro-F1 mean ranks: DNN-Tree $\mathbf{1.73}$,
+Tree-to-Spike $\mathbf{2.18}$, Vanilla SNN $\mathbf{2.27}$, TASNN $\mathbf{3.82}$.
+
+\begin{quote}
+No rank separation is detected between Tree-to-Spike and either DNN-Tree or the Vanilla
+SNN; the separation from the TASNN adaptation is detected.
+\end{quote}
+
+\noindent\textbf{Non-significance is not equivalence.} Do not report the absent
+Tree-to-Spike/DNN-Tree separation as evidence of parity --- the formal
+non-inferiority test in Section 1 is the instrument for that question, and it failed.
+
+% ---------------------------------------------------------------------
+\section*{3. The crossed $2\times2$: cell means, MCC effect, and additivity}
+
+Cell means (macro-F1) \textup{[response record]}:
+
+\begin{center}\small
+\begin{tabular}{lrr}\toprule
+ & CE objective & full objective \\\midrule
+Raw TTFS encoder  & 77.86 & 77.59 \\
+Tree TTFS encoder & \textbf{86.23} & \textbf{85.85} \\
+\bottomrule\end{tabular}\end{center}
+
+\noindent Effects with 95\% CIs \textup{[response record]}:
+\begin{itemize}
+  \item Encoder main effect: $\mathbf{+8.32}$ macro-F1, CI $[+3.56, +13.00]$; and
+        $\mathbf{+17.95}$ MCC, CI $[+2.17, +33.79]$. \textbf{Freeze the MCC effect too ---
+        it is larger in relative terms than the macro-F1 effect and is currently the
+        under-reported half of the primary result.}
+  \item Objective main effect: $-0.33$, CI $[-1.50, +0.66]$ (null).
+  \item Interaction: $-0.11$, CI $[-1.39, +1.22]$ (null).
+\end{itemize}
+
+\paragraph{Additivity.} The encoder effect is $+8.37$ under CE and $+8.26$ under the full
+objective --- only $\mathbf{0.11}$ pp apart. This is a particularly compelling
+demonstration that the encoder contribution is additive and does not depend on the
+objective.
+
+% ---------------------------------------------------------------------
+\section*{4. Isolated threshold-placement effect: $+5.68$ pp}
+
+Tree split thresholds versus matched equal-frequency (quantile) thresholds, at
+\textbf{identical channel budget and identical objective} --- only the edge placement
+differs \textup{[verified]}:
+
+\begin{quote}
+Replacing the teacher's split thresholds with equal-frequency quantile thresholds at
+matched budget costs $\mathbf{5.68}$ macro-F1 on the four primary datasets, 95\% CI
+$[+2.34, +9.26]$ \textup{[response record]}.
+\end{quote}
+
+\noindent This is distinct from both the $2\times2$ encoder effect and the
+\texttt{raw\_full} sensitivity arm, and it is the \textbf{cleanest evidence about
+\emph{where} inside the encoder the improvement originates}: the threshold placement
+itself, not merely the existence of binning or the channel allocation. Channel budget
+match verified (e.g.\ TON-IoT: 70 channels in both arms). Per dataset: CICIoT2023
+$+10.77$, Edge-IIoTset $+6.50$, TON-IoT $+3.72$, CICIoMT2024 $+1.74$.
+
+\noindent Scope: the $+5.68$ figure is the \textbf{four primary datasets}. Across all
+eleven the mean is $+4.07$ pp \textup{[verified]}. \textbf{The old $+7.17$ / ``90\% of the
+gain'' claim remains retired.}
+
+% ---------------------------------------------------------------------
+\section*{5. False-positive loss term: the paired effect, not just the descriptive FAR}
+
+The inferential result is stronger than the descriptive one and should lead
+\textup{[response record]}:
+
+\begin{quote}
+Removing $\alpha_{\mathrm{fp}}$ increases the false-alarm rate by $\mathbf{+2.30}$ pp,
+95\% CI $[+0.05, +4.72]$, while macro-F1 changes by only $+0.15$ pp,
+CI $[-0.73, +0.87]$.
+\end{quote}
+
+\noindent That is the evidence supporting the statement that the objective primarily
+controls false alarms rather than aggregate accuracy. The descriptive companion (median
+FAR $0.41\% \rightarrow 2.13\%$, a factor of $5.2$) is useful but secondary.
+
+% ---------------------------------------------------------------------
+\section*{6. TON-IoT protocol effect, exact model-by-model values}
+
+Means $\pm$ SD across the four outer-fold means, five optimisation seeds within each fold
+\textup{[verified --- all 15 values recomputed and matched exactly]}:
+
+\begin{center}\small
+\begin{tabular}{lrrr}\toprule
+model & $\Delta$macro-F1 & $\Delta$MCC & $\Delta$FAR \\\midrule
+GBDT           & $-9.34 \pm 4.63$ & $-17.21 \pm 8.15$  & $+19.32 \pm 13.90$ \\
+Vanilla SNN    & $-8.13 \pm 4.27$ & $-14.91 \pm 7.62$  & $+11.95 \pm 7.46$ \\
+Tree-to-Spike  & $-8.38 \pm 4.38$ & $-15.58 \pm 8.40$  & $+16.73 \pm 9.32$ \\
+DNN-Tree       & $-9.90 \pm 6.07$ & $-18.18 \pm 11.26$ & $+19.25 \pm 13.99$ \\
+TASNN          & $-7.97 \pm 3.58$ & $-14.93 \pm 7.06$  & $+12.06 \pm 9.01$ \\
+\bottomrule\end{tabular}\end{center}
+
+\noindent The exact table \emph{strengthens} the ``do not rank architectures''
+conclusion: the degradation ranges overlap heavily, and the standard deviations are of the
+same magnitude as the between-model differences.
+
+% ---------------------------------------------------------------------
 \section*{Robustness (sensitivity sweep, 700/700 cells)}
 
 Integrity: 700 unique configurations, 700 valid records, 0 duplicate keys, 0 missing
@@ -434,6 +582,111 @@ Sensitivity sweep completed in $61.53$ h with 0 failures; CTU-13 matrix in $18.8
 0 failures; frozen fold manifests are hashed (CTU-13 scenario manifest
 \texttt{sha256=79ec75d7\ldots}) and the hash is recorded into every result file produced
 against it.
+
+% ---------------------------------------------------------------------
+\section*{Multiplicity: the two nominally significant loss ablations do NOT survive}
+
+Eleven isolated loss-term ablation contrasts used \emph{unadjusted} 95\% intervals. Two
+were nominally significant \textup{[response record]}: ranking-only $[-2.42, -0.29]$ and
+class-weighted-no-KD $[-2.44, -0.07]$. \textbf{Neither survives Bonferroni or
+Benjamini--Hochberg correction.}
+
+\begin{quote}
+Every isolated loss-term macro-F1 effect is approximately $\leq 1.2$ pp and small relative
+to the encoder effect.
+\end{quote}
+
+\noindent This is recorded explicitly so a future manuscript edit cannot accidentally
+resurrect either nominally significant result as a finding.
+
+% ---------------------------------------------------------------------
+\section*{Class-weighting control (direct reviewer concern)}
+
+\begin{itemize}
+  \item Inverse-frequency class weighting \emph{on top of} distillation: macro-F1
+        $\mathbf{-0.16}$ pp, CI $[-1.43, +1.25]$, and about $\mathbf{+5\%}$ spiking
+        operations \textup{[response record; sweep arm \texttt{class\_weighted} gives
+        $-0.16$ pp and $113\%$ of default SOPs, consistent]}.
+  \item Replacing distillation with class-weighted CE: $\mathbf{-1.28}$ pp,
+        CI $[-2.44, -0.07]$ --- but see the multiplicity section, this does not survive
+        correction.
+\end{itemize}
+
+\begin{quote}
+The encoder and distillation behaviour cannot be explained as indirect transfer of the
+teacher's class weighting.
+\end{quote}
+
+% ---------------------------------------------------------------------
+\section*{Temporal-information capacity at $T=20$ (reviewer-requested, now all 11 datasets)}
+
+\texttt{scripts/encoder\_temporal\_capacity.py} $\rightarrow$
+\texttt{encoder\_temporal\_capacity.json}. Inference only. The computation
+\textbf{reproduces the committed four-dataset artifact to floating-point precision}
+(worst absolute difference $1.11\times10^{-16}$) and is then extended to all eleven
+datasets \textup{[verified]}.
+
+A feature $j$ with $|E_j|$ split thresholds has $|E_j|+1$ reachable bin levels, while the
+latency code offers at most $T$ distinct spike times, so whenever $|E_j|+1 > T$ distinct
+split outcomes must share a spike time.
+
+\begin{center}\scriptsize
+\begin{tabular}{lrrrrrr}\toprule
+dataset & kept feat. & med.\ $|E_j|$ & max $|E_j|$ & $T\!\geq\!|E_j|{+}1$ & collision &
+recoverable \\\midrule
+CTU-13          &  22 &  15.5 &  34 & 86.4\% & \textbf{7.6\%}  & \textbf{92.4\%} \\
+KDD Cup 99      &  56 &   2.0 & 128 & 69.6\% & 59.9\% & 40.1\% \\
+CIC-IDS2017     &  54 &  38.0 & 152 & 29.6\% & 65.2\% & 34.8\% \\
+NSL-KDD         &  61 &   1.0 & 167 & 68.9\% & 65.3\% & 34.7\% \\
+ISCX-IDS2012    &  49 &   1.0 & 170 & 87.8\% & 69.7\% & 30.3\% \\
+Edge-IIoTset    &  37 &   1.0 & 234 & 83.8\% & 77.0\% & 23.0\% \\
+CSE-CIC-IDS2018 &  57 &  70.0 & 187 & 24.6\% & 77.4\% & 22.6\% \\
+TON-IoT         &  55 &   1.0 & 238 & 81.8\% & 78.5\% & 21.5\% \\
+UNSW-NB15       & 152 &   1.0 & 254 & 82.2\% & 78.8\% & 21.2\% \\
+CICIoMT2024     &  33 &  87.0 & 237 &  9.1\% & 81.3\% & 18.7\% \\
+CICIoT2023      &  31 & 103.0 & 255 & 29.0\% & \textbf{87.1\%} & \textbf{12.9\%} \\
+\bottomrule\end{tabular}\end{center}
+
+\paragraph{$\!$Scope correction.} The previously reported ``$77$--$87\%$ of reachable
+levels collided at $T=20$'' is correct \emph{for the four primary datasets only}
+($77.0$--$87.1\%$). Across all eleven the range is much wider,
+$\mathbf{7.6}$--$\mathbf{87.1\%}$ (median $77.0\%$), and CTU-13 is a strong outlier at
+$7.6\%$ because its teacher uses at most 34 thresholds per feature. \textbf{Do not
+generalise the $77$--$87\%$ figure to all eleven datasets.}
+
+\noindent The substantive point survives and is reportable: on the primary target-domain
+datasets the TTFS code at $T=20$ discards most of the teacher's threshold resolution
+($12.9$--$23.0\%$ recoverable), yet Tree-to-Spike still realises the encoder gain --- so
+the benefit does not require faithful reconstruction of every split outcome. This is
+consistent with the sensitivity result that $T=40$ and $T=80$ buy nothing detectable.
+
+% ---------------------------------------------------------------------
+\section*{Two smaller items worth freezing}
+
+\paragraph{Spike sparsity, primary set: $0.767$--$0.919$ \textup{[verified]}.} State the
+basis explicitly: this is the \textbf{range of per-dataset means} over the four primary
+datasets (TON-IoT $0.767$, CICIoT2023 $0.862$, Edge-IIoTset $0.911$, CICIoMT2024
+$0.919$). The per-\emph{run} range on the same set is wider, $0.746$--$0.926$, and the
+range of dataset means across all eleven is $0.767$--$0.972$. Quoting one basis as another
+is the likely source of any future mismatch.
+
+\paragraph{TASNN scope.} The evaluated shared-input TASNN adaptation is substantially
+larger than the compact students and is potentially under-optimised. \textbf{All TASNN
+conclusions apply only to that adaptation, not to transformer-SNNs in general.} This
+qualifier must accompany the $+6.03$ pp figure in Section 2 and every TASNN row in the
+deployment and protocol tables.
+
+% ---------------------------------------------------------------------
+\section*{$\!$Caution: regenerate the analytical-arithmetic figures}
+
+\textbf{Do not copy the pre-deployment $10.5$K pJ / $39.2$K pJ / $3.7\times$ arithmetic
+figures into this file or the manuscript.} The measured operation counts changed
+substantially during the deployment audit, so the definitive analytical-arithmetic table
+must be generated from the final \texttt{deployment\_summary.csv} operation accounting
+(7{,}587 SOP full / 6{,}091 SOP selected exit / 8{,}471 MAC DNN-Tree /
+10{,}979 MAC Raw MLP), with tree models priced in comparisons and never converted to
+MAC-equivalents. Label the result \emph{analytical arithmetic cost}, not energy, and keep
+32-bit pricing as the principal estimate with int8 repricing as sensitivity only.
 
 % ---------------------------------------------------------------------
 \section*{Retired claims --- must not reappear anywhere}
