@@ -1,0 +1,112 @@
+% =====================================================================
+% Threats to Validity — revision draft, 2026-08-12.
+%
+% This section is settled: every limitation below is one we can state now,
+% independently of how the outstanding runs turn out. Numbers cite committed
+% artifacts. Do not soften these; each one is a criticism a reviewer can
+% otherwise raise unprompted, and stating it first is cheaper than defending
+% it later.
+% =====================================================================
+
+\section{Threats to Validity}
+\label{sec:threats}
+
+\paragraph{No non-spiking baselines.}
+This study compares spiking configurations against one another and includes no
+decision-tree ensemble, linear model or architecture-matched dense network. It
+therefore cannot support any claim that spiking detectors are more accurate or
+more efficient than conventional machine learning, and we make none. Readers
+should treat every efficiency figure here as a comparison \emph{among} spiking
+configurations. A like-for-like comparison against conventional models under
+identical preprocessing is a natural companion study and remains open.
+
+\paragraph{Confirmation is targeted, not exhaustive.}
+A complete leakage-resistant re-run of all 27 configurations costs approximately
+$198$ GPU-hours on our hardware and was beyond the revision budget. We therefore
+report the full 27-configuration sweep as a \emph{screening} experiment under
+the original protocol, and confirm the selected configuration under the strict
+protocol along the two design axes that pass through it. The strict evidence for
+configurations far from the selected one is consequently thinner than for the
+selected one itself, and a ranking reversal somewhere in the middle of the field
+under the strict protocol would not be visible to us.
+
+\paragraph{Neuron thresholds are not exhaustively tuned.}
+\texttt{SLSTM} and \texttt{SConv2dLSTM} use a firing threshold of $0.1$ while the
+other seven families use $1.0$, because at $1.0$ the gated cells emit no spikes
+on sparse tabular input and collapse to the majority class. The sweep is
+therefore not a pure neuron-only ablation: part of the difference between the
+gated families and the rest is attributable to the threshold rather than to the
+cell dynamics. We did not run the full threshold grid --- at four thresholds
+across nine families it approaches $170$ GPU-hours --- so we cannot rule out
+that a better-chosen threshold would move a family's position in the ranking.
+What we can say is that the selected configuration is not a gated family, so its
+rank does not depend on that choice.
+
+\paragraph{CIC-IDS2017 ordering is a proxy.}
+The public redistribution we use retains the flow features and label but not the
+original \texttt{Timestamp} field. Within a capture our partition therefore
+orders by row position, which is the flow-writer's output order and
+chronological only up to reordering at flow completion. We describe this
+protocol as order-disjoint rather than temporal for that reason. The day-level
+grouping used for the transfer experiment is exact, as it derives from the
+capture file names rather than from row content.
+
+\paragraph{CTU-13 is scenario-disjoint, not host-disjoint.}
+Whole scenarios are held out and no scenario is split across the partition
+boundary, but source hosts recur across scenarios: $76.2\%$ of the fold-1 test
+hosts also appear in training. The protocol therefore removes scenario-level
+leakage and the feature-level leak from non-causal aggregation, but it does not
+establish generalisation to unseen hosts. Its fold-to-fold spread is large and
+we report the range rather than the mean alone, because a mean across folds
+whose difficulty differs this much conceals more than it summarises.
+
+\paragraph{Benchmark duplication.}
+$57.53\%$ of the official KDDCup99 test set occurs verbatim in the training
+split, and $2.68\%$ of NSL-KDD's. We report duplicate-free sensitivity figures
+alongside the headline numbers rather than removing the duplicates and thereby
+departing from the canonical evaluation. On KDDCup99 the effect is small
+($-0.79$ pp macro-F1), but the magnitude of the overlap means absolute
+KDDCup99 scores should not be read as evidence of generalisation.
+
+\paragraph{Rare classes and unseen attack types.}
+We train on the natural class distribution without resampling. The R2L and U2R
+classes are severely under-represented and their per-class F1 is correspondingly
+low; we report per-class support alongside every per-class metric so that a
+score computed on tens of samples is not read as comparable to one computed on
+hundreds of thousands. Separately, $29.2\%$ of NSL-KDD's official test attacks
+belong to types absent from training, and detection on those types is far weaker
+than on known types. This gap is a property of the detection problem rather than
+of any one configuration, but it bounds what our headline detection rates mean.
+
+\paragraph{Operating thresholds transfer imperfectly.}
+Fixed false-alarm operating points are selected on validation data and frozen
+before evaluation, as they must be. On NSL-KDD the resulting thresholds do not
+transfer cleanly: a threshold calibrated to $1\%$ false alarms on validation
+produces a substantially higher rate on the official test set, because that test
+set is deliberately distribution-shifted. We report realised test false-alarm
+rates beside their targets rather than the targets alone.
+
+\paragraph{Energy figures are proxies.}
+We report synaptic operation counts, which are hardware-independent, and where
+we convert them to energy we do so with a published per-operation constant and
+label the result an operation-based proxy. These are not measurements on
+neuromorphic hardware, and they do not account for memory traffic, which on real
+deployments is frequently the dominant cost. Wall-clock inference times were
+measured on a shared GPU and are comparable across our variants but should not
+be read as absolute deployment latencies.
+
+\paragraph{Delta encoding is evaluated outside its intended regime.}
+Delta modulation encodes temporal contrast, whereas our inputs are static
+per-flow feature vectors presented independently. Its weak performance here is
+therefore at least partly a representational mismatch and should not be read as
+evidence that delta modulation is inherently unsuited to intrusion detection. We
+accordingly base the encoding conclusion on the latency-versus-rate comparison
+and treat the delta result as a secondary observation about this formulation.
+
+\paragraph{Fixed capacity.}
+Architecture ($T=25$, $H=128$) and training budget are held constant across all
+configurations to keep the comparison clean. Absolute scores would shift under
+larger networks or longer training. $T$ in particular is consequential for a
+timing-based code, and we did not sweep it; our anytime-readout analysis
+characterises behaviour \emph{within} the fixed window rather than across
+alternative window lengths.
