@@ -131,6 +131,49 @@ def table_audit() -> str:
     return "\n".join(lines)
 
 
+def table_protocol_audit() -> str:
+    """One table explaining why v2 exists, replacing several paragraphs.
+
+    Each row is an issue we audited in the original protocol, what the audit
+    found, and what the revised protocol does about it. Deliberately compact:
+    a reviewer should be able to see the whole methodological case at a glance
+    and check any single number against the artifact that produced it.
+    """
+    rows = [
+        ("NSL-KDD", "Exact train/test duplicate records",
+         "2.68\\% of test rows", "Duplicate-free sensitivity reported"),
+        ("KDDCup99", "Exact train/test duplicate records",
+         "57.53\\% of test rows",
+         "Duplicate-free sensitivity; ranking unchanged"),
+        ("CIC-IDS2017", "Random split interleaves flows of one attack burst",
+         "Present in the legacy protocol",
+         "Within-capture order-disjoint; day-disjoint transfer test"),
+        ("CTU-13", "Host aggregates computed over whole scenario; random split",
+         "$100.00\\rightarrow92.01$ macro-F1",
+         "Causal aggregates + scenario-disjoint folds"),
+        ("all", "Categorical vocabulary fitted on train$\\cup$test",
+         "0 NSL-KDD / 2 KDDCup99 test rows affected",
+         "All learned transforms fitted on train only"),
+    ]
+    lines = [
+        r"\begin{table}[t]", r"\centering",
+        r"\caption{Protocol audit motivating the leakage-resistant (v2) "
+        r"evaluation. Each row is an issue we tested for in the original "
+        r"protocol, what the test found, and how v2 treats it. The union-split "
+        r"vocabulary turned out to be empirically negligible; we report its "
+        r"size rather than citing that as grounds for keeping it.}",
+        r"\label{tab:protocol-audit}",
+        r"\resizebox{\columnwidth}{!}{%",
+        r"\begin{tabular}{l p{3.4cm} l p{3.6cm}}", r"\toprule",
+        r"Dataset & Issue audited & Finding & Revised treatment \\",
+        r"\midrule",
+    ]
+    for ds, issue, finding, fix in rows:
+        lines.append(f"{ds} & {issue} & {finding} & {fix} \\\\")
+    lines += [r"\bottomrule", r"\end{tabular}}", r"\end{table}"]
+    return "\n".join(lines)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="v1")
@@ -138,8 +181,11 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for name, fn in [("tab_ranking", lambda: table_ranking(args.tag)),
                      ("tab_focused", lambda: table_focused(args.tag)),
-                     ("tab_audit", table_audit)]:
-        p = OUT / f"{name}_{args.tag}.tex" if name != "tab_audit" else OUT / "tab_audit.tex"
+                     ("tab_audit", table_audit),
+                     ("tab_protocol_audit", table_protocol_audit)]:
+        p = (OUT / f"{name}.tex" if name.startswith("tab_audit")
+             or name == "tab_protocol_audit"
+             else OUT / f"{name}_{args.tag}.tex")
         p.write_text(fn() + "\n")
         print("wrote", p)
 

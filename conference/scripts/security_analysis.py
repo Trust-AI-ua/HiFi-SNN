@@ -130,6 +130,7 @@ def main() -> int:
                           test_dr_sd=("test_dr", "std"),
                           test_far_mean=("test_far", "mean"),
                           test_far_sd=("test_far", "std"),
+                          val_far_mean=("val_far", "mean"),
                           fp_per_10k=("fp_per_10k_benign", "mean"))
                      .reset_index())
     far_agg.to_csv(OUT / "fixed_far.csv", index=False)
@@ -143,14 +144,22 @@ def main() -> int:
                      .reset_index())
     cls_agg.to_csv(OUT / "per_class.csv", index=False)
 
-    print("=== DR at validation-selected fixed FAR (seed mean) ===")
+    # All four quantities together. Reporting realised test FAR beside the
+    # validation target is what makes this hard to criticise: the test set is
+    # never used to choose the threshold, so any gap between the two columns is
+    # operating-point drift under distribution shift, measured rather than
+    # avoided.
+    print("=== fixed-FAR operating points (thresholds chosen on validation, "
+          "frozen, then applied to test) ===")
     show = far_agg.copy()
-    show["target"] = (show.target_far * 100).map(lambda v: f"{v:g}%")
-    show["test FAR"] = (100 * show.test_far_mean).round(3).astype(str) + "%"
+    show["val target FAR"] = (show.target_far * 100).map(lambda v: f"{v:g}%")
+    show["val realised FAR"] = (100 * show.val_far_mean).round(3).astype(str) + "%"
+    show["test realised FAR"] = (100 * show.test_far_mean).round(3).astype(str) + "%"
     show["test DR"] = ((100 * show.test_dr_mean).round(2).astype(str) + " ± "
-                       + (100 * show.test_far_sd.fillna(0)).round(2).astype(str))
-    print(show[["protocol", "neuron", "encoding", "target", "test FAR",
-                "test DR", "fp_per_10k"]].to_string(index=False))
+                       + (100 * show.test_dr_sd.fillna(0)).round(2).astype(str))
+    print(show[["protocol", "neuron", "encoding", "val target FAR",
+                "val realised FAR", "test realised FAR", "test DR",
+                "fp_per_10k"]].to_string(index=False))
 
     print("\n=== per-class F1 (seed mean, support in parentheses) ===")
     piv = cls_agg.pivot_table(index=["protocol", "neuron", "encoding"],

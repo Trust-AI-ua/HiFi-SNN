@@ -60,6 +60,13 @@ separately. With the neuron fixed, latency remains the strongest encoding on
 (Table~\NUM{tab}). We report per-dataset means with across-seed standard
 deviations throughout; no dispersion in this paper is pooled across datasets.
 
+We stress what these two tables are not. Each holds one factor fixed, so
+neither --- nor their combination --- constitutes a v2 ranking of the 27
+configurations. That sweep was not run, and the complete 27-configuration
+ranking remains the v1 screening result of
+Section~\ref{sec:res-rank}. Sections~\ref{sec:res-rank} and this one answer
+different questions and should not be merged into a single ranking claim.
+
 % results/v1_submitted/ctu13_strict_vanilla.csv
 The clearest effect of the strict protocol is on CTU-13, and it is large enough
 that the original number should not stand. Under the submitted protocol ---
@@ -72,6 +79,12 @@ range as the CTU-13 result, and retain the perfect score only as a labelled
 protocol comparison. The fold spread is itself informative: it reflects genuine
 differences in scenario difficulty that a uniform perfect score concealed
 entirely, and it is the reason we never quote the mean alone.
+
+This four-fold figure is the strict CTU-13 \emph{performance estimate}. It must
+not be confused with the CTU-13 rows of the neuron-axis table, which come from
+two preregistered folds and exist to rank neuron families against one another
+under a strict protocol. Those rows are a comparative confirmation, not a
+CTU-13 performance number, and their captions say so.
 
 \subsection{Mechanism: latency concentrates class evidence earlier}
 \label{sec:res-readout}
@@ -115,32 +128,43 @@ Three results bound the claim, and we report them because a configuration
 recommendation is only useful alongside its operating envelope.
 
 % results/analysis/security/fixed_far.csv
-\textbf{Operating thresholds do not transfer under distribution shift.}
-Selecting a threshold on validation to hold false alarms at $1\%$ and freezing
-it yields roughly $7.7\%$ on the official NSL-KDD test set. KDDTest+ is
-deliberately distribution-shifted relative to KDDTrain+, so a threshold
-calibrated on data drawn from the training distribution does not hold. This is
-an unfavourable operational number and a substantive one: it says that
-reporting a test-selected ROC operating point --- as is common --- would
-overstate deployable performance.
+\textbf{Substantial operating-point drift under the official NSL-KDD
+distribution shift.} A threshold calibrated to approximately $1\%$ false alarms
+on the validation distribution produced about $7.7\%$ realised false alarms on
+KDDTest+. We report four quantities together --- validation target FAR,
+validation realised FAR, test realised FAR, and test detection rate --- so the
+gap is attributable rather than ambiguous: validation realised FAR lands on
+target ($1.013\%$ for a $1\%$ target), so the calibration itself is sound and
+the drift is a property of the shift between KDDTrain+ and KDDTest+. The test
+set is never used to select the threshold. The practical implication is that a
+test-selected ROC operating point, as is commonly reported, would overstate
+deployable performance.
 
 % results/analysis/known_unseen/known_unseen.csv
-\textbf{Unseen attack types remain hard, and latency does not help there.}
-$29.2\%$ of KDDTest+ attack rows belong to $17$ types absent from training.
-Detection falls from $0.8023$ on known types to $0.3481$ on unseen types for
-\texttt{LeakyParallel/latency}. Notably latency has the \emph{best} known-type
-detection of the three encodings and the \emph{worst} unseen-type detection. We
-therefore use this experiment to delimit the recommendation rather than to
-support it: \texttt{LeakyParallel/latency} is the strongest configuration for
-the supervised detection task we evaluate, and that advantage does not extend to
+\textbf{No encoding generalises to unseen attack types.} $29.2\%$ of KDDTest+
+attack rows belong to $17$ types absent from training. Detection on those types
+is poor for all three encodings --- $0.3481$, $0.3667$ and $0.3677$ for latency,
+rate and delta --- against $0.77$--$0.80$ on known types. The headline finding is
+therefore about the task, not about the encoding ranking: \emph{none} of the
+evaluated encodings generalises well to previously unseen NSL-KDD attack types,
+and latency's advantage is concentrated on types represented during training.
+We deliberately do not emphasise the $1.9$-point spread among three uniformly
+weak results. This experiment delimits the recommendation rather than supporting
+it: \texttt{LeakyParallel/latency} is the strongest configuration for the
+supervised detection task we evaluate, and that advantage does not extend to
 attack types absent from training.
 
 % results/analysis/security/duplicate_free.csv
-\textbf{Benchmark duplication is large but its effect is small.} $57.53\%$ of
-the official KDDCup99 test set occurs verbatim in training. Restricting
-evaluation to the non-duplicated remainder costs $0.79$ pp macro-F1. The
-overlap is severe enough that absolute KDDCup99 numbers should not be read as
-evidence of generalisation, but it does not account for the ranking.
+\textbf{Benchmark duplication is large but does not account for the
+conclusion.} $57.53\%$ of the official KDDCup99 test set occurs verbatim in
+training. Restricting evaluation to the non-duplicated remainder costs $0.79$ pp
+macro-F1 for \texttt{LeakyParallel/latency}, and --- the question that matters
+--- leaves the ordering intact: the leading configuration is unchanged on both
+KDDCup99 and NSL-KDD, the full ordering is unchanged, and the paired
+latency-versus-rate margin is essentially identical on the deduplicated
+remainder ($+0.98$ pp against $+1.05$ pp on KDDCup99). The overlap is severe
+enough that absolute KDDCup99 numbers should not be read as evidence of
+generalisation, but the encoding conclusion is not a claim about memorisation.
 
 \subsection{Summary}
 
