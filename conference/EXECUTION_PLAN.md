@@ -236,6 +236,26 @@ instrumentation → Tier B core → analyses (6, no GPU) → C1 → C2 → [C3 |
   quality at a materially smaller T than rate, that becomes a headline finding
   and the encoding claim no longer has to rest on terminal macro-F1 alone.
 
+## Experimental record: closed on C2 completion
+
+When B + C1 + C2 finish, the experimental record is **closed**, including if GPU
+capacity remains. The recovered schedule margin is not an argument for adding an
+experiment; by that point the scarce resource is writing, figure refinement,
+consistency checking and page fitting, not compute. C3 stays dropped, and the
+preprocessing-sensitivity sweep stays unrun.
+
+The reasoning is that the study's remaining risk has shifted. It is no longer
+vulnerable for lacking experiments --- screening, strict confirmation along both
+axes, mechanism, protocol robustness and boundary conditions are all covered.
+The risk now is in how accurately and conservatively those results are
+translated into the manuscript, and an extra sweep would consume exactly the
+hours that risk needs.
+
+After closure, `scripts/finalize.py` regenerates the whole evidence package in
+one deterministic pass. Every number in the manuscript must come from re-running
+it, never from a remembered value, and it prints a coverage report so a table
+computed over three seeds instead of five cannot pass unnoticed.
+
 ## The claim this plan supports
 
 Not "92.11% average accuracy". Something closer to:

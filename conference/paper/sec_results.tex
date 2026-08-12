@@ -168,15 +168,30 @@ generalisation, but the encoding conclusion is not a claim about memorisation.
 
 \subsection{Summary}
 
-Across a controlled $27$-configuration \texttt{snnTorch} design-space
-evaluation, \texttt{LeakyParallel} with latency encoding attains the lowest mean
-macro-F1 rank, with a leading group of configurations statistically
-indistinguishable from it. Focused leakage-resistant experiments confirm the
-selection along both design axes, and the anytime-readout analysis shows that
-latency coding concentrates discriminative evidence substantially earlier than
-rate coding, yielding a Pareto-optimal operating point in quality, decision
-latency and synaptic operations. Strict evaluation simultaneously lowers the
-optimistic estimates the original protocol produced --- most sharply on CTU-13
---- and exposes two limits of the recommendation: calibrated operating
-thresholds do not transfer under distribution shift, and unseen attack types
-remain difficult.
+The study supports three claims, each stated at the strength the evidence
+carries and no further.
+
+\textbf{First}, \texttt{LeakyParallel} with latency encoding is the top-ranked
+configuration in the complete $27$-configuration \texttt{snnTorch} screening
+study, at the head of a leading group of configurations that a Nemenyi test
+cannot separate from it.
+
+\textbf{Second}, the ranking is not explained by exact train--test duplication.
+Removing duplicated test records leaves the encoding ordering unchanged ---
+latency $>$ rate $>$ delta both before and after --- and preserves the
+latency--rate margin, which moves from $+1.045$ to $+0.976$ pp on KDDCup99
+despite $57.53\%$ of that test set being removed.
+
+\textbf{Third}, latency coding's practical advantage is not solely terminal
+accuracy. On strict NSL-KDD evaluation it reaches near-terminal macro-F1
+substantially earlier than rate coding --- median $T_{99}$ of $3$ against $20$
+timesteps --- enabling large reductions in spike activity under truncated
+readout, and it does so at roughly a ninth of the synaptic-operation cost.
+
+The scope of that advantage must be stated with it. It does not imply open-set
+robustness: all evaluated encodings show substantially reduced detection on
+attack types absent from training ($0.35$--$0.37$ against $0.77$--$0.80$), and a
+validation-calibrated false-alarm rate does not remain stable under the
+KDDTrain+/KDDTest+ distribution shift. Latency's champion status applies to the
+supervised configuration-selection problem this paper studies, not to open-set
+detection.
