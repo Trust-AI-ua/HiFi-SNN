@@ -89,6 +89,45 @@ class SNN(nn.Module):
             hidden = self.hidden_size
         return T * B * (hidden + self.num_classes)
 
+    def synaptic_fanout(self) -> dict:
+        """Synapses driven by one spike at each layer, for the SOP proxy.
+
+            SOP = input_spikes x fanout_input + hidden_spikes x fanout_hidden
+
+        An accumulate happens once per (spike, downstream synapse), so the
+        fanout of a layer is the width of the projection its spikes feed.
+
+        Two conventions are recorded rather than assumed, because they are the
+        kind of thing a reader has to be able to check:
+
+        * **Gated cells** (SLSTM, SConv2dLSTM) drive four gate projections per
+          input, so their input fanout is 4x the hidden width. Counting one
+          would understate their cost by 4x and flatter them in the comparison.
+        * **SConv2dLSTM** is convolutional: one input spike reaches
+          ``out_channels * k^2`` synapses, independent of the spatial size, and
+          again 4x for the gates.
+
+        The output layer's spikes drive nothing downstream -- they are the
+        readout -- so they contribute no SOPs and appear only in the spike
+        decomposition.
+        """
+        n = self.neuron_name
+        if n == "SConv2dLSTM":
+            k = 3
+            return {
+                "fanout_input": 4 * self.conv_out_channels * k * k,
+                "fanout_hidden": self.num_classes,
+                "hidden_width": self.conv_out_channels * self.spatial_side ** 2,
+                "gated": True,
+            }
+        if n == "SLSTM":
+            return {"fanout_input": 4 * self.hidden_size,
+                    "fanout_hidden": self.num_classes,
+                    "hidden_width": self.hidden_size, "gated": True}
+        return {"fanout_input": self.hidden_size,
+                "fanout_hidden": self.num_classes,
+                "hidden_width": self.hidden_size, "gated": False}
+
     # ------------- forward -------------
     def forward(self, spike_train: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int]:
         """spike_train: [T, B, F].

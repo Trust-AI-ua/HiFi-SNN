@@ -59,8 +59,22 @@ def get_eval_context() -> Dict:
 
 
 def _core_block(y_true: np.ndarray, y_pred: np.ndarray) -> Dict:
-    """Compact metric block used for per-group and duplicate-free breakdowns."""
-    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    """Compact metric block used for per-group and duplicate-free breakdowns.
+
+    Quality (macro-F1, MCC) is computed on the labels as given, so a 5-class
+    task reports a 5-class macro-F1. DR and FAR are IDS quantities and are
+    always computed on the collapsed normal-vs-attack view (class 0 = normal),
+    matching ``compute_binary_ids_metrics``. Binarising first matters: this
+    block originally hard-coded ``labels=[0, 1]`` in the confusion matrix, which
+    is right for CTU-13 and silently wrong for the 5-class KDD datasets, where
+    it would have scored "dos" as the positive class and dropped probe/r2l/u2r
+    from the counts entirely.
+    """
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    tb = (y_true != 0).astype(int)
+    pb = (y_pred != 0).astype(int)
+    cm = confusion_matrix(tb, pb, labels=[0, 1])
     tn, fp, fn, tp = int(cm[0, 0]), int(cm[0, 1]), int(cm[1, 0]), int(cm[1, 1])
     multi = len(np.unique(y_true)) > 1
     return {
@@ -69,7 +83,7 @@ def _core_block(y_true: np.ndarray, y_pred: np.ndarray) -> Dict:
         "mcc": float(matthews_corrcoef(y_true, y_pred)) if multi else None,
         "DR": tp / (tp + fn) if (tp + fn) else 0.0,
         "FAR": fp / (fp + tn) if (fp + tn) else 0.0,
-        "confusion_matrix": cm.tolist(),
+        "binary_confusion_matrix": cm.tolist(),
         "support_normal": tn + fp,
         "support_attack": tp + fn,
         "pred_normal": tn + fn,

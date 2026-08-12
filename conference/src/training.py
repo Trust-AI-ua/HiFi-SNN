@@ -49,6 +49,8 @@ from src.encoding import get_encoder
 from src.metrics import (compute_metrics, compute_binary_ids_metrics,
                           compute_spike_stats, count_parameters)
 from src.models import SNN
+from src.artifacts import (protocol_provenance, save_test_prefix,
+                           save_val_scores, spike_accounting)
 
 
 DEFAULTS = {
@@ -80,12 +82,17 @@ SUMMARY_HEADER = [
     # Test-21 standard split (when available) — both 5-class headline + binary
     "test21_accuracy", "test21_f1_macro", "test21_matthews_corrcoef",
     "test21_detection_rate", "test21_false_alarm_rate",
-    # Efficiency / cost
+    # Efficiency / cost. The three-way spike split replaces the ambiguity of a
+    # single "spikes/sample" that exceeded the input dimensionality; SOPs weight
+    # each spike by the fanout it drives.
     "energy_spikes_per_sample", "spike_sparsity",
+    "input_spikes_per_sample", "hidden_spikes_per_sample",
+    "output_spikes_per_sample", "sops_per_sample",
     "trainable_parameters",
     "train_time_s", "inference_ms_per_sample",
     # Provenance
     "epochs", "num_steps", "hidden_size", "batch_size", "lr", "seed",
+    "protocol", "manifest_sha256", "fold",
 ]
 
 
@@ -157,6 +164,51 @@ def _eval(model, loader, encoder, num_steps, device, loss_fn=None):
     return dict(y_pred=y_pred, y_true=y_true, y_score=y_score,
                 total_spikes=total_spikes, total_sites=total_sites,
                 n_samples=n_samples, infer_time_s=infer_time_s, mean_loss=mean_loss)
+
+
+def _eval_prefix(model, loader, encoder, num_steps, device):
+    """Second evaluation pass that additionally collects the cumulative
+    output-spike counts at every timestep.
+
+    Deliberately a separate pass rather than a replacement for ``_eval``. The
+    metrics of record keep flowing through the unchanged ``forward`` path, so
+    the numbers stay comparable to the v1 sweep, and the artifact path is
+    verified against them instead of being trusted. The extra pass costs a
+    fraction of a minute against a run measured in tens of minutes.
+
+    Returns cum_out [N, T, C] as float (cast to uint8 at write time), plus the
+    terminal logits so the caller can assert they match ``forward``.
+    """
+    model.eval()
+    cum_chunks, pred_chunks, true_chunks = [], [], []
+    input_spikes = 0.0
+    hidden_spikes = 0.0
+    output_spikes = 0.0
+    with torch.no_grad():
+        for X, y in loader:
+            X = X.to(device)
+            spikes = encoder(X, num_steps)
+            out_stack, spike_total, hidden_total, _sites = \
+                model._output_spike_train(spikes)          # [T, B, C]
+            cum = out_stack.cumsum(dim=0).permute(1, 0, 2)  # [B, T, C]
+            cum_chunks.append(cum.cpu().numpy())
+            pred_chunks.append(cum[:, -1, :].argmax(dim=1).cpu().numpy())
+            true_chunks.append(y.numpy())
+            input_spikes += float(spikes.sum().item())
+            hidden_spikes += float(hidden_total.item())
+            # `spike_total` counts hidden + output; the difference isolates the
+            # readout layer without a third accumulator inside the model.
+            output_spikes += float(spike_total.item() - hidden_total.item())
+    cum_out = np.concatenate(cum_chunks, axis=0)
+    return {
+        "cum_out": cum_out,
+        "y_pred": np.concatenate(pred_chunks),
+        "y_true": np.concatenate(true_chunks),
+        "terminal_logits": cum_out[:, -1, :],
+        "input_spikes": input_spikes,
+        "hidden_spikes": hidden_spikes,
+        "output_spikes": output_spikes,
+    }
 
 
 def _build_record_for_split(eval_out: Dict, class_names: List[str]) -> Dict:
@@ -261,6 +313,26 @@ def run_experiment(cfg: Dict) -> Dict:
     test_record = _build_record_for_split(test_eval, bundle.class_names)
     test_record["test_loss"] = test_eval["mean_loss"]
 
+    # ---------- artifacts for the no-retraining analyses ----------
+    # Written unconditionally: a run without them cannot feed the early-readout,
+    # fixed-FAR, per-class or SOP analyses, and discovering that after a sweep
+    # means retraining it.
+    prefix = _eval_prefix(model, bundle.test_loader, encoder, num_steps, device)
+    if not np.array_equal(prefix["terminal_logits"], test_eval["y_score"]):
+        raise RuntimeError(
+            "prefix readout at t=T does not reproduce the model's logits — the "
+            "artifact path has diverged from forward(); refusing to write "
+            "artifacts that would silently misreport every downstream analysis.")
+    save_test_prefix(results_dir, np.arange(len(prefix["y_true"])),
+                     prefix["y_true"], prefix["y_pred"], prefix["cum_out"])
+
+    val_eval_final = _eval(model, bundle.val_loader, encoder, num_steps, device)
+    save_val_scores(results_dir, val_eval_final["y_true"], val_eval_final["y_score"])
+
+    test_record["spike_accounting"] = spike_accounting(
+        prefix["input_spikes"], prefix["hidden_spikes"], prefix["output_spikes"],
+        prefix["y_true"].shape[0], model.synaptic_fanout())
+
     test21_record: Optional[Dict] = None
     if bundle.test21_loader is not None:
         test21_eval = _eval(model, bundle.test21_loader, encoder, num_steps, device, loss_fn=loss_fn)
@@ -289,6 +361,7 @@ def run_experiment(cfg: Dict) -> Dict:
                    ["num_steps", "hidden_size", "batch_size", "epochs", "lr",
                     "val_fraction", "seed", "device"]},
         "hardware": hw,
+        "provenance": protocol_provenance(cfg["dataset"]),
         "data": {
             "num_features": bundle.num_features,
             "num_classes": bundle.num_classes,
@@ -346,6 +419,8 @@ def _append_summary(csv_path: str, cfg: Dict, record: Dict):
     t21 = record.get("test_minus_21") or {}
     t21_m = t21.get("metrics", {}) if t21 else {}
     t21_bin = t21.get("binary_ids_metrics", {}) if t21 else {}
+    sa = tp.get("spike_accounting", {})
+    prov = record.get("provenance", {})
     row = {
         "dataset": cfg["dataset"],
         "neuron": cfg["neuron"],
@@ -370,6 +445,10 @@ def _append_summary(csv_path: str, cfg: Dict, record: Dict):
         "test21_false_alarm_rate": t21_bin.get("false_alarm_rate") if t21_bin else None,
         "energy_spikes_per_sample": tp["spike_stats"]["energy_spikes_per_sample"],
         "spike_sparsity": tp["spike_stats"]["spike_sparsity"],
+        "input_spikes_per_sample": sa.get("input_spikes_per_sample"),
+        "hidden_spikes_per_sample": sa.get("hidden_spikes_per_sample"),
+        "output_spikes_per_sample": sa.get("output_spikes_per_sample"),
+        "sops_per_sample": sa.get("sops_per_sample"),
         "trainable_parameters": record["model_size"]["trainable_parameters"],
         "train_time_s": record["training"]["train_time_s"],
         "inference_ms_per_sample": tp["inference_ms_per_sample"],
@@ -379,6 +458,9 @@ def _append_summary(csv_path: str, cfg: Dict, record: Dict):
         "batch_size": cfg["batch_size"],
         "lr": cfg["lr"],
         "seed": cfg["seed"],
+        "protocol": prov.get("protocol"),
+        "manifest_sha256": prov.get("manifest_sha256"),
+        "fold": prov.get("fold"),
     }
     with open(p, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=SUMMARY_HEADER)

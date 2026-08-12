@@ -116,6 +116,24 @@ def _emit_manifest(audit, extra: dict) -> None:
     audit.to_json(MANIFEST_DIR / f"{name}.json")
 
 
+def _publish_eval_context(feat: pd.DataFrame, tr, te, groups=None,
+                          group_name: str = None) -> None:
+    """Hand the metric layer the duplicate mask and (optionally) test groups.
+
+    Costs one hash pass and makes the duplicate-free sensitivity block appear in
+    every result record for free. It matters most on KDDCup99, where 57.5% of
+    the official test set occurs verbatim in training: without this, every
+    KDDCup99 number in the paper is reported on a test set that is mostly
+    memorisable, and the manuscript could not say by how much.
+    """
+    from src.metrics import set_eval_context
+    h = pd.util.hash_pandas_object(feat, index=False).to_numpy()
+    dupfree = ~np.asarray(pd.Index(h[te]).isin(pd.Index(h[tr])), dtype=bool)
+    set_eval_context(test_dupfree_mask=dupfree,
+                     test_groups=None if groups is None else groups[te],
+                     group_name=group_name)
+
+
 # --------------------------------------------------------------------------
 # KDD family — official splits, train-only encoding
 # --------------------------------------------------------------------------
@@ -172,6 +190,7 @@ def load_kdd_v2(dataset: str, batch_size: int = 128, seed: int = 42,
     else:
         Xte, t21 = Xrest, None
 
+    _publish_eval_context(feat, tr, te)
     print(f"  [{dataset}/v2] tr={len(tr)} va={len(va)} te={len(te)} "
           f"features={meta['n_features']} unk={meta['unknown_category_rows']}",
           flush=True)
@@ -236,6 +255,7 @@ def load_cicids2017_v2(batch_size: int = 128, seed: int = 42,
                            "feature_hash": frame_hash(feat),
                            "fractions": [0.70, 0.10, 0.20]})
 
+    _publish_eval_context(feat, tr, te, df["_capture"].to_numpy(), "capture")
     Xtr, Xva, Xte, meta = encode_train_only(feat, tr, va, te)
     print(f"  [cicids2017/v2] tr={len(tr)} va={len(va)} te={len(te)} "
           f"features={meta['n_features']} dup_test_in_train="
@@ -273,6 +293,7 @@ def load_cicids2017_daydisjoint(batch_size: int = 128, seed: int = 42,
                            "task": "binary normal-vs-attack",
                            "feature_hash": frame_hash(feat)})
 
+    _publish_eval_context(feat, tr, te, df["_day"].to_numpy(), "day")
     Xtr, Xva, Xte, meta = encode_train_only(feat, tr, va, te)
     print(f"  [cicids2017/daydisjoint] tr={len(tr)} va={len(va)} te={len(te)} "
           f"features={meta['n_features']}", flush=True)
