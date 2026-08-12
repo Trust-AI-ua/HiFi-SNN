@@ -1138,3 +1138,99 @@ in the appendix.
 1. validate 700/700 completeness · 2. sensitivity tables/figures · 3. regenerate the
 deployment table · 4. freeze the Pareto plot · 5. reproducibility extraction ·
 6. manuscript and rebuttal.
+
+---
+
+## 21. Sensitivity sweep — COMPLETE 700/700, analysis (2026-08-12)
+
+Finished in **61.53 h**, 0 failures. `scripts/sensitivity_analysis.py` →
+`results/ladder/{sensitivity_cells,sensitivity_by_arm}.csv`.
+
+**Completeness validated against §20 criteria: 700 unique configurations · 700 valid
+records · 0 duplicate keys · 0 missing keys · 0 unreadable.**
+
+Statistics as specified: dataset is the generalisation unit (4), seeds are
+within-configuration repetitions (5), every arm-vs-default comparison is **paired on
+(dataset, seed)**, and the 700 cells are never treated as independent samples. The
+default is the shipped Tree-to-Spike run for the same dataset and seed, so each paired
+delta isolates exactly the overridden parameter.
+
+### Default reference (median over 4 datasets × 5 seeds)
+macro-F1 **89.64** · MCC **96.99** · FAR **0.41** · **8,236** synops/sample ·
+spike density 10.36%. Per dataset: ciciomt2024 90.52 · ciciot2023 71.46 ·
+edgeiiot 89.15 · toniot 92.91.
+
+### Verdict: the default sits on a broad plateau, not an isolated optimum
+| | |
+|---|--:|
+| continuous-hyperparameter arms | 25 |
+| within ±1.0 pp of default | **17 (68%)** |
+| better than default | 9 |
+| worse by >1 pp | 5 |
+| **worse by >5 pp** | **0** |
+
+**No hyperparameter setting anywhere in the swept neighbourhood degrades the model by
+more than 1.8 pp**, and none is catastrophic. The only catastrophic arms are *design*
+ablations, not tuning.
+
+### ⚠ The single most important statistical point
+**Every 95% paired interval includes zero except the encoder ablations.** T10
+[−7.96,+4.64], T40 [−3.35,+8.63], T80 [−2.70,+7.42], tau4 [−5.20,+1.07],
+asparse1e2 [−3.23,+3.11] — all straddle 0. Only `raw` [−16.54,−1.54] and `raw_full`
+[−17.93,−1.21] exclude it.
+
+So: **no swept hyperparameter has a detectable effect at 20 paired observations, while the
+encoder does.** That is simultaneously the robustness result and a hard constraint on
+reporting — the nominally "best" arms (T80 +1.33, T40 +1.23, epochs30 +1.18 pp) are
+**indistinguishable from noise** and must not be presented as improvements or as a reason
+to change the default.
+
+### Convergent evidence for the encoder
+`raw_full` changes **only** `encoder_mode` (leaving the full objective intact) and costs
+**−8.26 pp** [−17.93,−1.21]. That independently reproduces the crossed 2×2's encoder main
+effect of **+8.32 macro-F1** (§11) from a different design, on different datasets. The
+strongest single corroboration in the study. (`raw` at −7.99 also zeroes the loss terms,
+so `raw_full` is the cleaner ablation — quote that one.)
+
+### The objective earns its place in FAR, not macro-F1
+Median FAR: default **0.41** · `no_fp` **2.13** (5.2×) · `tree_ce` 2.02 ·
+`class_weighted` 3.16 · `class_weighted_nokd` 2.24 · `raw` 3.37.
+
+Removing the FP-aware term barely moves macro-F1 (+0.15 pp) but **quintuples the false
+alarm rate**. Any ablation table reporting only macro-F1 will make the objective look
+useless. Report FAR alongside it.
+
+### Cost/quality trade-offs worth acting on
+| arm | synops vs default | Δ macro-F1 |
+|---|--:|--:|
+| **`asparse1e2`** (a_sparse 0.01) | **45.5%** | **−0.15 pp** |
+| `epochs30` | 84.6% | +1.18 pp (3× training cost) |
+| `tau1` | 91.9% | −0.76 pp |
+| `T10` | 56.1% | −2.06 pp |
+
+**`asparse1e2` more than halves synaptic operations for a statistically undetectable
+0.15 pp** — given §18 showed compute cost is Tree-to-Spike's weak flank, this is the one
+sweep result with a plausible claim on the deployment configuration. It is a *candidate*,
+not a validated switch: selection on this sweep would be selection on test.
+
+Timestep cost curve: T10 56% synops for −2.06 pp; T40 239% for +1.23; T80 395% for +1.33.
+Beyond T=20 the return is ~1.3 pp for 2.4–4× the operations, so **the default T=20 is
+well placed on the cost curve** — a defensible, reportable statement.
+
+### ⚠ Corrects §18: Tree-to-Spike FP *is* measurable on these 4 datasets
+§18 said no floating-point checkpoint was retained, so the int8-grid cost could not be
+measured. The ladder's **`fp32` arm** (`quantize: False`) is exactly that measurement for
+4 datasets × 5 seeds: **ΔF1 +0.17 pp, CI [−0.70, +1.90]** — int8-grid projection costs
+Tree-to-Spike **nothing detectable**, in clear contrast to the Raw MLP's −0.97 pp mean
+(§18). The §18 footnote stands for the other 7 datasets; for ciciot2023, ciciomt2024,
+edgeiiot and toniot, cite the `fp32` arm instead of claiming the comparison is unavailable.
+
+### Reporting guidance
+Lead with robustness, not rankings:
+> Across 25 hyperparameter perturbations spanning timesteps, channel budget, pruning,
+> jitter, distillation temperature and all four loss weights, no setting changed macro-F1
+> by more than 1.8 pp and every 95% paired interval included zero. The default
+> configuration lies on a broad plateau rather than at an isolated optimum. By contrast,
+> replacing the tree-guided encoder cost 8.26 pp with an interval excluding zero.
+
+Most of the 35-arm grid belongs in the appendix.
