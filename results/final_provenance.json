@@ -1,0 +1,366 @@
+{
+  "_meta": {
+    "generated_by": "scripts/make_provenance_manifest.py",
+    "git_head": "3043ba386f7dab7a68083860fcf51c90692dd642",
+    "bootstrap_design": {
+      "resampling_unit": "dataset (primary), seeds resampled within each drawn dataset",
+      "hierarchy": "datasets sampled with replacement first, then seeds within dataset",
+      "seeds_nested_within_datasets": true,
+      "statistic": "mean over datasets of per-dataset mean paired difference",
+      "n_bootstrap": 10000,
+      "rng_seed": 20260812,
+      "interval_type": "percentile",
+      "alpha": 0.05,
+      "units": "percentage points (pp)",
+      "sign_convention": "arm minus reference (e.g. T2S - DNN-Tree)"
+    },
+    "note": "Every entry is regenerated from committed result JSON/CSV. No training was rerun. Values previously carried only in response-history prose are now reproduced; where a reproduced interval differs from the historical one it differs only by bootstrap resampling noise and the reproduced value is authoritative."
+  },
+  "dense_twin_noninferiority": {
+    "script": "scripts/reproduce_noninferiority.py",
+    "input": "results/Tree-to-Spike/*/seed_*/results.json, results/DNN-Tree/*/seed_*/results.json",
+    "scope": "four IoT/IIoT/IoMT target-domain datasets x 5 seeds",
+    "comparison": "Tree-to-Spike minus DNN-Tree, macro-F1",
+    "estimate_pp": -0.5503,
+    "ci95_pp": [
+      -1.9301,
+      1.0326
+    ],
+    "margin_pp": -1.0,
+    "established": false,
+    "historical_ci95_pp": [
+      -1.92,
+      1.03
+    ],
+    "eleven_dataset_descriptive_pp": -0.056
+  },
+  "crossed_2x2_attribution": {
+    "script": "scripts/reproduce_crossed_2x2.py",
+    "input": "results/ladder/*/{raw,raw_full,tree_ce}/seed_*, results/Tree-to-Spike/*/seed_*",
+    "scope": "four primary datasets x 5 seeds",
+    "cell_means_macro_f1": {
+      "raw_ce": 77.8617,
+      "raw_full": 77.5895,
+      "tree_ce": 86.231,
+      "tree_full": 85.8507
+    },
+    "encoder_main_pp": 8.3153,
+    "encoder_main_ci95_pp": [
+      3.5733,
+      13.0839
+    ],
+    "objective_main_pp": -0.3262,
+    "objective_main_ci95_pp": [
+      -1.4649,
+      0.6648
+    ],
+    "interaction_pp": -0.108,
+    "interaction_ci95_pp": [
+      -1.3608,
+      1.228
+    ],
+    "encoder_main_mcc_pp": 17.9526,
+    "encoder_main_mcc_ci95_pp": [
+      2.1771,
+      33.8028
+    ],
+    "encoder_under_ce_pp": 8.3693,
+    "encoder_under_full_pp": 8.2613,
+    "additivity_gap_pp": 0.108
+  },
+  "false_positive_loss_term": {
+    "script": "scripts/reproduce_loss_ablations.py",
+    "input": "results/ladder/*/no_fp/seed_*, results/Tree-to-Spike/*/seed_*",
+    "arm": "no_fp (a_fp = 0)",
+    "delta_macro_f1_pp": 0.1534,
+    "delta_macro_f1_ci95_pp": [
+      -0.7075,
+      0.8746
+    ],
+    "delta_far_pp": 2.3027,
+    "delta_far_ci95_pp": [
+      0.057,
+      4.6845
+    ],
+    "historical_delta_far_ci95_pp": [
+      0.05,
+      4.72
+    ],
+    "claim": "the objective primarily controls false alarms, not aggregate macro-F1"
+  },
+  "loss_ablation_multiplicity": {
+    "script": "scripts/reproduce_loss_ablations.py",
+    "family": [
+      "kd_only",
+      "rank_only",
+      "no_sparse",
+      "no_fp",
+      "tree_ce",
+      "akd05",
+      "akd20",
+      "arank01",
+      "arank06",
+      "asparse1e2",
+      "asparse1e4",
+      "afp025",
+      "afp100",
+      "class_weighted",
+      "class_weighted_nokd",
+      "cw_nokd_rankfixed"
+    ],
+    "m": 16,
+    "family_note": "declared in the script; m=16 exceeds the historical 'eleven', which makes both corrections stricter, so the conclusion is conservative",
+    "nominally_significant": [
+      "rank_only",
+      "class_weighted_nokd"
+    ],
+    "survives_bonferroni_or_bh": [],
+    "max_abs_effect_pp": 1.2807,
+    "per_contrast": {
+      "kd_only": {
+        "estimate_pp": 0.0212,
+        "ci95_pp": [
+          -0.8114,
+          0.9921
+        ],
+        "p_raw": 0.9988,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.9988
+      },
+      "rank_only": {
+        "estimate_pp": -1.1656,
+        "ci95_pp": [
+          -2.3884,
+          -0.2905
+        ],
+        "p_raw": 0.0044,
+        "p_bonferroni": 0.0704,
+        "p_bh": 0.0704
+      },
+      "no_sparse": {
+        "estimate_pp": 0.3884,
+        "ci95_pp": [
+          -0.3413,
+          1.0965
+        ],
+        "p_raw": 0.2602,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "no_fp": {
+        "estimate_pp": 0.1534,
+        "ci95_pp": [
+          -0.7075,
+          0.8746
+        ],
+        "p_raw": 0.6696,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "tree_ce": {
+        "estimate_pp": 0.3802,
+        "ci95_pp": [
+          -0.7084,
+          1.5856
+        ],
+        "p_raw": 0.5388,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "akd05": {
+        "estimate_pp": 0.1279,
+        "ci95_pp": [
+          -1.1333,
+          1.3312
+        ],
+        "p_raw": 0.8172,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "akd20": {
+        "estimate_pp": -0.2238,
+        "ci95_pp": [
+          -1.2656,
+          0.8226
+        ],
+        "p_raw": 0.6666,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "arank01": {
+        "estimate_pp": -0.2873,
+        "ci95_pp": [
+          -1.6058,
+          1.1726
+        ],
+        "p_raw": 0.645,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "arank06": {
+        "estimate_pp": -0.8089,
+        "ci95_pp": [
+          -2.2315,
+          0.5277
+        ],
+        "p_raw": 0.2634,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "asparse1e2": {
+        "estimate_pp": -0.1481,
+        "ci95_pp": [
+          -0.9591,
+          0.6594
+        ],
+        "p_raw": 0.72,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "asparse1e4": {
+        "estimate_pp": -0.3019,
+        "ci95_pp": [
+          -1.5101,
+          0.7712
+        ],
+        "p_raw": 0.6296,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "afp025": {
+        "estimate_pp": 0.2445,
+        "ci95_pp": [
+          -0.9525,
+          1.3595
+        ],
+        "p_raw": 0.6262,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "afp100": {
+        "estimate_pp": -0.5904,
+        "ci95_pp": [
+          -1.8362,
+          0.5726
+        ],
+        "p_raw": 0.3598,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "class_weighted": {
+        "estimate_pp": -0.1568,
+        "ci95_pp": [
+          -1.4294,
+          1.272
+        ],
+        "p_raw": 0.7934,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      },
+      "class_weighted_nokd": {
+        "estimate_pp": -1.2807,
+        "ci95_pp": [
+          -2.4602,
+          -0.0539
+        ],
+        "p_raw": 0.0418,
+        "p_bonferroni": 0.6688,
+        "p_bh": 0.3344
+      },
+      "cw_nokd_rankfixed": {
+        "estimate_pp": -0.7916,
+        "ci95_pp": [
+          -2.3062,
+          0.8693
+        ],
+        "p_raw": 0.3386,
+        "p_bonferroni": 1.0,
+        "p_bh": 0.87168
+      }
+    }
+  },
+  "class_weighting_controls": {
+    "script": "scripts/reproduce_loss_ablations.py",
+    "on_top_of_distillation": {
+      "arm": "class_weighted",
+      "delta_macro_f1_pp": -0.1568,
+      "ci95_pp": [
+        -1.4294,
+        1.272
+      ],
+      "synops_pct_of_default": 109.25
+    },
+    "replacing_distillation": {
+      "arm": "class_weighted_nokd",
+      "delta_macro_f1_pp": -1.2807,
+      "ci95_pp": [
+        -2.4602,
+        -0.0539
+      ],
+      "synops_pct_of_default": 110.46,
+      "caveat": "does not survive multiplicity correction"
+    },
+    "rank_fixed": {
+      "arm": "cw_nokd_rankfixed",
+      "delta_macro_f1_pp": -0.7916,
+      "ci95_pp": [
+        -2.3062,
+        0.8693
+      ],
+      "synops_pct_of_default": 105.61
+    },
+    "claim": "encoder/distillation behaviour is not indirect transfer of the teacher's class weighting"
+  },
+  "encoder_temporal_capacity": {
+    "script": "scripts/encoder_temporal_capacity.py",
+    "validated_against": "results/Journal_results/encoder_edge_stats.json",
+    "reproduction_max_abs_diff": 1.11e-16,
+    "T": 20,
+    "collision_pct_by_dataset": {
+      "nslkdd": 65.33,
+      "kddcup99": 59.89,
+      "unswnb15": 78.79,
+      "cicids2017": 65.22,
+      "cse-cic-ids2018": 77.44,
+      "iscxids2012": 69.66,
+      "ctu13": 7.57,
+      "toniot": 78.48,
+      "edgeiiot": 77.01,
+      "ciciomt2024": 81.3,
+      "ciciot2023": 87.06
+    },
+    "primary_four_range_pct": [
+      77.0,
+      87.1
+    ],
+    "all_eleven_range_pct": [
+      7.57,
+      87.06
+    ],
+    "scope_warning": "the historical 77-87% figure holds for the four primary datasets only; the eleven-dataset range is 7.6-87.1%"
+  },
+  "threshold_placement": {
+    "script": "scripts/reproduce_crossed_2x2.py (threshold_placement)",
+    "input": "results/encoder_ablation/*/quantile/seed_*, results/Tree-to-Spike/*/seed_*",
+    "comparison": "tree split thresholds minus matched quantile thresholds, macro-F1",
+    "note": "identical channel budget and identical objective; only edge placement differs",
+    "estimate_pp": 5.6833,
+    "ci95_pp": [
+      2.3108,
+      9.233
+    ],
+    "n_datasets": 4,
+    "n_pairs_total": 20,
+    "per_dataset_mean_pp": {
+      "ciciomt2024": 1.7401,
+      "ciciot2023": 10.7726,
+      "edgeiiot": 6.4979,
+      "toniot": 3.7227
+    },
+    "bootstrap_p_two_sided": 0.0002,
+    "historical_ci95_pp": [
+      2.34,
+      9.26
+    ]
+  }
+}

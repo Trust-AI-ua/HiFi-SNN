@@ -6,6 +6,12 @@
 % results/ under the repo root. Do not restate a number from memory: cite the
 % file. Superseded values are listed in Section "Retired claims" and must not
 % reappear anywhere in the manuscript, appendix or rebuttal.
+%
+% PROVENANCE CLOSED 2026-08-12. All five previously prose-only statistics are now
+% regenerated from committed results by scripts/reproduce_*.py through the shared
+% scripts/statistics_utils.py, and indexed in results/final_provenance.json.
+% [reproduced] = regenerated from committed result files; the reproduced value is
+% authoritative where it differs from the historical one by bootstrap noise.
 % =====================================================================
 
 \section*{Evidence hierarchy (preserve this order)}
@@ -45,9 +51,11 @@
 
 \textbf{This is the manuscript's original central objective and it was not met. State it
 plainly.} On the four IoT/IIoT/IoMT target-domain datasets the paired
-Tree-to-Spike\,$-$\,DNN-Tree macro-F1 difference is $\mathbf{-0.55}$ pp
-\textup{[verified]}, with hierarchical-bootstrap 95\% CI $\mathbf{[-1.92, +1.03]}$
-\textup{[response record]}.
+Tree-to-Spike\,$-$\,DNN-Tree macro-F1 difference is $\mathbf{-0.55}$ pp, with
+hierarchical-bootstrap 95\% CI $\mathbf{[-1.93, +1.03]}$
+\textup{[reproduced: \texttt{scripts/reproduce\_noninferiority.py}; historical
+$[-1.92,+1.03]$, the difference is bootstrap noise]}. The script emits
+\texttt{noninferiority\_established: false}.
 
 \begin{quote}
 Because the lower bound of the 95\% interval extends below $-1$ pp, the predeclared
@@ -99,7 +107,7 @@ non-inferiority test in Section 1 is the instrument for that question, and it fa
 % ---------------------------------------------------------------------
 \section*{3. The crossed $2\times2$: cell means, MCC effect, and additivity}
 
-Cell means (macro-F1) \textup{[response record]}:
+Cell means (macro-F1) \textup{[reproduced: \texttt{scripts/reproduce\_crossed\_2x2.py}; all four cells match the historical values exactly]}:
 
 \begin{center}\small
 \begin{tabular}{lrr}\toprule
@@ -108,14 +116,14 @@ Raw TTFS encoder  & 77.86 & 77.59 \\
 Tree TTFS encoder & \textbf{86.23} & \textbf{85.85} \\
 \bottomrule\end{tabular}\end{center}
 
-\noindent Effects with 95\% CIs \textup{[response record]}:
+\noindent Effects with 95\% CIs \textup{[reproduced]}. Cell mapping: Raw+CE $=$ ladder \texttt{raw}, Raw+full $=$ \texttt{raw\_full}, Tree+CE $=$ \texttt{tree\_ce}, Tree+full $=$ shipped default:
 \begin{itemize}
-  \item Encoder main effect: $\mathbf{+8.32}$ macro-F1, CI $[+3.56, +13.00]$; and
-        $\mathbf{+17.95}$ MCC, CI $[+2.17, +33.79]$. \textbf{Freeze the MCC effect too ---
+  \item Encoder main effect: $\mathbf{+8.32}$ macro-F1, CI $[+3.57, +13.08]$; and
+        $\mathbf{+17.95}$ MCC, CI $[+2.18, +33.80]$. \textbf{Freeze the MCC effect too ---
         it is larger in relative terms than the macro-F1 effect and is currently the
         under-reported half of the primary result.}
-  \item Objective main effect: $-0.33$, CI $[-1.50, +0.66]$ (null).
-  \item Interaction: $-0.11$, CI $[-1.39, +1.22]$ (null).
+  \item Objective main effect: $-0.33$, CI $[-1.46, +0.66]$ (null).
+  \item Interaction: $-0.11$, CI $[-1.36, +1.23]$ (null).
 \end{itemize}
 
 \paragraph{Additivity.} The encoder effect is $+8.37$ under CE and $+8.26$ under the full
@@ -133,7 +141,8 @@ differs \textup{[verified]}:
 \begin{quote}
 Replacing the teacher's split thresholds with equal-frequency quantile thresholds at
 matched budget costs $\mathbf{5.68}$ macro-F1 on the four primary datasets, 95\% CI
-$[+2.34, +9.26]$ \textup{[response record]}.
+$[+2.31, +9.23]$ \textup{[reproduced: \texttt{scripts/reproduce\_crossed\_2x2.py},
+\texttt{threshold\_placement}; historical $[+2.34,+9.26]$]}.
 \end{quote}
 
 \noindent This is distinct from both the $2\times2$ encoder effect and the
@@ -151,12 +160,12 @@ gain'' claim remains retired.}
 \section*{5. False-positive loss term: the paired effect, not just the descriptive FAR}
 
 The inferential result is stronger than the descriptive one and should lead
-\textup{[response record]}:
+\textup{[reproduced: \texttt{scripts/reproduce\_loss\_ablations.py}]}:
 
 \begin{quote}
 Removing $\alpha_{\mathrm{fp}}$ increases the false-alarm rate by $\mathbf{+2.30}$ pp,
-95\% CI $[+0.05, +4.72]$, while macro-F1 changes by only $+0.15$ pp,
-CI $[-0.73, +0.87]$.
+95\% CI $[+0.06, +4.68]$, while macro-F1 changes by only $+0.15$ pp,
+CI $[-0.71, +0.87]$.
 \end{quote}
 
 \noindent That is the evidence supporting the statement that the objective primarily
@@ -586,14 +595,23 @@ against it.
 % ---------------------------------------------------------------------
 \section*{Multiplicity: the two nominally significant loss ablations do NOT survive}
 
-Eleven isolated loss-term ablation contrasts used \emph{unadjusted} 95\% intervals. Two
-were nominally significant \textup{[response record]}: ranking-only $[-2.42, -0.29]$ and
-class-weighted-no-KD $[-2.44, -0.07]$. \textbf{Neither survives Bonferroni or
-Benjamini--Hochberg correction.}
+Isolated ablation contrasts used \emph{unadjusted} 95\% intervals. Two are nominally
+significant \textup{[reproduced: \texttt{scripts/reproduce\_loss\_ablations.py}]}:
+ranking-only $[-2.39, -0.29]$ ($p_{\mathrm{raw}}=0.0044$) and class-weighted-no-KD
+$[-2.46, -0.05]$ ($p_{\mathrm{raw}}=0.0418$). After correction over the declared family
+of $m=16$: $p_{\mathrm{Bonf}}=0.070$ and $0.669$; $p_{\mathrm{BH}}=0.070$ and
+$0.334$. \textbf{Neither survives Bonferroni or Benjamini--Hochberg correction, and
+nothing in the family does.}
+
+\noindent Family membership is \emph{declared in the script}, not inferred: every arm
+perturbing only loss weights or class weighting, which gives $m=16$. Both nominally
+significant contrasts must sit in one family or the multiplicity claim is untestable.
+$m=16>11$ makes both corrections \emph{stricter}, so the conclusion is conservative ---
+nothing failing at $m=16$ would pass at $m=11$.
 
 \begin{quote}
-Every isolated loss-term macro-F1 effect is approximately $\leq 1.2$ pp and small relative
-to the encoder effect.
+Every isolated ablation macro-F1 effect is at most $1.28$ pp in
+magnitude and small relative to the encoder effect.
 \end{quote}
 
 \noindent This is recorded explicitly so a future manuscript edit cannot accidentally
@@ -604,12 +622,15 @@ resurrect either nominally significant result as a finding.
 
 \begin{itemize}
   \item Inverse-frequency class weighting \emph{on top of} distillation: macro-F1
-        $\mathbf{-0.16}$ pp, CI $[-1.43, +1.25]$, and about $\mathbf{+5\%}$ spiking
-        operations \textup{[response record; sweep arm \texttt{class\_weighted} gives
-        $-0.16$ pp and $113\%$ of default SOPs, consistent]}.
+        $\mathbf{-0.16}$ pp, CI $[-1.43, +1.27]$, at $109.3\%$ of default spiking
+        operations \textup{[reproduced]}. \textbf{The historical ``about $+5\%$''
+        operation increase does not reproduce as a single figure}: measured per arm it is
+        $+9.3\%$ (\texttt{class\_weighted}), $+10.5\%$ (\texttt{class\_weighted\_nokd})
+        and $+5.6\%$ (\texttt{cw\_nokd\_rankfixed}). Quote the arm, not an average ---
+        only \texttt{cw\_nokd\_rankfixed} is near $+5\%$.
   \item Replacing distillation with class-weighted CE: $\mathbf{-1.28}$ pp,
-        CI $[-2.44, -0.07]$ --- but see the multiplicity section, this does not survive
-        correction.
+        CI $[-2.46, -0.05]$ \textup{[reproduced]} --- but see the
+        multiplicity section, this does not survive correction.
 \end{itemize}
 
 \begin{quote}
@@ -687,6 +708,42 @@ must be generated from the final \texttt{deployment\_summary.csv} operation acco
 10{,}979 MAC Raw MLP), with tree models priced in comparisons and never converted to
 MAC-equivalents. Label the result \emph{analytical arithmetic cost}, not energy, and keep
 32-bit pricing as the principal estimate with int8 repricing as sensitivity only.
+
+% ---------------------------------------------------------------------
+\section*{Provenance --- every statistic regenerates from committed results}
+
+\texttt{results/final\_provenance.json} indexes six statistical entries, each naming the
+script and inputs that regenerate it. No training was rerun; all five formerly
+prose-only analyses are recomputed from committed result JSON/CSV.
+
+\begin{center}\small
+\begin{tabular}{ll}\toprule
+analysis & producer \\\midrule
+canonical bootstrap, BH, Bonferroni & \texttt{scripts/statistics\_utils.py} \\
+dense-twin non-inferiority & \texttt{scripts/reproduce\_noninferiority.py} \\
+crossed $2\times2$ attribution & \texttt{scripts/reproduce\_crossed\_2x2.py} \\
+FAR term, multiplicity, class weighting & \texttt{scripts/reproduce\_loss\_ablations.py} \\
+temporal capacity at $T$ & \texttt{scripts/encoder\_temporal\_capacity.py} \\
+manifest assembly & \texttt{scripts/make\_provenance\_manifest.py} \\
+\bottomrule\end{tabular}\end{center}
+
+\paragraph{Bootstrap design, frozen.} Resampling unit is the \textbf{dataset}; seeds are
+resampled \emph{within} each drawn dataset (nested). The statistic is the mean over
+datasets of the per-dataset mean paired difference, so datasets are equally weighted
+regardless of seed count. \textbf{10{,}000} replicates, RNG seed \textbf{20260812},
+\textbf{percentile} intervals (not BCa --- the acceleration term is unstable at $n=4$
+datasets), $\alpha=0.05$, all effects in \textbf{percentage points}, signed as
+\textbf{arm minus reference}. This metadata is emitted into every result payload, because
+a rerun under a different convention would produce a different-but-plausible interval
+that nobody would catch.
+
+\paragraph{Reproduction fidelity.} Every reproduced value matches its historical
+counterpart to bootstrap noise: the $2\times2$ cell means match \emph{exactly}
+($77.86/77.59/86.23/85.85$); NI CI $[-1.93,+1.03]$ vs $[-1.92,+1.03]$; encoder
+$[+3.57,+13.08]$ vs $[+3.56,+13.00]$; MCC encoder $[+2.18,+33.80]$ vs $[+2.17,+33.79]$;
+$\Delta$FAR $[+0.06,+4.68]$ vs $[+0.05,+4.72]$. \textbf{Where they differ, the reproduced
+value is authoritative.} The temporal-capacity script additionally reproduces its
+committed four-dataset artifact to $1.11\times10^{-16}$.
 
 % ---------------------------------------------------------------------
 \section*{Retired claims --- must not reappear anywhere}
