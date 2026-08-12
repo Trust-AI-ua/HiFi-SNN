@@ -1,0 +1,158 @@
+% =====================================================================
+% Results — skeleton, 2026-08-12.
+%
+% Structure is frozen; values marked \NUM{} are placeholders to be filled from
+% the artifact named in the comment above each block once the runs land.
+%
+% The organising principle: not every experiment is here to say "latency wins".
+% Sections A and B establish the champion. Section C explains *why* it is a good
+% operating point. Section D delimits where the advantage stops. A paper whose
+% every result points the same direction reads as advocacy; this one should not.
+% =====================================================================
+
+\section{Results and Discussion}
+
+\subsection{Design-space screening: the top-ranked configuration}
+\label{sec:res-rank}
+
+% results/analysis/v1/{mean_rank.csv,friedman.json}  ->  paper/tables/tab_ranking_v1.tex
+Across all $27$ configurations evaluated over $20$ paired (dataset $\times$ seed)
+blocks, \texttt{LeakyParallel/latency} attains the lowest mean macro-F1 rank
+($4.03$). A Friedman test rejects the null of equal performance
+($\chi^2=263.9$, $p=3.2\times10^{-41}$), and the Nemenyi critical difference is
+$9.28$.
+
+That critical difference is the reason we describe this configuration as
+\emph{top-ranked} rather than as statistically best: $14$ of the $27$
+configurations lie within one critical difference of the leader, so the ranking
+identifies a leading group and \texttt{LeakyParallel/latency} sits at the head
+of it. In particular \texttt{Leaky/latency} is statistically indistinguishable
+from it ($p=0.33$), and we treat the two as co-leaders on terminal quality.
+
+% results/analysis/v1/focused_tests.json -> paper/tables/tab_focused_v1.tex
+The pre-specified comparison against the closest competitor,
+\texttt{LeakyParallel/rate}, favours latency in $16$ of $20$ blocks with a
+median difference of $+0.70$ pp macro-F1 (Holm-adjusted $p=0.0084$). The
+hierarchical bootstrap over datasets gives $+3.79$ pp $[+0.11, +10.19]$. The
+interval is wide because the effect is strongly dataset-dependent: it is
+$+13.3$ pp on CIC-IDS2017 and near zero on the other three. At the encoding
+level, aggregating over all nine neurons, the block-level test favours latency
+over rate (Holm $p=0.027$) while the dataset-level bootstrap interval
+$[-0.18, +11.30]$ includes zero. We report both. Taken together they describe an
+effect that is consistent in direction but variable in magnitude, which is a
+weaker and more accurate claim than uniform superiority.
+
+We note one point of interpretation, because it is easy to reach the opposite
+conclusion from the wrong metric. On KDDCup99, rate marginally exceeds latency
+in \emph{accuracy} ($0.9260$ vs $0.9257$); on macro-F1, the pre-registered
+primary metric for these heavily imbalanced datasets, latency leads by
+$0.379$ pp. Fixing the primary metric before the analysis is what makes that
+resolution credible rather than convenient.
+
+\subsection{Strict confirmation along both design axes}
+\label{sec:res-strict}
+
+% results/analysis/v2_encoding/, results/analysis/v2_latency/
+Under the leakage-resistant protocol we confirm the selection along each axis
+separately. With the neuron fixed, latency remains the strongest encoding on
+\NUM{n} of the evaluated protocols (Table~\NUM{tab}). With the encoding fixed,
+\texttt{LeakyParallel} remains among the highest-ranked neuron families
+(Table~\NUM{tab}). We report per-dataset means with across-seed standard
+deviations throughout; no dispersion in this paper is pooled across datasets.
+
+% results/v1_submitted/ctu13_strict_vanilla.csv
+The clearest effect of the strict protocol is on CTU-13, and it is large enough
+that the original number should not stand. Under the submitted protocol ---
+whole-scenario host aggregates with a random flow split ---
+\texttt{LeakyParallel/latency} attains a perfect $100.00\pm0.00$ macro-F1.
+Making the aggregation causal alone leaves $99.69\pm0.23$. Adding a
+scenario-disjoint partition brings it to $\mathbf{92.01\pm9.72}$, with folds at
+$99.9$, $99.9$, $91.2$ and $77.0$. We therefore report $92.01$ with its fold
+range as the CTU-13 result, and retain the perfect score only as a labelled
+protocol comparison. The fold spread is itself informative: it reflects genuine
+differences in scenario difficulty that a uniform perfect score concealed
+entirely, and it is the reason we never quote the mean alone.
+
+\subsection{Mechanism: latency concentrates class evidence earlier}
+\label{sec:res-readout}
+
+% results/analysis/early_readout/summary.csv, figures readout_*.pdf
+Terminal macro-F1 alone would leave the encoding recommendation resting on a
+modest and dataset-dependent margin. The anytime readout gives a mechanistic
+account instead. On \NUM{protocol}, latency coding reaches $99\%$ of its
+terminal macro-F1 at a median of $T_{99}=3$ timesteps, against $T_{99}=20$ for
+rate. Truncating the readout at $T_{99}$ discards $74.2\%$ of latency's output
+spikes but only $24.2\%$ of rate's.
+
+The timing advantage is not uniform across initialisations and we do not present
+it as such: latency's $T_{99}$ has an interquartile range of $2$--$9$ and a full
+range of $2$--$23$ across five seeds, against $20$--$21$ and $17$--$23$ for rate.
+The distributions are largely disjoint but one latency seed converges no faster
+than rate. Figure~\NUM{fig} plots every seed individually rather than a mean
+band for this reason.
+
+% results/analysis/efficiency/summary.csv
+The synaptic-operation accounting explains the mechanism directly. Latency emits
+$14.6$ input spikes per sample --- one per feature, by construction --- while
+rate's Bernoulli draw emits $238.6$ over the same window; with an input fanout
+of $128$ the input layer dominates the operation count. The result is
+$3{,}363$ SOPs per sample for latency against $32{,}502$ for rate, a factor of
+$9.7$, at \emph{higher} terminal quality. Latency is therefore Pareto-optimal
+against rate on quality, decision latency and operation count simultaneously.
+
+This matters for how much weight the delta result has to carry. Delta reaches
+$99\%$ of its terminal score at $T_{99}=1$, but that terminal score is
+$6.5$ pp below latency's: it stabilises early on a worse answer, which is not an
+early-inference advantage. Consistent with our pre-registration, the encoding
+conclusion rests on the latency-versus-rate comparison, and delta's weakness is
+reported as a property of applying a temporal-contrast code to static per-flow
+vectors rather than as evidence for latency.
+
+\subsection{Where the advantage does not extend}
+\label{sec:res-limits}
+
+Three results bound the claim, and we report them because a configuration
+recommendation is only useful alongside its operating envelope.
+
+% results/analysis/security/fixed_far.csv
+\textbf{Operating thresholds do not transfer under distribution shift.}
+Selecting a threshold on validation to hold false alarms at $1\%$ and freezing
+it yields roughly $7.7\%$ on the official NSL-KDD test set. KDDTest+ is
+deliberately distribution-shifted relative to KDDTrain+, so a threshold
+calibrated on data drawn from the training distribution does not hold. This is
+an unfavourable operational number and a substantive one: it says that
+reporting a test-selected ROC operating point --- as is common --- would
+overstate deployable performance.
+
+% results/analysis/known_unseen/known_unseen.csv
+\textbf{Unseen attack types remain hard, and latency does not help there.}
+$29.2\%$ of KDDTest+ attack rows belong to $17$ types absent from training.
+Detection falls from $0.8023$ on known types to $0.3481$ on unseen types for
+\texttt{LeakyParallel/latency}. Notably latency has the \emph{best} known-type
+detection of the three encodings and the \emph{worst} unseen-type detection. We
+therefore use this experiment to delimit the recommendation rather than to
+support it: \texttt{LeakyParallel/latency} is the strongest configuration for
+the supervised detection task we evaluate, and that advantage does not extend to
+attack types absent from training.
+
+% results/analysis/security/duplicate_free.csv
+\textbf{Benchmark duplication is large but its effect is small.} $57.53\%$ of
+the official KDDCup99 test set occurs verbatim in training. Restricting
+evaluation to the non-duplicated remainder costs $0.79$ pp macro-F1. The
+overlap is severe enough that absolute KDDCup99 numbers should not be read as
+evidence of generalisation, but it does not account for the ranking.
+
+\subsection{Summary}
+
+Across a controlled $27$-configuration \texttt{snnTorch} design-space
+evaluation, \texttt{LeakyParallel} with latency encoding attains the lowest mean
+macro-F1 rank, with a leading group of configurations statistically
+indistinguishable from it. Focused leakage-resistant experiments confirm the
+selection along both design axes, and the anytime-readout analysis shows that
+latency coding concentrates discriminative evidence substantially earlier than
+rate coding, yielding a Pareto-optimal operating point in quality, decision
+latency and synaptic operations. Strict evaluation simultaneously lowers the
+optimistic estimates the original protocol produced --- most sharply on CTU-13
+--- and exposes two limits of the recommendation: calibrated operating
+thresholds do not transfer under distribution shift, and unseen attack types
+remain difficult.

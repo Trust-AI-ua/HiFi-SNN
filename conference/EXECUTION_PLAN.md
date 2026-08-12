@@ -183,6 +183,43 @@ host-disjoint.
 | Full 432-run threshold grid | 432 | ~170 | **Cut.** |
 | Temporal windows for a fair delta evaluation | — | large | **Cut.** State the mismatch instead. |
 
+## C2 fallback rule — frozen 2026-08-12, before C2 began
+
+C2 stays at **5 seeds × 2 CTU-13 folds**. It is not trimmed pre-emptively: the
+program is running clean and CTU-13 was the submitted paper's largest
+methodological vulnerability, so it is the last thing to weaken.
+
+The fallback is written down now, while no C2 result exists, so that if the
+schedule deteriorates the amendment is applied because of the clock and not
+because of whichever cells happened to land first:
+
+> **IF** projected completion is later than **2026-08-14 04:00**, **OR** more
+> than 5 jobs have failed, **THEN** reduce C2 to **3 seeds across both folds** —
+> never 5 seeds on one fold.
+
+Two folds beat five seeds because CTU-13's fold-to-fold difficulty dominates its
+seed-to-seed variation: the scenario-disjoint folds span roughly 77 to 100
+macro-F1, while seeds move a result by a fraction of that. A 3-seed, 2-fold
+design still asks whether the latency-family ranking survives two very different
+scenario conditions. A 5-seed, single-fold design would make the confirmation
+look fold-specific, which is precisely the criticism this work exists to answer.
+
+`scripts/eta.py` evaluates the rule mechanically and `--apply` performs the
+amendment, writing `results/runs/C2_AMENDMENT.md` with the trigger, the measured
+throughput and the timestamp. As measured at 16:30 on 12 Aug: throughput
+1.75 GPU-h per wall-hour, projected finish **Thu 13 Aug 22:53**, C2 starting
+~07:43 Thu — **5.1 h of margin**, rule does not fire.
+
+## Decision schedule to submission
+
+| When | Action |
+| --- | --- |
+| **12 Aug** | Program runs. No new experimental branch. Instrumentation, analysis scripts and Methods/Threats drafted. |
+| **13 Aug** | Run every analysis as each phase lands; fill manuscript tables as numbers become final. Re-check `eta.py` before C2 starts. |
+| **14 Aug 04:00** | Hard trigger point for the C2 amendment above. |
+| **14 Aug** | Experiments frozen. Results, Discussion, abstract, conclusion, figures, page fitting. |
+| **15 Aug** | Submission QA only — compilation, references, anonymisation, figure legibility, table consistency, reproducibility hashes. |
+
 ## Order and gates
 
 ```
