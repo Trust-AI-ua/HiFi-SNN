@@ -55,7 +55,22 @@ HARDCODED = [
     (r"92\.01", r"\FNCtuStrict"),
 ]
 
-SKIP = {"sec_frozen_numbers.tex"}
+SKIP = {"sec_frozen_numbers.tex", "fig_captions.tex"}
+
+#: Numeric literals that are legitimately not experimental results.
+#: Everything else in Abstract/Results/Conclusion should arrive via a macro,
+#: so one stale value -- the pre-fix CIC delta figure, say -- cannot survive in
+#: prose after the analysis is corrected.
+ALLOWED_LITERAL = re.compile(
+    r"""
+      \d{4}                              # years
+    | \$?T(_\{?99\}?|_\{?95\}?)         # T99 / T95 as symbols
+    | [0-9]+\s*(pt|in|cm|mm|\\%)         # typographic dimensions
+    | (?:\\times|\^)                     # exponents and multipliers
+    """, re.VERBOSE)
+
+#: Sections where every experimental number must come from a macro.
+STRICT_FILES = {"sec_abstract.tex", "sec_results.tex", "sec_conclusion.tex"}
 
 
 def main() -> int:
@@ -76,6 +91,27 @@ def main() -> int:
                 line = body[:m.start()].count("\n") + 1
                 problems.append(f"{path.name}:~{line}  HARD-CODED {m.group(0)!r}"
                                 f" — use {macro}")
+
+    # Literal experimental numbers in the strict sections.
+    for path in files:
+        if path.name not in STRICT_FILES:
+            continue
+        body = "\n".join(l for l in path.read_text().splitlines()
+                          if not l.lstrip().startswith("%"))
+        # Blank out macro invocations and maths-mode symbols first, then look
+        # for what is left: a bare decimal is almost certainly a pasted result.
+        masked = re.sub(r"\\FN[A-Za-z]+", " ", body)
+        masked = re.sub(r"\\(label|ref|includegraphics|texttt|begin|end)"
+                        r"\{[^}]*\}", " ", masked)
+        masked = re.sub(r"\\times|\\%|\\chi\^2|_\{?[0-9]+\}?", " ", masked)
+        for m in re.finditer(r"(?<![\w.])\d+\.\d+(?![\w])", masked):
+            val = m.group(0)
+            if ALLOWED_LITERAL.fullmatch(val):
+                continue
+            line = masked[:m.start()].count("\n") + 1
+            problems.append(
+                f"{path.name}:~{line}  LITERAL RESULT {val!r} — experimental "
+                "numbers in this section must come from a \\FN* macro")
 
     if problems:
         print(f"{len(problems)} wording problem(s):\n")

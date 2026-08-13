@@ -34,7 +34,7 @@ That critical difference is why we describe this configuration as
 \FNScrVariants{} configurations lie within one critical difference of the
 leader, so the screening identifies a leading group with
 \texttt{LeakyParallel/latency} at its head. \texttt{Leaky/latency} in particular
-is not separable from it ($p=0.33$), and we treat the two as co-leaders on
+is not separable from it ($p=\FNScrLeakyP$), and we treat the two as co-leaders on
 terminal quality.
 
 % results/analysis/v1/focused_tests.json -> tab_focused_v1.tex
@@ -44,15 +44,15 @@ The pre-specified comparison against the closest competitor,
 macro-F1 (Holm-adjusted $p=\FNScrHolmP$). The hierarchical bootstrap over
 datasets gives $[\FNScrBootLo, \FNScrBootHi]$ pp. The interval is wide because
 the effect is strongly dataset-dependent. At the encoding level, aggregating
-over all nine neurons, the block-level test favours latency ($p=0.027$) while
-the dataset-level bootstrap interval $[-0.18, +11.30]$ includes zero. We report
+over all nine neurons, the block-level test favours latency ($p=\FNScrEncP$) while the
+dataset-level bootstrap interval $[\FNScrEncCiLo, \FNScrEncCiHi]$ includes zero. We report
 both: together they describe an effect consistent in direction but variable in
 magnitude, which is a weaker and more accurate claim than uniform advantage.
 
 One point of interpretation, because the opposite conclusion follows from the
 wrong metric. On KDDCup99 rate marginally exceeds latency in \emph{accuracy}
-($0.9260$ vs $0.9257$); on macro-F1, the pre-registered primary metric for these
-heavily imbalanced datasets, latency leads by $0.379$ pp. Fixing the primary
+($\FNKddAccRat$ vs $\FNKddAccLat$); on macro-F1, the pre-registered primary
+metric for these heavily imbalanced datasets, latency leads by $\FNKddFOneGain$ pp. Fixing the primary
 metric before the analysis is what makes that resolution credible rather than
 convenient.
 
@@ -98,7 +98,7 @@ protocol --- whole-scenario host aggregates with a random flow split ---
 \texttt{LeakyParallel/latency} attains \FNCtuLegacy{} macro-F1. Making the
 aggregation causal alone leaves \FNCtuCausalRandom. Adding a scenario-disjoint
 partition brings it to $\mathbf{\FNCtuStrict \pm \FNCtuStrictSD}$, with folds at
-$99.9$, $99.9$, $91.2$ and $77.0$. We report the latter with its fold range as
+$\FNCtuFoldA$, $\FNCtuFoldB$, $\FNCtuFoldC$ and $\FNCtuFoldD$. We report the latter with its fold range as
 the CTU-13 result and retain the former only as a labelled protocol comparison.
 The fold spread reflects genuine differences in scenario difficulty that a
 uniform perfect score concealed, which is why we never quote the mean alone.
@@ -155,7 +155,7 @@ and skewed.
 
 A short $T_{99}$ measures rapid attainment of a configuration's \emph{own}
 terminal performance and does not imply high-quality early inference. Delta
-reaches $T_{99}=1$ on NSL-KDD with a terminal score $6.5$ pp below latency's:
+reaches $T_{99}=1$ on NSL-KDD with a terminal score $\FNDeltaDeficitNsl$ pp below latency's:
 rapid stabilisation at a weaker solution, not an early-inference advantage.
 
 \paragraph{Synaptic-operation demand is consistently lower.}
@@ -171,9 +171,10 @@ more input spikes than latency.
 \emph{Whole-network spike count} is not structurally guaranteed, and the measured
 gap is far smaller: rate emits only $\FNTotRatioMin\times$ to
 $\FNTotRatioMax\times$ more total spikes. Under latency coding the hidden layer
-accounts for roughly $85\%$ of all spikes, and hidden firing differs between the
-encodings by only $1.15\times$ to $1.31\times$, so the input-layer saving is
-diluted in the total.
+accounts for $83$--$86\%$ of all spikes, and the two encodings differ there by
+a factor of only $\FNHidRatioMin$ to $\FNHidRatioMax$ --- on CIC-IDS2017 latency
+in fact emits slightly \emph{more} hidden spikes than rate --- so the
+input-layer saving is largely diluted in the total.
 
 \emph{Synaptic operations} weight each spike by the fanout it drives, and this is
 where the input saving reappears: latency's reduction occurs \emph{before} the

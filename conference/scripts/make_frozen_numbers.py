@@ -143,6 +143,45 @@ def main() -> int:
           ("UnseenHi", f"{un.max():.2f}", "highest unseen-type DR"),
           ("UnseenFrac", "29.2", "percent of KDDTest+ attack rows of unseen type")]
 
+    # Literals the wording guard flagged in prose: each must be a macro so a
+    # corrected analysis cannot leave a stale value behind in the text.
+    leaky = next((t for t in ft if t["b"] == "Leaky/latency"), None)
+    if leaky:
+        L.append(("ScrLeakyP", f"{leaky['wilcoxon_p']:.2f}",
+                  "LP/latency vs Leaky/latency, Wilcoxon p"))
+    enc = json.load(open(A / "v1/encoding_tests.json"))["pairwise"]
+    lr = enc.get("latency_vs_rate") or enc.get("rate_vs_latency")
+    L += [("ScrEncP", f"{lr['holm_adjusted_p']:.3f}",
+           "encoding-level latency vs rate, Holm p"),
+          ("ScrEncCiLo", f"{lr['bootstrap_ci_pp'][0]:+.2f}", "its CI low"),
+          ("ScrEncCiHi", f"{lr['bootstrap_ci_pp'][1]:+.2f}", "its CI high")]
+
+    sw = pd.read_csv(ROOT / "results/v1_submitted/sweep_540.csv")
+    k = sw[(sw.dataset == "kddcup99") & (sw.neuron == "LeakyParallel")]
+    acc = k.groupby("encoding").accuracy.mean()
+    f1k = k.groupby("encoding").f1_macro.mean()
+    L += [("KddAccRat", f"{acc['rate']:.4f}", "KDDCup99 accuracy, LP/rate"),
+          ("KddAccLat", f"{acc['latency']:.4f}", "same, LP/latency"),
+          ("KddFOneGain", f"{100*(f1k['latency']-f1k['rate']):.3f}",
+           "LP latency-minus-rate macro-F1 pp on KDDCup99")]
+
+    ctu = pd.read_csv(ROOT / "results/v1_submitted/ctu13_strict_vanilla.csv")
+    cs = (ctu[(ctu.model == "vanilla") & (ctu.condition == "causal_scenario")]
+          .groupby("fold").macro_f1.mean().sort_values(ascending=False))
+    for i, v in enumerate(cs.tolist()):
+        L.append((f"CtuFold{'ABCD'[i]}", f"{v:.2f}",
+                  f"CTU-13 scenario-disjoint fold value {i+1} of 4, descending"))
+
+    dsum = pd.read_csv(A / "early_readout/summary.csv")
+    dn = dsum[(dsum.protocol == "nslkdd_v2") & (dsum.encoding == "delta")]
+    L.append(("DeltaDeficitNsl", f"{abs(dn.f1_vs_best_pp.iloc[0]):.1f}",
+              "delta terminal deficit vs best on NSL-KDD, pp"))
+
+    hid = eff.pivot(index="protocol", columns="encoding", values="hidden_spikes")
+    hr = hid["rate"] / hid["latency"]
+    L += [("HidRatioMin", f"{hr.min():.2f}", "min rate/latency hidden spikes"),
+          ("HidRatioMax", f"{hr.max():.2f}", "max rate/latency hidden spikes")]
+
     # neuron-axis detail on the hard CTU fold, and the strict CTU-13 estimate
     nax = pd.read_csv(A / "v2_neuron_axis/per_dataset.csv")
     f1 = nax[nax.protocol == "ctu13_v2_f1"].set_index("level").f1_mean

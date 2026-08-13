@@ -71,6 +71,11 @@ STEPS = [
     (5, "boundary — NSL-KDD known vs unseen attack types",
      ["scripts/nsl_known_unseen.py"]),
     (0, "LaTeX tables", ["scripts/make_tables.py", "--tag", "v1"]),
+    (0, "figures at IEEE print scale", ["scripts/make_figures.py"]),
+    (0, "frozen manuscript numbers", ["scripts/make_frozen_numbers.py"]),
+    (0, "guard: terminology and literal results", ["scripts/check_wording.py"]),
+    (0, "guard: macros defined + provenance hashes", ["scripts/check_macros.py"]),
+    (0, "guard: SNN-only scope", ["scripts/check_scope.py"]),
 ]
 
 EXPECTED_SEEDS = 5

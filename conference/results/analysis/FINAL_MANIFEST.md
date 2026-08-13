@@ -1,4 +1,4 @@
-# Evidence package — regenerated 2026-08-13 12:18:49
+# Evidence package — regenerated 2026-08-13 12:38:19
 
 Produced by `scripts/finalize.py`. Every manuscript number must come
 from re-running this, not from memory.
@@ -62,16 +62,9 @@ all cells at 5 seeds
 
 ## Steps
 
-- OK       screening statistics (v1, 27 configurations)
-- OK       strict confirmation — Axis A, encoding (neuron fixed)
-- OK       strict confirmation — Axis B, neuron (encoding fixed)
-- OK       mechanism — early readout, T95/T99, spike saving
-- OK       mechanism — spike decomposition and SOPs
-- OK       protocol robustness — split audit
-- OK       protocol robustness — bidirectional class-support audit
-- OK       protocol robustness — dual macro-F1 (fixed universe vs test-present)
-- OK       protocol robustness — dedup sensitivity, ENCODING axis
-- OK       protocol robustness — dedup sensitivity, NEURON axis
-- OK       boundary — fixed FAR, per class, duplicate-free
-- OK       boundary — NSL-KDD known vs unseen attack types
 - OK       LaTeX tables
+- OK       figures at IEEE print scale
+- OK       frozen manuscript numbers
+- OK       guard: terminology and literal results
+- OK       guard: macros defined + provenance hashes
+- OK       guard: SNN-only scope
