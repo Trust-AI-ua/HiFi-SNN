@@ -1,5 +1,5 @@
 % =====================================================================
-% Methodology — revision draft, 2026-08-12.
+% Methodology , revision draft, 2026-08-12.
 %
 % Every number traces to a committed artifact named in the comment above it,
 % or to a \FN* macro defined in sec_frozen_numbers.tex. Do not restate a number
@@ -17,7 +17,7 @@ directly shaping a spiking intrusion detector: the \emph{neuron model} and the
 This study is a controlled intra-SNN design-space evaluation implemented
 entirely in \texttt{snnTorch}. Every model evaluated is a spiking network; the
 axes of variation are the neuron family and the spike encoding. We deliberately
-do not include non-spiking baselines --- decision-tree ensembles, linear models,
+do not include non-spiking baselines, decision-tree ensembles, linear models,
 or an architecture-matched dense MLP. Such a comparison answers a different
 question, namely whether spiking networks are competitive with conventional
 tabular classifiers, and answering it credibly requires its own tuning protocol
@@ -34,8 +34,7 @@ Because this revision re-evaluates a configuration we previously identified as
 best, the ranking rules were frozen in a pre-registration document before any
 statistic in the revised analysis was computed. It fixes macro-F1 as the primary
 quality metric, the (dataset $\times$ seed) pair as the experimental unit, mean
-rank as the primary ranking statistic, the statistical tests, and --- critically
---- a mapping from outcome to permitted manuscript wording, so that the strength
+rank as the primary ranking statistic, the statistical tests, and, critically, a mapping from outcome to permitted manuscript wording, so that the strength
 of the claim follows the evidence rather than the reverse. It also forbids
 several specific practices: selecting datasets after seeing the ranking,
 choosing operating thresholds on test data, and reporting a pooled
@@ -45,7 +44,7 @@ cross-dataset standard deviation. The document is included with the artifact.
 
 We report two evaluation protocols and never mix them within a table.
 
-\textbf{v1} is the protocol of the original submission. Its role is the full
+\textbf{The screening protocol} is the one used for the full sweep. Its role is the full
 $9\times3=\FNScrVariants$ configuration \emph{screening} sweep, and we preserve
 it unchanged so that the previously published numbers remain reproducible. We
 use \emph{screening} and \emph{strict confirmation} consistently for the two
@@ -99,7 +98,7 @@ use does not retain the original \texttt{Timestamp} field; row position is
 CICFlowMeter's write order and serves as an ordering proxy. The day-level
 grouping, which carries the genuine temporal claim, is exact because it derives
 from the capture file names. We additionally evaluate a \emph{day-disjoint}
-protocol --- train on Monday--Wednesday, test on Thursday--Friday --- as a
+protocol, train on Monday--Wednesday, test on Thursday--Friday, as a
 binary normal-versus-attack transfer test. It is binary by necessity: under the
 five-class taxonomy, Probe and U2R occur only in the later days and R2L only in
 the earlier ones, so three of five classes would be untrainable or untestable.
@@ -108,9 +107,9 @@ For CTU-13 we use a frozen four-fold \emph{scenario-disjoint} partition in which
 whole scenarios are indivisible, and we recompute the per-source-host behavioural
 statistics \emph{causally}: within a scenario, flows are processed in timestamp
 order and each flow's host features derive from strictly earlier flows of the
-same source only. The original protocol computed those aggregates over an entire
+same source only. The screening protocol computed those aggregates over an entire
 scenario and then split flows at random, so a test flow's features were computed
-partly from test flows --- a feature-level leak independent of how rows are
+partly from test flows, a feature-level leak independent of how rows are
 partitioned. We emphasise that the scenario protocol is \textbf{not}
 host-disjoint: $76.2\%$ of the test source hosts in fold~1 also appear in
 training, and we report it as scenario-disjoint only.

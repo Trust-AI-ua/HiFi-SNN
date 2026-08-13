@@ -38,7 +38,7 @@ OUT = ROOT / "results/analysis"
 PRETTY = {
     "nslkdd_v2": ("NSL-KDD", "official split"),
     "kddcup99_v2": ("KDDCup99", "official split"),
-    "cicids2017_v2": ("CIC-IDS2017", "within-capture chronological"),
+    "cicids2017_v2": ("CIC-IDS2017", "within-capture order-disjoint"),
     "cicids2017_daydisjoint": ("CIC-IDS2017", "day-disjoint (binary)"),
 }
 for _f in range(4):

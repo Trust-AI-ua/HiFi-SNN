@@ -42,8 +42,11 @@ def table_ranking(tag: str, top: int = 10) -> str:
         r" over the %d (dataset $\times$ seed) blocks; rank~1 is best. Per-dataset"
         r" cells are mean $\pm$ standard deviation \emph{over the five seeds}, never"
         r" pooled across datasets. Friedman $\chi^2=%.1f$, $p=%.1e$; Nemenyi critical"
-        r" difference $=%.2f$, so the %d variants within %.2f of the leader are"
-        r" statistically indistinguishable from it.}"
+        r" difference $=%.2f$. The Nemenyi procedure does not separate the %d"
+        r" configurations within %.2f of the leader from it at this"
+        r" significance level; the large critical difference indicates limited"
+        r" all-pairs resolution and should not be read as evidence of"
+        r" equivalence.}"
         % (top, fr["k_variants"], fr["n_blocks"], fr["friedman_chi2"],
            fr["friedman_p"], fr["nemenyi_critical_difference"],
            len(fr["statistically_indistinguishable_from_best"]),
@@ -64,8 +67,8 @@ def table_ranking(tag: str, top: int = 10) -> str:
                      + " & ".join(cells) + r" \\")
     lines += [r"\bottomrule", r"\end{tabular}}",
               r"\vspace{2pt}",
-              r"\footnotesize $^{\dagger}$ within one critical difference of the"
-              r" leader.",
+              r"\footnotesize $^{\dagger}$ not separated from the leader by the"
+              r" Nemenyi procedure at $\alpha=0.05$.",
               r"\end{table}"]
     return "\n".join(lines)
 
@@ -106,6 +109,99 @@ def table_focused(tag: str) -> str:
     return "\n".join(lines)
 
 
+def table_readout() -> str:
+    """T95 and T99 side by side. The methodology defines both thresholds, so a
+    table carrying only T99 leaves half the definition unused."""
+    df = pd.read_csv(ROOT / "results/analysis/early_readout/summary.csv")
+    df = df[df.neuron == "LeakyParallel"]
+    pretty = {"nslkdd_v2": "NSL-KDD", "kddcup99_v2": "KDDCup99",
+              "cicids2017_v2": "CIC-IDS2017", "ctu13_v2_f0": "CTU-13 f0",
+              "ctu13_v2_f1": "CTU-13 f1"}
+    order = list(pretty)
+    lines = [
+        r"\begin{table}[t]", r"\centering",
+        r"\caption{Median $T_{95}$ and $T_{99}$ by strict protocol,"
+        r" \texttt{LeakyParallel}, five seeds. $T_{q}$ is the first timestep at"
+        r" which macro-F1 reaches $q\%$ of that configuration's \emph{own}"
+        r" terminal value, so it measures how quickly a configuration settles,"
+        r" not how good the settled answer is. The final column refers to"
+        r" $T_{99}$. Latency settles earlier on two protocols and later on"
+        r" three.}",
+        r"\label{tab:readout}",
+        r"\resizebox{\columnwidth}{!}{%",
+        r"\begin{tabular}{l l r r r r l}", r"\toprule",
+        r"& & \multicolumn{2}{c}{$T_{95}$} & \multicolumn{2}{c}{$T_{99}$} & \\",
+        r"\cmidrule(lr){3-4}\cmidrule(lr){5-6}",
+        r"Protocol & Best term.\ enc. & lat. & rate & lat. & rate &"
+        r" Earlier \\", r"\midrule",
+    ]
+    for proto in order:
+        g = df[df.protocol == proto].set_index("encoding")
+        if g.empty:
+            continue
+        best = g.f1_terminal_mean.idxmax()
+        lat99, rat99 = int(g.loc["latency", "T99_median"]), int(g.loc["rate", "T99_median"])
+        lat95, rat95 = int(g.loc["latency", "T95_median"]), int(g.loc["rate", "T95_median"])
+        earlier = "latency" if lat99 < rat99 else "rate"
+        bold = lambda v, w: (r"\textbf{" + str(v) + "}") if w else str(v)
+        lines.append(
+            f"{pretty[proto]} & "
+            + (r"\textbf{" + best + "}" if best == "delta" else best)
+            + f" & {bold(lat95, lat95 < rat95)} & {bold(rat95, rat95 < lat95)}"
+            + f" & {bold(lat99, lat99 < rat99)} & {bold(rat99, rat99 < lat99)}"
+            + f" & {earlier} \\\\")
+    lines += [r"\bottomrule", r"\end{tabular}}", r"\end{table}"]
+    return "\n".join(lines)
+
+
+def table_audit_revised() -> str:
+    """Split the single Group/Overlap pair into group unit, what separation is
+    actually claimed, and how many groups are shared.
+
+    The old table showed CIC-IDS2017 as `capture / 8` and left a reader to
+    conclude the split had failed. It had not: eight shared capture IDs are
+    exactly what a within-capture protocol should produce, because
+    capture-disjointness is not being claimed. Stating the claim in its own
+    column removes the ambiguity.
+    """
+    df = pd.read_csv(ROOT / "results/analysis/split_audit.csv")
+    claim = {
+        "official split": ("--", "Official train/test partition"),
+        "within-capture order-disjoint": ("Capture",
+                                          "Within-capture order-disjoint"),
+        "day-disjoint (binary)": ("Day", "Day-disjoint"),
+    }
+    unmapped = sorted(set(df.protocol) - set(claim)
+                      - {p for p in df.protocol if p.startswith("scenario-disjoint")})
+    if unmapped:
+        raise SystemExit(f"tab_audit_revised: unmapped protocol labels "
+                         f"{unmapped}. Add them to `claim` rather than letting "
+                         "them fall through to the scenario default.")
+    lines = [
+        r"\begin{table}[t]", r"\centering",
+        r"\caption{Split audit for the confirmation protocols. \emph{Claimed"
+        r" separation} is what each partition asserts, and \emph{shared groups}"
+        r" counts group identifiers appearing on both sides. A non-zero count is"
+        r" only a defect where disjointness is claimed: CIC-IDS2017's eight"
+        r" shared captures are expected, because the within-capture protocol"
+        r" separates position inside a capture rather than the captures"
+        r" themselves. Duplicate rows are reported, never asserted away.}",
+        r"\label{tab:audit-revised}",
+        r"\resizebox{\columnwidth}{!}{%",
+        r"\begin{tabular}{l l l r r}", r"\toprule",
+        r"Dataset & Group unit & Claimed separation & Shared & Dup.\ test (\%) \\",
+        r"\midrule",
+    ]
+    for _, r in df.iterrows():
+        unit, sep = claim.get(r["protocol"], ("Scenario", "Scenario-disjoint"))
+        if str(r["protocol"]).startswith("scenario-disjoint"):
+            unit, sep = "Scenario", "Scenario-disjoint (" + r["protocol"].split()[-1] + ")"
+        lines.append(f"{r['dataset']} & {unit} & {sep} & "
+                     f"{int(r['overlap_train_test'])} & {r['dup_test_pct']:.2f} \\\\")
+    lines += [r"\bottomrule", r"\end{tabular}}", r"\end{table}"]
+    return "\n".join(lines)
+
+
 def table_audit() -> str:
     df = pd.read_csv(ROOT / "results/analysis/split_audit.csv")
     lines = [
@@ -139,7 +235,7 @@ def table_audit() -> str:
 
 
 def table_protocol_audit() -> str:
-    """One table explaining why v2 exists, replacing several paragraphs.
+    """One table explaining why the confirmation protocol exists.
 
     Each row is an issue we audited in the original protocol, what the audit
     found, and what the revised protocol does about it. Deliberately compact:
@@ -153,7 +249,7 @@ def table_protocol_audit() -> str:
          "57.53\\% of test rows",
          "Duplicate-free sensitivity; ranking unchanged"),
         ("CIC-IDS2017", "Random split interleaves flows of one attack burst",
-         "Present in the legacy protocol",
+         "Present in the screening protocol",
          "Within-capture order-disjoint; day-disjoint transfer test"),
         ("CTU-13", "Host aggregates computed over whole scenario; random split",
          "$100.00\\rightarrow92.01$ macro-F1",
@@ -164,9 +260,10 @@ def table_protocol_audit() -> str:
     ]
     lines = [
         r"\begin{table}[t]", r"\centering",
-        r"\caption{Protocol audit motivating the leakage-resistant (v2) "
-        r"evaluation. Each row is an issue we tested for in the original "
-        r"protocol, what the test found, and how v2 treats it. The union-split "
+        r"\caption{Protocol audit motivating the leakage-resistant "
+        r"\\emph{confirmation} protocol. Each row is an issue we tested for in "
+        r"the \\emph{screening} protocol, what the test found, and how the "
+        r"confirmation protocol treats it. The union-split "
         r"vocabulary turned out to be empirically negligible; we report its "
         r"size rather than citing that as grounds for keeping it.}",
         r"\label{tab:protocol-audit}",
@@ -189,10 +286,12 @@ def main():
     for name, fn in [("tab_ranking", lambda: table_ranking(args.tag)),
                      ("tab_focused", lambda: table_focused(args.tag)),
                      ("tab_audit", table_audit),
-                     ("tab_protocol_audit", table_protocol_audit)]:
-        p = (OUT / f"{name}.tex" if name.startswith("tab_audit")
-             or name == "tab_protocol_audit"
-             else OUT / f"{name}_{args.tag}.tex")
+                     ("tab_protocol_audit_revised", table_protocol_audit),
+                     ("tab_readout", table_readout),
+                     ("tab_audit_revised", table_audit_revised)]:
+        p = (OUT / f"{name}_{args.tag}.tex"
+             if name in {"tab_ranking", "tab_focused"}
+             else OUT / f"{name}.tex")
         p.write_text(fn() + "\n")
         print("wrote", p)
 

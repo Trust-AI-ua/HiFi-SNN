@@ -44,7 +44,22 @@ BANNED = [
      "informal; use 'top-ranked configuration' or 'aggregate leader'"),
     (r"fastest variant",
      "an inference-speed claim the strict timings do not support"),
+    # Protocol terminology: one pair of names, used everywhere.
+    (r"original submission|original protocol|legacy protocol",
+     "use 'screening protocol' and 'confirmation protocol' throughout"),
+    (r"statistically indistinguishable",
+     "Nemenyi failing to separate is not evidence of equivalence; say the "
+     "procedure does not separate them at this significance level"),
+    # Development scaffolding that must never survive into a build.
+    (r"final figure should|final generated table should|should mark|"
+     r"should add|placeholder",
+     "development scaffolding left in the manuscript"),
 ]
+
+#: Dash style. Em dashes are rejected in both spellings so the house style is
+#: uniform and a copy-paste from a draft cannot reintroduce one.
+DASHES = [("---", "LaTeX em dash; use a comma, colon, or parentheses"),
+          ("\u2014", "Unicode em dash U+2014; use a comma, colon, or parentheses")]
 
 #: Numbers that must never be typed literally — they have frozen macros.
 HARDCODED = [
@@ -86,6 +101,13 @@ def main() -> int:
                 line = body[:m.start()].count("\n") + 1
                 problems.append(f"{path.name}:~{line}  BANNED {m.group(0)!r}\n"
                                 f"    why: {why}")
+        for lit, why in DASHES:
+            lit = lit.encode().decode("unicode_escape")
+            start = 0
+            while (i := body.find(lit, start)) != -1:
+                line = body[:i].count("\n") + 1
+                problems.append(f"{path.name}:~{line}  DASH {lit!r} — {why}")
+                start = i + len(lit)
         for pattern, macro in HARDCODED:
             for m in re.finditer(pattern, body):
                 line = body[:m.start()].count("\n") + 1

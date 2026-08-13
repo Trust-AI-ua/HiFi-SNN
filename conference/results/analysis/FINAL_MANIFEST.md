@@ -1,4 +1,4 @@
-# Evidence package — regenerated 2026-08-13 19:52:59
+# Evidence package — regenerated 2026-08-13 21:20:45
 
 Produced by `scripts/finalize.py`. Every manuscript number must come
 from re-running this, not from memory.
