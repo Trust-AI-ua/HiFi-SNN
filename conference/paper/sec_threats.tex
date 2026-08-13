@@ -80,11 +80,23 @@ of any one configuration, but it bounds what our headline detection rates mean.
 
 \paragraph{Operating thresholds transfer imperfectly.}
 Fixed false-alarm operating points are selected on validation data and frozen
-before evaluation, as they must be. On NSL-KDD the resulting thresholds do not
-transfer cleanly: a threshold calibrated to $1\%$ false alarms on validation
-produces a substantially higher rate on the official test set, because that test
-set is deliberately distribution-shifted. We report realised test false-alarm
-rates beside their targets rather than the targets alone.
+before evaluation, as they must be. Calibration itself is sound --- realised
+validation false-alarm rates land on target --- but transfer to test varies by
+protocol, from essentially exact on CIC-IDS2017 to a large discrepancy on the
+hardest CTU-13 fold. We report realised test rates beside their targets rather
+than the targets alone. This is a statement about threshold transfer under
+distribution shift, not about discrimination: a detector may rank samples well
+while a threshold calibrated elsewhere ceases to mean what it was set to mean.
+
+\paragraph{CIC-IDS2017 has no U2R test support.}
+The order-disjoint partition places no U2R samples in the held-out interval,
+because the mapped U2R events occur earlier in the capture sequence. We did not
+alter the frozen split to correct this: changing a partition after observing its
+class composition would cost more in pre-registration credibility than the
+adjustment is worth. The consequence is that the fixed-universe macro-F1 on this
+protocol is capped at \FNCicCeiling{} and its absolute value is not comparable
+across datasets, though within-protocol comparisons and all rank-based
+statistics are unaffected because the penalty is identical for every model.
 
 \paragraph{Energy figures are proxies.}
 We report synaptic operation counts, which are hardware-independent, and where

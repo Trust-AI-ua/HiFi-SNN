@@ -78,11 +78,13 @@ def main() -> int:
         g = er[er.protocol == proto].set_index("encoding")
         for enc, e in (("latency", "Lat"), ("rate", "Rat")):
             if enc in g.index:
-                L.append((f"T99{tag}{e}", int(g.loc[enc, "T99_median"]),
+                # Letter-only names: a LaTeX control sequence cannot contain
+                # digits, so "T99..." would not compile.
+                L.append((f"TNN{tag}{e}", int(g.loc[enc, "T99_median"]),
                           f"median T99, {proto} {enc}"))
     nsl = er[er.protocol == "nslkdd_v2"].set_index("encoding")
-    L += [("TNineNineNslLatMin", int(nsl.loc["latency", "T99_min"]), "range low"),
-          ("TNineNineNslLatMax", int(nsl.loc["latency", "T99_max"]), "range high"),
+    L += [("TNNNslLatMin", int(nsl.loc["latency", "T99_min"]), "range low"),
+          ("TNNNslLatMax", int(nsl.loc["latency", "T99_max"]), "range high"),
           ("SpikeSaveNslLat", f"{nsl.loc['latency','spike_saving_at_T99_pct']:.1f}",
            "percent output spikes saved at T99"),
           ("SpikeSaveNslRat", f"{nsl.loc['rate','spike_saving_at_T99_pct']:.1f}",
@@ -140,6 +142,26 @@ def main() -> int:
           ("UnseenLo", f"{un.min():.2f}", "lowest unseen-type DR"),
           ("UnseenHi", f"{un.max():.2f}", "highest unseen-type DR"),
           ("UnseenFrac", "29.2", "percent of KDDTest+ attack rows of unseen type")]
+
+    # neuron-axis detail on the hard CTU fold, and the strict CTU-13 estimate
+    nax = pd.read_csv(A / "v2_neuron_axis/per_dataset.csv")
+    f1 = nax[nax.protocol == "ctu13_v2_f1"].set_index("level").f1_mean
+    for lvl, tag in (("RSynaptic", "RSyn"), ("RLeaky", "RLky"),
+                     ("LeakyParallel", "LP")):
+        if lvl in f1.index:
+            L.append((f"CtuBNeu{tag}", f"{f1[lvl]:.4f}",
+                      f"{lvl} macro-F1 on CTU-13 fold 1, neuron axis"))
+    eax = pd.read_csv(A / "v2_encoding_axis/per_dataset.csv")
+    ef = eax[eax.protocol == "ctu13_v2_f1"].set_index("level").f1_mean
+    for lvl, tag in (("delta", "Del"), ("rate", "Rat"), ("latency", "Lat")):
+        L.append((f"CtuBEnc{tag}", f"{ef[lvl]:.4f}",
+                  f"{lvl} macro-F1 on CTU-13 fold 1, encoding axis"))
+    L += [("CtuStrict", "92.01", "four-fold strict CTU-13 estimate"),
+          ("CtuStrictSD", "9.72", "its across-fold SD"),
+          ("CtuLegacy", "100.00", "submitted-protocol CTU-13 value"),
+          ("CtuCausalRandom", "99.69", "causal aggregates, random split"),
+          ("Runs", "235", "completed runs"),
+          ("Seeds", "5", "seeds per cell")]
 
     body = "\n".join(
         f"\\newcommand{{\\FN{m}}}{{{v}}}%".ljust(56) + f" % {c}"

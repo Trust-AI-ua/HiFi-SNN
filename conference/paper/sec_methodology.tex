@@ -46,8 +46,11 @@ cross-dataset standard deviation. The document is included with the artifact.
 We report two evaluation protocols and never mix them within a table.
 
 \textbf{v1} is the protocol of the original submission. Its role is the full
-$9\times3=27$ configuration \emph{screening} sweep, and we preserve it
-unchanged so that the previously published numbers remain reproducible.
+$9\times3=\FNScrVariants$ configuration \emph{screening} sweep, and we preserve
+it unchanged so that the previously published numbers remain reproducible. We
+use \emph{screening} and \emph{strict confirmation} consistently for the two
+generations, because their populations differ and a reader must be able to tell
+at a glance which one a statistic belongs to.
 
 \textbf{v2} is leakage-resistant and its role is \emph{confirmation}. It differs
 from v1 in four respects, each addressing a specific methodological weakness:
@@ -129,6 +132,28 @@ design axes that pass through it:
 Their intersection is \texttt{LeakyParallel/latency}. Axis~B is a confirmation
 that the neuron choice survives a stricter protocol; it is not a second
 design-space ranking and we do not present it as one.
+
+\subsection{Metric definition and a post-audit correction}
+
+Macro-F1 is computed over the \emph{fixed} label universe of the task, so a
+class absent from a test partition contributes zero rather than being dropped
+from the average. This matters on CIC-IDS2017, whose order-disjoint test
+interval contains no U2R samples: the metric there is capped at
+\FNCicCeiling{}, and its absolute value is not comparable to a five-class score
+on a dataset where all five classes occur.
+
+An audit after the runs completed found that our metric implementation had
+omitted an explicit label set, so the averaging denominator was the union of
+labels appearing in the references or the predictions. On the affected protocol
+that made the denominator depend on the model: a configuration that never
+predicts the unsupported class was averaged over four classes while one emitting
+a single false positive for it was averaged over five. We corrected the
+implementation and recomputed every affected figure from the persisted
+per-sample predictions, without retraining. The correction leaves every ranking,
+mean rank and hypothesis test in this paper unchanged; it alters one absolute
+value. Alongside the pre-registered primary metric we report macro-F1 over the
+classes represented in test as a descriptive quantity, which is never used for
+selection or testing. The full record is in the artifact's amendment log.
 
 \subsection{Statistical protocol}
 
