@@ -34,9 +34,10 @@ from scipy.stats import rankdata, wilcoxon
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from src.populations import POPULATIONS, members, require_population  # noqa: E402
 from src.readout import discover  # noqa: E402
 
-OUT = ROOT / "results/analysis/dedup"
+OUT_BASE = ROOT / "results/analysis/dedup"
 
 
 def collect() -> pd.DataFrame:
@@ -84,14 +85,25 @@ def paired(df: pd.DataFrame, col: str, a: str, b: str) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--population", default="encoding_axis_lp",
+                    choices=sorted(POPULATIONS),
+                    help="ranking population; a mixed set is refused")
     ap.add_argument("--a", default="LeakyParallel/latency")
     ap.add_argument("--b", default="LeakyParallel/rate")
     args = ap.parse_args()
 
     df = collect()
+    if not df.empty:
+        # Restrict BEFORE ranking. The earlier version pooled the nine
+        # latency neurons with the three LeakyParallel encodings and reported a
+        # "leader" for a cross-shaped set that is not a competitive field.
+        keep = members(args.population)
+        df = df[df.variant.isin(keep)].copy()
+        require_population(df.variant.unique(), args.population)
     if df.empty:
         print("no runs carry a duplicate-free block yet.")
         return 0
+    OUT = OUT_BASE / args.population
     OUT.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUT / "per_seed.csv", index=False)
 
@@ -106,7 +118,11 @@ def main() -> int:
              .reset_index())
     agg.to_csv(OUT / "summary.csv", index=False)
 
-    print("=== macro-F1 on the official vs deduplicated test set (seed mean) ===")
+    print(f"=== deduplication sensitivity — population {args.population!r} "
+          f"({POPULATIONS[args.population]}) ===")
+    print("macro-F1 is the pre-registered fixed-universe metric; on "
+          "cicids2017_v2 it is capped at 0.80 because U2R has zero test "
+          "support (see AMENDMENT).\n")
     show = agg.copy()
     show["official"] = (show.f1_official.round(4).astype(str) + " ± "
                         + show.f1_official_sd.fillna(0).round(4).astype(str))
@@ -143,7 +159,10 @@ def main() -> int:
                       f"{t['wins_a']}-{t['wins_b']} blocks, "
                       f"median {t['median_delta_pp']:+.3f} pp, p={t['wilcoxon_p']:.4f}")
 
-    (OUT / "verdict.json").write_text(json.dumps(verdict, indent=2))
+    (OUT / "verdict.json").write_text(json.dumps(
+        {"population": args.population,
+         "population_description": POPULATIONS[args.population],
+         "per_protocol": verdict}, indent=2))
     print(f"\nwrote {OUT}")
     return 0
 

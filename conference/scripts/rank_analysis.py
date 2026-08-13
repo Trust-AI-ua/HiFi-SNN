@@ -33,6 +33,7 @@ from scipy.stats import friedmanchisquare, rankdata, studentized_range, wilcoxon
 ROOT = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(ROOT))
+from src.populations import require_population  # noqa: E402
 from src.stats import hierarchical_bootstrap  # noqa: E402
 
 PRIMARY = "f1_macro"
@@ -210,6 +211,7 @@ def main():
     df = pd.read_csv(ROOT / args.input if not Path(args.input).is_absolute()
                      else args.input)
     df["variant"] = variant(df)
+    require_population(df.variant.unique(), "full_27_screening")
 
     # ---- per-dataset mean ± seed SD (the only permitted dispersion) ----
     metrics = [c for c in ["accuracy", "f1_macro", "matthews_corrcoef",
@@ -234,6 +236,7 @@ def main():
     not_sep = mr[mr["mean_rank"] - mr["mean_rank"].iloc[0] <= cd].index.tolist()
 
     friedman = {
+        "population_id": "full_27_screening",
         "metric": args.metric, "k_variants": int(k), "n_blocks": int(n),
         "friedman_chi2": float(stat), "friedman_p": float(p),
         "rejects_at_alpha": bool(p < ALPHA), "alpha": ALPHA,

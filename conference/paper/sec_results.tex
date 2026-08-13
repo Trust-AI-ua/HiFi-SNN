@@ -1,8 +1,9 @@
 % =====================================================================
 % Results — skeleton, 2026-08-12.
 %
-% Structure is frozen; values marked \NUM{} are placeholders to be filled from
-% the artifact named in the comment above each block once the runs land.
+% Numbers are \FN* macros from sec_frozen_numbers.tex, generated from the
+% committed artifacts. Regenerate with:
+%     python scripts/finalize.py && python scripts/make_frozen_numbers.py
 %
 % The organising principle: not every experiment is here to say "latency wins".
 % Sections A and B establish the champion. Section C explains *why* it is a good
@@ -54,10 +55,12 @@ resolution credible rather than convenient.
 
 % results/analysis/v2_encoding/, results/analysis/v2_latency/
 Under the leakage-resistant protocol we confirm the selection along each axis
-separately. With the neuron fixed, latency remains the strongest encoding on
-\NUM{n} of the evaluated protocols (Table~\NUM{tab}). With the encoding fixed,
-\texttt{LeakyParallel} remains among the highest-ranked neuron families
-(Table~\NUM{tab}). We report per-dataset means with across-seed standard
+separately. With the neuron fixed, latency ranks first among the three encodings
+(mean rank \FNEncRank{} over \FNEncBlocks{} blocks, Friedman $p=\FNEncP$),
+winning \FNEncWins{} of them. With the encoding fixed, \texttt{LeakyParallel}
+ranks first of \FNNeuLevels{} neuron families (mean rank \FNNeuRank{} over
+\FNNeuBlocks{} blocks, $p=\FNNeuP$), though narrowly: \FNNeuRunnerUp{} follows at
+\FNNeuRunnerUpRank{}, and \FNNeuMostWins{} wins more individual blocks. We report per-dataset means with across-seed standard
 deviations throughout; no dispersion in this paper is pooled across datasets.
 
 We stress what these two tables are not. Each holds one factor fixed, so
@@ -251,9 +254,9 @@ carries and no further.
 configuration across the complete $27$-configuration \texttt{snnTorch} screening
 study, and remains the strongest encoding overall in the strict
 \texttt{LeakyParallel} confirmation --- ranking first with a mean rank of
-\NUM{rank} and the highest terminal macro-F1 in \NUM{wins} of \NUM{blocks}
-protocol--seed blocks --- although its advantage is heterogeneous across
-datasets and scenario folds. It
+\FNEncRank{} and the highest terminal macro-F1 in \FNEncWins{} of
+\FNEncBlocks{} protocol--seed blocks --- although its advantage is heterogeneous
+across datasets and scenario folds. It
 sits at the head of a leading group that a Nemenyi test cannot separate from it,
 and it is not the strongest encoding on CTU-13 fold~1.
 

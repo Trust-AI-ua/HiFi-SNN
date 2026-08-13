@@ -101,7 +101,17 @@ def compute_metrics(
     out: Dict = {}
     out["accuracy"] = float(accuracy_score(y_true, y_pred))
     out["balanced_accuracy"] = float(balanced_accuracy_score(y_true, y_pred))
-    out["f1_macro"] = float(f1_score(y_true, y_pred, average="macro", zero_division=0))
+    # `labels=` is load-bearing. Without it sklearn averages over the union of
+    # labels appearing in y_true or y_pred, so a model that never predicts a
+    # zero-support class is scored over a SMALLER denominator than one that
+    # emits a single false positive for it. On cicids2017_v2, whose
+    # order-disjoint test interval contains no U2R, that gave delta a 4-class
+    # denominator while latency and rate got 5 -- an incomparable metric across
+    # models of the same protocol. The label universe is a property of the task,
+    # not of the predictions.
+    _labels = list(range(len(class_names))) if class_names else None
+    out["f1_macro"] = float(f1_score(y_true, y_pred, average="macro",
+                                     labels=_labels, zero_division=0))
     out["f1_weighted"] = float(f1_score(y_true, y_pred, average="weighted", zero_division=0))
     out["precision_macro"] = float(precision_score(y_true, y_pred, average="macro", zero_division=0))
     out["recall_macro"] = float(recall_score(y_true, y_pred, average="macro", zero_division=0))

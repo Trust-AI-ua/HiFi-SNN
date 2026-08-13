@@ -39,6 +39,7 @@ from scipy.stats import friedmanchisquare, rankdata
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from src.populations import macro_f1_pair, require_population  # noqa: E402
 from src.readout import discover  # noqa: E402
 
 OUT = ROOT / "results/analysis"
@@ -67,20 +68,31 @@ CTU_CAVEAT = (
 
 def collect(axis: str) -> pd.DataFrame:
     if axis == "neuron":
-        runs = discover(encodings=[CHAMPION_ENCODING], require_artifacts=False)
+        runs = discover(encodings=[CHAMPION_ENCODING])
         level = "neuron"
     else:
-        runs = discover(neurons=[CHAMPION_NEURON], require_artifacts=False)
+        runs = discover(neurons=[CHAMPION_NEURON])
         level = "encoding"
     rows = []
     for r in runs:
         if not r.protocol.endswith(("_v2", "_f0", "_f1", "_f2", "_f3",
                                     "daydisjoint")):
             continue          # v1 protocols never enter a v2 confirmation table
-        m = r.record()["test_plus"]["metrics"]
+        rec = r.record()
+        m = rec["test_plus"]["metrics"]
+        # Recomputed over the fixed label universe. The stored f1_macro was
+        # written before that bug was found and uses a model-dependent
+        # denominator on any protocol with a zero-support class.
+        pre = r.prefix()
+        dual = macro_f1_pair(pre["y_true"].astype(np.int64),
+                             pre["y_pred"].astype(np.int64),
+                             rec["data"]["num_classes"])
         rows.append({"protocol": r.protocol, "level": getattr(r, level),
                      "neuron": r.neuron, "encoding": r.encoding,
-                     "seed": r.seed, PRIMARY: m[PRIMARY],
+                     "seed": r.seed,
+                     PRIMARY: dual["macro_f1_fixed_universe"],
+                     "macro_f1_test_present": dual["macro_f1_test_present"],
+                     "macro_f1_ceiling": dual["macro_f1_ceiling"],
                      "mcc": m["matthews_corrcoef"]})
     return pd.DataFrame(rows)
 
@@ -105,6 +117,8 @@ def main() -> int:
     per_ds = (df.groupby(["protocol", "level"])
                 .agg(n_seeds=("seed", "nunique"),
                      f1_mean=(PRIMARY, "mean"), f1_sd=(PRIMARY, "std"),
+                     f1_present_mean=("macro_f1_test_present", "mean"),
+                     ceiling=("macro_f1_ceiling", "first"),
                      mcc_mean=("mcc", "mean"))
                 .reset_index())
     per_ds.to_csv(out / "per_dataset.csv", index=False)
@@ -127,8 +141,15 @@ def main() -> int:
     missing = [p for p in EXPECTED[args.axis] if p not in present]
     status = "INTERIM" if missing else "COMPLETE"
 
+    population_id = ("neuron_axis_latency" if args.axis == "neuron"
+                     else "encoding_axis_lp")
+    require_population(
+        {f"{r.neuron}/{r.encoding}" for r in
+         df[["neuron", "encoding"]].itertuples()}, population_id)
+
     summary = {
         "axis": args.axis,
+        "population_id": population_id,
         "status": status,
         "missing_protocols": missing,
         "held_fixed": held,
