@@ -62,10 +62,18 @@ def build_blocks(df: pd.DataFrame, metric: str) -> pd.DataFrame:
     return wide
 
 
+#: Ties within a block receive the average of the ranks they span, which is
+#: scipy's default and the convention the Friedman/Nemenyi machinery assumes.
+#: Named explicitly and emitted into the result payload so the manuscript can
+#: state it rather than leaving a reader to infer it.
+RANK_METHOD = "average"
+
+
 def mean_ranks(wide: pd.DataFrame) -> pd.DataFrame:
     # negate: rankdata is ascending, and higher macro-F1 is better
     ranks = pd.DataFrame(
-        np.apply_along_axis(lambda r: rankdata(-r), 1, wide.to_numpy()),
+        np.apply_along_axis(lambda r: rankdata(-r, method=RANK_METHOD), 1,
+                            wide.to_numpy()),
         index=wide.index, columns=wide.columns)
     out = pd.DataFrame({
         "mean_rank": ranks.mean(),
@@ -99,13 +107,22 @@ def holm(pvals: list) -> list:
     return adj.tolist()
 
 
+#: scipy's "wilcox" drops exact zero differences before ranking, so they enter
+#: neither the signed-rank sum nor the effective sample size. That is the
+#: behaviour the manuscript describes, and the tie count is reported separately
+#: so a reader can see how many observations were dropped.
+ZERO_METHOD = "wilcox"
+
+
 def paired_test(wide: pd.DataFrame, a: str, b: str) -> dict:
     x, y = wide[a].to_numpy(), wide[b].to_numpy()
     d = x - y
+    n_ties = int((d == 0).sum())
     if np.allclose(d, 0):
         stat, p = float("nan"), 1.0
     else:
-        stat, p = wilcoxon(x, y, zero_method="wilcox", alternative="two-sided")
+        stat, p = wilcoxon(x, y, zero_method=ZERO_METHOD,
+                           alternative="two-sided")
     by_ds = {ds: (wide.loc[ds, a] - wide.loc[ds, b]).to_numpy() * 100.0
              for ds in wide.index.get_level_values("dataset").unique()}
     boot = hierarchical_bootstrap(by_ds)
@@ -114,7 +131,14 @@ def paired_test(wide: pd.DataFrame, a: str, b: str) -> dict:
         "median_delta_pp": float(np.median(d) * 100),
         "mean_delta_pp": float(np.mean(d) * 100),
         "wins_a": int((d > 0).sum()), "wins_b": int((d < 0).sum()),
-        "ties": int((d == 0).sum()),
+        "exact_ties": n_ties,
+        "n_used_by_test": int(len(d) - n_ties),
+        "zero_method": ZERO_METHOD,
+        "rank_method": RANK_METHOD,
+        # A displayed median of +0.00 pp can mean either a genuinely tiny
+        # non-zero difference or exact equality; printing both resolves it.
+        "full_precision_median_delta_pp": float(np.median(d) * 100),
+        "display_median_delta_pp": f"{np.median(d) * 100:+.2f}",
         "wilcoxon_stat": None if np.isnan(stat) else float(stat),
         "wilcoxon_p": float(p),
         "bootstrap_effect_pp": boot["estimate_pp"],
@@ -237,6 +261,9 @@ def main():
 
     friedman = {
         "population_id": "full_27_screening",
+        "rank_method": RANK_METHOD,
+        "tie_handling": (f"ranks: {RANK_METHOD} within block; Wilcoxon zeros: "
+                         f"{ZERO_METHOD} (exact ties dropped before ranking)"),
         "metric": args.metric, "k_variants": int(k), "n_blocks": int(n),
         "friedman_chi2": float(stat), "friedman_p": float(p),
         "rejects_at_alpha": bool(p < ALPHA), "alpha": ALPHA,

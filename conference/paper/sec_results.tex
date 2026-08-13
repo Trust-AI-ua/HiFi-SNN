@@ -128,21 +128,25 @@ traffic distribution and is reported as a dataset-specific result.
 
 \begin{table}[t]
 \centering
-\caption{Median $T_{99}$ by strict protocol, \texttt{LeakyParallel}, five seeds.
-$T_{99}$ is the first timestep reaching $99\%$ of that configuration's \emph{own}
-terminal macro-F1. Latency resolves earlier on two protocols and later on three,
+\caption{Median $T_{95}$ and $T_{99}$ by strict protocol,
+\texttt{LeakyParallel}, five seeds. $T_{q}$ is the first timestep reaching
+$q\%$ of that configuration's \emph{own} terminal macro-F1; the methodology
+defines both thresholds, so both are reported. The \emph{Earlier} column refers
+to $T_{99}$. Latency resolves earlier on two protocols and later on three,
 so the NSL-KDD result is the strongest case rather than the typical one.}
 \label{tab:readout}
 \resizebox{\columnwidth}{!}{%
-\begin{tabular}{l l r r l}
+\begin{tabular}{l l r r r r l}
 \toprule
-Protocol & Best terminal encoding & latency $T_{99}$ & rate $T_{99}$ & Earlier \\
+& & \multicolumn{2}{c}{$T_{95}$} & \multicolumn{2}{c}{$T_{99}$} & \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}
+Protocol & Best terminal enc. & latency & rate & latency & rate & Earlier \\
 \midrule
-NSL-KDD     & latency        & \textbf{\FNTNNNslLat}  & \FNTNNNslRat           & latency \\
-KDDCup99    & latency        & \FNTNNKddLat           & \textbf{\FNTNNKddRat}  & rate    \\
-CIC-IDS2017 & latency        & \FNTNNCicLat           & \textbf{\FNTNNCicRat}  & rate    \\
-CTU-13 f0   & latency        & \textbf{\FNTNNCtuALat} & \FNTNNCtuARat          & latency \\
-CTU-13 f1   & \textbf{delta} & \FNTNNCtuBLat          & \textbf{\FNTNNCtuBRat} & rate    \\
+NSL-KDD     & latency        & \FNTNFNslLat  & \FNTNFNslRat  & \textbf{\FNTNNNslLat}  & \FNTNNNslRat           & latency \\
+KDDCup99    & latency        & \FNTNFKddLat  & \FNTNFKddRat  & \FNTNNKddLat           & \textbf{\FNTNNKddRat}  & rate    \\
+CIC-IDS2017 & latency        & \FNTNFCicLat  & \FNTNFCicRat  & \FNTNNCicLat           & \textbf{\FNTNNCicRat}  & rate    \\
+CTU-13 f0   & latency        & \FNTNFCtuALat & \FNTNFCtuARat & \textbf{\FNTNNCtuALat} & \FNTNNCtuARat          & latency \\
+CTU-13 f1   & \textbf{delta} & \FNTNFCtuBLat & \FNTNFCtuBRat & \FNTNNCtuBLat          & \textbf{\FNTNNCtuBRat} & rate    \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -187,6 +191,15 @@ operations is an order of magnitude larger than the reduction in raw spike
 count: \emph{where} spikes occur matters more than how many there are. We report
 this as an operation-count measure of compute demand; any conversion to energy
 is an operation-based proxy (Section~\ref{sec:eff}).
+
+Table~\ref{tab:strict-results} reports the full per-protocol metric detail for
+both confirmation axes --- macro-F1, MCC, detection rate, false-alarm rate and
+synaptic operations, each as a seed mean with its across-seed standard
+deviation. It is worth reading beside the mean ranks: on CTU-13 fold~1 both
+latency and rate reach detection rates of at least $\FNCtuBDrMin$ at
+false-alarm rates of $\FNCtuBFarLat$ and $\FNCtuBFarRat$ respectively, so their
+macro-F1 there reflects near-indiscriminate flagging rather
+than discrimination, which is the behaviour delta avoids on that fold.
 
 \subsection{Robustness and boundary conditions}
 \label{sec:res-limits}

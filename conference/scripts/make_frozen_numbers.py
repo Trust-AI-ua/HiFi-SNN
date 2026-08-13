@@ -82,6 +82,9 @@ def main() -> int:
                 # digits, so "T99..." would not compile.
                 L.append((f"TNN{tag}{e}", int(g.loc[enc, "T99_median"]),
                           f"median T99, {proto} {enc}"))
+                # Methodology defines both thresholds, so both are available.
+                L.append((f"TNF{tag}{e}", int(g.loc[enc, "T95_median"]),
+                          f"median T95, {proto} {enc}"))
     nsl = er[er.protocol == "nslkdd_v2"].set_index("encoding")
     L += [("TNNNslLatMin", int(nsl.loc["latency", "T99_min"]), "range low"),
           ("TNNNslLatMax", int(nsl.loc["latency", "T99_max"]), "range high"),
@@ -181,6 +184,19 @@ def main() -> int:
     hr = hid["rate"] / hid["latency"]
     L += [("HidRatioMin", f"{hr.min():.2f}", "min rate/latency hidden spikes"),
           ("HidRatioMax", f"{hr.max():.2f}", "max rate/latency hidden spikes")]
+
+    # CTU-13 fold 1 detection behaviour: the strict-results table shows latency
+    # and rate flagging almost everything, which is what their macro-F1 there
+    # actually reflects.
+    sr = pd.read_csv(A / "strict_results.csv")
+    b = sr[(sr.axis == "encoding") & (sr.protocol == "ctu13_v2_f1")]
+    if len(b):
+        L += [("CtuBDrMin", f"{b[b.variant.str.endswith(('latency','rate'))].dr_mean.min():.2f}",
+               "lowest DR among latency/rate on CTU-13 fold 1"),
+              ("CtuBFarLat", f"{b[b.variant.str.endswith('latency')].far_mean.iloc[0]:.2f}",
+               "latency FAR on CTU-13 fold 1"),
+              ("CtuBFarRat", f"{b[b.variant.str.endswith('rate')].far_mean.iloc[0]:.2f}",
+               "rate FAR on CTU-13 fold 1")]
 
     # neuron-axis detail on the hard CTU fold, and the strict CTU-13 estimate
     nax = pd.read_csv(A / "v2_neuron_axis/per_dataset.csv")

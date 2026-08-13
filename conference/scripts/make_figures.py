@@ -258,6 +258,14 @@ def fig_pareto() -> str:
             ax.annotate(short[r.protocol], (r.sops_mean, r.f1_mean),
                         xytext=(4.5, 2.5), textcoords="offset points",
                         fontsize=5.6, color="#444444")
+    # The CIC-IDS2017 points cannot exceed 0.80 under the fixed label universe
+    # because U2R has no test support. Without this line the "C" points read as
+    # a harder dataset rather than a metric with a structural ceiling, and a
+    # caption alone does not reach a reader skimming the figure.
+    ax.axhline(0.80, color="#8B2E63", lw=0.8, ls=(0, (4, 2)), zorder=1)
+    ax.text(ax.get_xlim()[1] if False else 1.5e3, 0.815,
+            "CIC-IDS2017 ceiling (no U2R in test)", fontsize=5.6,
+            color="#8B2E63", va="bottom")
     ax.set_xscale("log")
     ax.set_xlabel("synaptic operations per sample (log)")
     ax.set_ylabel("macro-F1 (fixed universe)")   # shorter: full text overran

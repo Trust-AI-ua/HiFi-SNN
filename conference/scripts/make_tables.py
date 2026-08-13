@@ -82,19 +82,26 @@ def table_focused(tag: str) -> str:
         r"\label{tab:focused}",
         r"\resizebox{\columnwidth}{!}{%",
         r"\begin{tabular}{l l r r r l}", r"\toprule",
-        r"A & B & W/L & median $\Delta$ & Holm $p$ & bootstrap $\Delta$ [95\% CI] \\",
+        r"A & B & W/L/T & median $\Delta$ & Holm $p$ & bootstrap $\Delta$ [95\% CI] \\",
         r"\midrule",
     ]
     for t in d["tests"]:
         lo, hi = t["bootstrap_ci_pp"]
         sig = "" if t["significant_after_holm"] else r"$^{\ast}$"
         lines.append(
-            f"{_tt(t['a'])} & {_tt(t['b'])} & {t['wins_a']}/{t['wins_b']} & "
+            f"{_tt(t['a'])} & {_tt(t['b'])} & "
+            f"{t['wins_a']}/{t['wins_b']}/{t.get('exact_ties', 0)} & "
             f"{t['median_delta_pp']:+.2f} & {t['holm_adjusted_p']:.4f}{sig} & "
             f"{t['bootstrap_effect_pp']:+.2f} [{lo:+.2f}, {hi:+.2f}] \\\\")
     lines += [r"\bottomrule", r"\end{tabular}}",
               r"\vspace{2pt}",
-              r"\footnotesize $^{\ast}$ not significant at $\alpha=0.05$ after Holm.",
+              r"\vspace{-2pt}",
+        r"\footnotesize $^{\ast}$ not significant at $\alpha=0.05$ after Holm."
+        r" W/L/T counts blocks won, lost and \emph{exactly} tied; ties are"
+        r" dropped before ranking (\texttt{zero\_method=wilcox}) and so enter"
+        r" neither the signed-rank sum nor the effective sample size. A"
+        r" displayed median of $+0.00$ therefore indicates a difference"
+        r" smaller than the printed precision, not an exact tie.",
               r"\end{table}"]
     return "\n".join(lines)
 

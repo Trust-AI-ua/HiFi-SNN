@@ -128,7 +128,8 @@ def main() -> int:
                           values=PRIMARY, aggfunc="mean")
     complete = wide.dropna()
     ranks = pd.DataFrame(
-        np.apply_along_axis(lambda r: rankdata(-r), 1, complete.to_numpy()),
+        np.apply_along_axis(lambda r: rankdata(-r, method="average"), 1,
+                            complete.to_numpy()),
         index=complete.index, columns=complete.columns)
     mr = pd.DataFrame({"mean_rank": ranks.mean(),
                        "median_rank": ranks.median(),
@@ -161,6 +162,7 @@ def main() -> int:
         "n_blocks": int(len(complete)),
         "n_levels": int(complete.shape[1]),
         "champion": champion,
+        "rank_method": "average",
     }
     if len(complete) and complete.shape[1] > 2:
         stat, p = friedmanchisquare(*[complete[c].to_numpy()
