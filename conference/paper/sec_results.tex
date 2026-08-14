@@ -178,7 +178,9 @@ early-inference advantage. That behaviour is a property of the representation
 rather than an empirical tendency. Applied to a static per-flow vector, delta
 modulation reduces exactly to one-step amplitude thresholding: all input
 activity occurs at $t=1$ ($\FNDeltaSpkNsl$ spikes per sample on NSL-KDD, against
-$\FNNslLatInSpk$ for latency, and $\FNDeltaSpkAfter$ at every subsequent timestep across all
+$\FNNslLatInSpk$ for latency; the difference is the gap between the two gates,
+$\theta_\delta>\theta_\mathrm{lat}$, not a property of either code, and
+$\FNDeltaSpkAfter$ at every subsequent timestep across all
 $\FNNslTestN$ test samples), and the emitted code agrees with the indicator
 $x_i>\theta_\delta$ on $\FNDeltaPairs$ of $\FNDeltaPairs$ feature-sample pairs.
 Its aggregate behaviour here should therefore be read as a result about one-step
@@ -202,7 +204,14 @@ $T\sum_{x>0}x\,/\,|\{x>\theta_\mathrm{lat}\}|$, independent of dimensionality
 and of sparsity. Measured across the five confirmation protocols, which span
 $\FNDimCtuA$ to $\FNDimNsl$ dimensions and $\FNZeroPctMin\%$ to
 $\FNZeroPctMax\%$ zero-sparsity, the ratio runs from $\FNInpRatioMin\times$ to
-$\FNInpRatioMax\times$ and matches that prediction to within $\FNPredErrMax\%$.
+$\FNInpRatioMax\times$ and matches that prediction on every protocol: the
+absolute error is $\FNPredErrNsl\%$ on NSL-KDD, $\FNPredErrKdd\%$ on KDDCup99,
+$\FNPredErrCic\%$ on CIC-IDS2017, and $\FNPredErrCtuA\%$ and $\FNPredErrCtuB\%$
+on the two CTU-13 folds, for a maximum of $\FNPredErrMax\%$. The denominator
+matters and is written explicitly: the numerator counts what rate emits over all
+features with $x>0$, the denominator what latency emits over
+$\{x>\theta_\mathrm{lat}\}$. These coincide wherever the gate band is empty, and
+separate on CTU-13, where it is not.
 The prediction also accounts for the range: CIC-IDS2017 sits at the low end
 because its active features carry the lowest mean magnitude ($\FNXbarActCic$
 against $\FNXbarActKdd$ on KDDCup99).

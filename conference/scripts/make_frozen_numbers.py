@@ -227,7 +227,13 @@ def main() -> int:
               (f"XbarAct{tag}", f"{xb.loc[proto,'xbar_active_gt0']:.3f}",
                f"mean value of active features, {proto}"),
               (f"Dim{tag}", int(sp.loc[proto, "d"]), f"feature dimension, {proto}")]
-    L += [("ZeroPctMin", f"{sp.zero_pct.min():.1f}", "min percent exactly zero"),
+    for proto, tag in tags.items():
+        L.append((f"PredErr{tag}", f"{xb.loc[proto,'abs_err_pct']:.4f}",
+                  f"prediction error, {proto}"))
+    # Rounded up for the abstract: a headline quoted at 0.003% invites a hunt
+    # for the one cell where it does not hold, and buys nothing.
+    L += [("PredErrHead", "0.01", "rounded prediction error for the abstract"),
+          ("ZeroPctMin", f"{sp.zero_pct.min():.1f}", "min percent exactly zero"),
           ("ZeroPctMax", f"{sp.zero_pct.max():.1f}", "max percent exactly zero"),
           ("PredErrMax", f"{xb.abs_err_pct.max():.3f}",
            "max percent error of the a-priori input-ratio prediction"),
