@@ -165,23 +165,30 @@ Unlike timing, the efficiency result holds on every strict protocol, and three
 quantities must be distinguished because only the first is structural.
 
 \emph{Input activity} is a property of the code: latency emits at most one spike
-per encoded feature, whereas rate draws Bernoulli samples at each of the $T$
-timesteps. Measured, rate emits $\FNInpRatioMin\times$ to $\FNInpRatioMax\times$
-more input spikes than latency.
+per encoded feature, and none at all for features at or below its threshold of
+$\FNLatThresh$, whereas rate draws Bernoulli samples at each of the $T$
+timesteps. That threshold matters for reading the absolute counts: on NSL-KDD
+only $\FNNslLatInSpk$ of $\FNNslFeat$ features exceed it after min-max scaling,
+which is exactly the measured input-spike count. Measured, rate emits
+$\FNInpRatioMin\times$ to $\FNInpRatioMax\times$ more input spikes than
+latency.
 
 \emph{Whole-network spike count} is not structurally guaranteed, and the measured
 gap is far smaller: rate emits only $\FNTotRatioMin\times$ to
 $\FNTotRatioMax\times$ more total spikes. Under latency coding the hidden layer
-accounts for $83$--$86\%$ of all spikes, and the two encodings differ there by
-a factor of only $\FNHidRatioMin$ to $\FNHidRatioMax$, on CIC-IDS2017 latency
-in fact emits slightly \emph{more} hidden spikes than rate, so the
-input-layer saving is largely diluted in the total.
+accounts for $\FNHidShareLatMin$--$\FNHidShareLatMax\%$ of all spikes, and the
+two encodings differ there by a factor of only $\FNHidRatioMin$ to
+$\FNHidRatioMax$ (on CIC-IDS2017 latency in fact emits slightly \emph{more}
+hidden spikes than rate), so the input-layer saving is largely diluted in the
+total.
 
 \emph{Synaptic operations} weight each spike by the fanout it drives, and this is
 where the input saving reappears: latency's reduction occurs \emph{before} the
 high-fanout input-to-hidden projection, where each spike drives $128$ synapses
-against the readout's $5$. Input activity accounts for $55$--$67\%$ of latency's
-operations but $94$--$96\%$ of rate's. Rate therefore requires
+against the readout's, which is $5$ on the five-class datasets and $2$ on binary
+CTU-13. Input activity accounts for
+$\FNInShareSopLatMin$--$\FNInShareSopLatMax\%$ of latency's operations but
+$\FNInShareSopRatMin$--$\FNInShareSopRatMax\%$ of rate's. Rate therefore requires
 $\FNSopRatioMin\times$ to $\FNSopRatioMax\times$ more synaptic operations per
 sample than latency across all five strict protocols. The reduction in
 operations is an order of magnitude larger than the reduction in raw spike

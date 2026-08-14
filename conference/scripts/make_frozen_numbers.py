@@ -185,6 +185,30 @@ def main() -> int:
     L += [("HidRatioMin", f"{hr.min():.2f}", "min rate/latency hidden spikes"),
           ("HidRatioMax", f"{hr.max():.2f}", "max rate/latency hidden spikes")]
 
+    # Input/hidden shares, computed from the stored per-layer fanouts rather
+    # than an assumed pair. CTU-13 is binary, so its readout fanout is 2 and
+    # not 5; an earlier ad-hoc calculation used 5 everywhere and understated
+    # latency's input share on those protocols.
+    import numpy as _np
+    dec = pd.read_csv(A / "spike_sop_decomposition.csv") if (
+        A / "spike_sop_decomposition.csv").exists() else None
+    if dec is not None:
+        for enc, tag in (("latency", "Lat"), ("rate", "Rat")):
+            g = dec[dec.encoding == enc]
+            L += [(f"InShareSop{tag}Min", f"{g.input_share_sops_pct.min():.1f}",
+                   f"min input share of SOPs, {enc}"),
+                  (f"InShareSop{tag}Max", f"{g.input_share_sops_pct.max():.1f}",
+                   f"max input share of SOPs, {enc}")]
+        gl = dec[dec.encoding == "latency"]
+        L += [("HidShareLatMin", f"{gl.hidden_share_pct.min():.1f}",
+               "min hidden share of latency spikes"),
+              ("HidShareLatMax", f"{gl.hidden_share_pct.max():.1f}",
+               "max hidden share of latency spikes")]
+    L += [("LatThresh", "0.01", "latency encoder threshold"),
+          ("DeltaThresh", "0.05", "delta encoder threshold"),
+          ("NslFeat", "125", "NSL-KDD v2 feature dimensionality"),
+          ("NslLatInSpk", "14.58", "NSL-KDD latency input spikes per sample")]
+
     # CTU-13 fold 1 detection behaviour: the strict-results table shows latency
     # and rate flagging almost everything, which is what their macro-F1 there
     # actually reflects.
