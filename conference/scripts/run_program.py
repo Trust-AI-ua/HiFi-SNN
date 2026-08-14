@@ -56,6 +56,15 @@ ENC3 = ["rate", "latency", "delta"]
 
 #: phase -> (description, protocols, neurons, encodings, workers)
 PROGRAM = {
+    # E2: the full confirmation sweep, registered in
+    # PREREGISTRATION_ADDENDUM.md before any of its runs completed. Ordered
+    # cheapest protocol first so the ranking becomes computable on four
+    # protocols well before CIC-IDS2017 finishes.
+    "E2a": ("E2 full sweep - NSL-KDD",   ["nslkdd_v2"],    NEURONS, ENC3, 6),
+    "E2b": ("E2 full sweep - CTU-13 f0", ["ctu13_v2_f0"],  NEURONS, ENC3, 6),
+    "E2c": ("E2 full sweep - CTU-13 f1", ["ctu13_v2_f1"],  NEURONS, ENC3, 6),
+    "E2d": ("E2 full sweep - KDDCup99",  ["kddcup99_v2"],  NEURONS, ENC3, 6),
+    "E2e": ("E2 full sweep - CIC-IDS2017", ["cicids2017_v2"], NEURONS, ENC3, 5),
     "B1": ("Tier B — LP x 3 encodings, light protocols",
            ["nslkdd_v2", "kddcup99_v2", "ctu13_v2_f0", "ctu13_v2_f1"],
            ["LeakyParallel"], ENC3, 6),
