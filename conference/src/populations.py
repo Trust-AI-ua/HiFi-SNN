@@ -27,6 +27,10 @@ POPULATIONS = {
     "full_27_screening": "all 9 neurons x 3 encodings, v1 screening sweep",
     "encoding_axis_lp": "LeakyParallel x {latency, rate, delta}",
     "neuron_axis_latency": "9 neuron families x latency",
+    # Added by PREREGISTRATION_ADDENDUM.md, frozen before any of its runs
+    # completed. Same members as the screening population but evaluated under
+    # the confirmation protocols; the two must never be pooled.
+    "full_27_confirmation": "all 9 neurons x 3 encodings, confirmation protocols",
 }
 
 NEURONS = ["Alpha", "Lapicque", "Leaky", "LeakyParallel", "RLeaky",
@@ -39,7 +43,7 @@ class PopulationError(ValueError):
 
 
 def members(population: str) -> set:
-    if population == "full_27_screening":
+    if population in ("full_27_screening", "full_27_confirmation"):
         return {f"{n}/{e}" for n in NEURONS for e in ENCODINGS}
     if population == "encoding_axis_lp":
         return {f"LeakyParallel/{e}" for e in ENCODINGS}
