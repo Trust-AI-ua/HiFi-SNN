@@ -14,8 +14,9 @@ directly shaping a spiking intrusion detector: the \emph{neuron model} and the
 
 \subsection{Scope}
 
-This study is a controlled intra-SNN design-space evaluation implemented
-entirely in \texttt{snnTorch}. Every model evaluated is a spiking network; the
+This study is a controlled intra-SNN design-space evaluation. The nine neuron
+families are \texttt{snnTorch} implementations; the three spike encoders are
+our own and are released with the artifact. Every model evaluated is a spiking network; the
 axes of variation are the neuron family and the spike encoding. We deliberately
 do not include non-spiking baselines, decision-tree ensembles, linear models,
 or an architecture-matched dense MLP. Such a comparison answers a different
@@ -103,6 +104,16 @@ binary normal-versus-attack transfer test. It is binary by necessity: under the
 five-class taxonomy, Probe and U2R occur only in the later days and R2L only in
 the earlier ones, so three of five classes would be untrainable or untestable.
 
+The two confirmation folds were selected before the confirmation registration
+was frozen and before any confirmation result existed, using per-fold difficulty
+observed in a prior, separate experiment. Fold~1 is the hardest of the four
+($\FNCtuIdxFB\%$ macro-F1 under the four-fold performance estimate) and fold~0
+is near the ceiling ($\FNCtuIdxFA\%$), so the confirmation spans both regimes
+rather than a middling pair. This is a difficulty-informed choice, not a blind
+one, and we state it as such: the registration governs the confirmation
+hypotheses, metric, ranking rule and permitted wording, not the fold selection,
+which preceded it.
+
 For CTU-13 we use a frozen four-fold \emph{scenario-disjoint} partition in which
 whole scenarios are indivisible, and we recompute the per-source-host behavioural
 statistics \emph{causally}: within a scenario, flows are processed in timestamp
@@ -131,6 +142,33 @@ design axes that pass through it:
 Their intersection is \texttt{LeakyParallel/latency}. Axis~B is a confirmation
 that the neuron choice survives a stricter protocol; it is not a second
 design-space ranking and we do not present it as one.
+
+\subsection{Spike encodings and their amplitude gates}
+\label{sec:enc}
+
+Each feature vector $x\in[0,1]^d$ is encoded over $T$ timesteps. \textbf{Rate}
+coding draws $S_{t,i}\sim\mathrm{Bernoulli}(x_i)$ independently at each
+timestep. \textbf{Latency} coding assigns each feature above an amplitude gate
+$\theta_\mathrm{lat}=\FNLatThresh$ a single spike at
+$t_i=\lfloor(1-x_i)(T-1)\rfloor$. \textbf{Delta} coding is applied to a
+synthesised step signal in which $x$ is held for the first $\lfloor T/2\rfloor$
+timesteps and zero thereafter, with negative transitions discarded. The
+encoders are our own; only the neuron families come from \texttt{snnTorch}, and
+all three are released with the artifact.
+
+Two of the three apply an amplitude gate, at different thresholds, which could
+in principle confound the encoding comparison with a thresholding effect. We
+measured the affected feature mass rather than assuming it small. The interval
+$(0,\theta_\mathrm{lat}]$ is \emph{empty} on both KDD-family protocols
+($\FNBandNsl$ and $\FNBandKdd$ features per sample) and contains
+$\FNBandCic$ of $\FNDimCic$ features on CIC-IDS2017 and $\FNBandCtuA$ of
+$\FNDimCtuA$ on CTU-13. Latency's gate is therefore inert: setting
+$\theta_\mathrm{lat}=0$ leaves the measured input-spike count unchanged to four
+decimals ($\FNNslLatInSpk$ on NSL-KDD in both cases). The interval separating
+the two gates, $(\theta_\mathrm{lat},\theta_\delta]$, contains approximately one
+of the $\FNNslLatInSpk$ active NSL-KDD features, and
+Section~\ref{sec:e1} reports a gate-matched sensitivity analysis over that
+residual difference.
 
 \subsection{Metric definition and a post-audit correction}
 
@@ -204,8 +242,11 @@ weighting matters because a spike entering a 128-wide projection is not the same
 event as one entering a 5-wide readout. Gated cells (\texttt{SLSTM},
 \texttt{SConv2dLSTM}) are charged four times the input fanout to account for
 their gate projections. Where we convert operations to energy we report
-$\hat{E}=\mathrm{SOP}\times E_\mathrm{AC}$ explicitly as an operation-based
-proxy, not a hardware measurement.
+SOPs as a hardware-independent operation count. We deliberately do not convert
+to joules: the conversion constant is platform-specific and quoting one would
+imply a hardware measurement we did not make. Output-layer spikes are charged
+zero fanout, because the readout drives no downstream projection, so the count
+comprises input-to-hidden and hidden-to-output operations only.
 
 \subsection{Experimental setup}
 

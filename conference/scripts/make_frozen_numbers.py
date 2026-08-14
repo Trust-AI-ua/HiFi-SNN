@@ -129,7 +129,8 @@ def main() -> int:
     far = pd.read_csv(A / "security/fixed_far.csv")
     far = far[(far.neuron == "LeakyParallel") & (far.encoding == "latency")
               & (far.target_far == 0.01)].set_index("protocol")
-    for proto, tag in (("nslkdd_v2", "Nsl"), ("cicids2017_v2", "Cic"),
+    for proto, tag in (("nslkdd_v2", "Nsl"), ("kddcup99_v2", "Kdd"),
+                       ("cicids2017_v2", "Cic"), ("ctu13_v2_f0", "CtuA"),
                        ("ctu13_v2_f1", "CtuB")):
         if proto in far.index:
             L += [(f"FarVal{tag}", f"{100*far.loc[proto,'val_far_mean']:.1f}",
@@ -208,6 +209,103 @@ def main() -> int:
           ("DeltaThresh", "0.05", "delta encoder threshold"),
           ("NslFeat", "125", "NSL-KDD v2 feature dimensionality"),
           ("NslLatInSpk", "14.58", "NSL-KDD latency input spikes per sample")]
+
+    # Feature sparsity and the closed-form input-spike ratio. These turn the
+    # efficiency claim from a measured range into a prediction with an error
+    # bar, so every component of it must be generated rather than typed.
+    sp = pd.read_csv(A / "feature_sparsity.csv").set_index("protocol")
+    xb = pd.read_csv(A / "xbar_active_prediction.csv").set_index("protocol")
+    tags = {"nslkdd_v2": "Nsl", "kddcup99_v2": "Kdd", "cicids2017_v2": "Cic",
+            "ctu13_v2_f0": "CtuA", "ctu13_v2_f1": "CtuB"}
+    for proto, tag in tags.items():
+        L += [(f"Zero{tag}", f"{sp.loc[proto,'zero_per_sample']:.2f}",
+               f"features exactly zero, {proto}"),
+              (f"ZeroPct{tag}", f"{sp.loc[proto,'zero_pct']:.1f}",
+               f"percent exactly zero, {proto}"),
+              (f"Band{tag}", f"{sp.loc[proto,'band_per_sample']:.4f}",
+               f"features in (0, theta_lat], {proto}"),
+              (f"XbarAct{tag}", f"{xb.loc[proto,'xbar_active_gt0']:.3f}",
+               f"mean value of active features, {proto}"),
+              (f"Dim{tag}", int(sp.loc[proto, "d"]), f"feature dimension, {proto}")]
+    L += [("ZeroPctMin", f"{sp.zero_pct.min():.1f}", "min percent exactly zero"),
+          ("ZeroPctMax", f"{sp.zero_pct.max():.1f}", "max percent exactly zero"),
+          ("PredErrMax", f"{xb.abs_err_pct.max():.3f}",
+           "max percent error of the a-priori input-ratio prediction"),
+          ("PredErrMean", f"{xb.abs_err_pct.mean():.3f}", "mean percent error"),
+          ("DeltaSpkNsl", "13.560", "delta input spikes at t=1, NSL-KDD"),
+          ("DeltaSpkAfter", "0.0", "delta input spikes at every t>1"),
+          ("DeltaPairs", "2{,}818{,}000", "feature-sample pairs compared"),
+          ("NslTestN", "22{,}544", "NSL-KDD confirmation test samples"),
+          ("DimNslScreen", "122", "NSL-KDD dimension under the screening protocol")]
+
+    # KDDCup99 rate-vs-delta: a 0.21 pp mean margin with per-seed differences
+    # of both signs. The protocol-level rank for that pair must not be over-read.
+    _k = _sw0 = pd.read_csv(ROOT / "results/v1_submitted/sweep_540.csv")
+    _k = _k[(_k.dataset == "kddcup99") & (_k.neuron == "LeakyParallel")
+            & (_k.encoding.isin(["rate", "delta"]))]
+    _p = _k.pivot(index="seed", columns="encoding", values="f1_macro")
+    _d = _p["rate"] - _p["delta"]
+    L += [("KddRateDeltaMargin", f"{100*_d.mean():.2f}",
+           "KDDCup99 rate-minus-delta mean margin, pp"),
+          ("KddRateWins", int((_d > 0).sum()), "seed-blocks where rate leads"),
+          ("KddDeltaWins", int((_d < 0).sum()), "seed-blocks where delta leads"),
+          ("KddRateDeltaLo", f"{100*_d.min():+.1f}", "most negative per-seed diff, pp"),
+          ("KddRateDeltaHi", f"{100*_d.max():+.1f}", "most positive per-seed diff, pp")]
+
+    # NSL-KDD headline operating point and the two rare-class recalls, so the
+    # summary can say plainly what the recommended configuration achieves.
+    _sr = pd.read_csv(A / "strict_results.csv")
+    _n = _sr[(_sr.axis == "encoding") & (_sr.protocol == "nslkdd_v2")
+             & (_sr.variant == "LeakyParallel/latency")].iloc[0]
+    L += [("NslDr", f"{_n.dr_mean:.2f}", "NSL-KDD detection rate, argmax rule"),
+          ("NslFar", f"{100*_n.far_mean:.1f}", "NSL-KDD false-alarm rate, percent")]
+    _pc = pd.read_csv(A / "data_request/C1_per_class.csv")
+    _pc = _pc[_pc.protocol == "nslkdd_v2"].set_index("class")
+    L += [("NslRtlRec", f"{_pc.loc['r2l','recall']:.3f}", "NSL-KDD R2L recall"),
+          ("NslUtrRec", f"{_pc.loc['u2r','recall']:.3f}", "NSL-KDD U2R recall"),
+          ("NslMacro", f"{_n.macro_f1_mean:.4f}", "NSL-KDD macro-F1")]
+
+    # Screening ranks recomputed without CTU-13 (sensitivity, not a re-ranking).
+    import numpy as _n
+    from scipy.stats import rankdata as _rd
+    _sw = pd.read_csv(ROOT / "results/v1_submitted/sweep_540.csv")
+    _sw["config"] = _sw.neuron + "/" + _sw.encoding
+    _w = _sw.pivot_table(index=["dataset", "seed"], columns="config",
+                         values="f1_macro").drop(index="ctu13", level=0)
+    _r = _n.apply_along_axis(lambda v: _rd(-v, method="average"), 1, _w.to_numpy())
+    _mr = pd.Series(_r.mean(axis=0), index=_w.columns).sort_values()
+    _top5 = sum("latency" in k for k in _mr.head(5).index)
+    L += [("NoCtuBlocks", int(len(_w)), "screening blocks excluding CTU-13"),
+          ("NoCtuLeader", _mr.index[0].replace("_", ""), "leader without CTU-13"),
+          ("NoCtuLeadRank", f"{_mr.iloc[0]:.2f}", "its mean rank"),
+          ("NoCtuChampRank", f"{_mr['LeakyParallel/latency']:.2f}",
+           "LP/latency mean rank without CTU-13"),
+          ("NoCtuMargin", f"{_mr['LeakyParallel/latency'] - _mr.iloc[0]:.3f}",
+           "margin between the two"),
+          ("NoCtuLatTop", int(_top5), "latency configs in the leading five")]
+
+    # CTU-13 folds in index order, and the dispersion definition.
+    ctu = pd.read_csv(ROOT / "results/v1_submitted/ctu13_strict_vanilla.csv")
+    cs = (ctu[(ctu.model == "vanilla") & (ctu.condition == "causal_scenario")
+              & (ctu.features == "combined")])
+    fm = cs.groupby("fold").macro_f1.mean()
+    for f in sorted(fm.index):
+        L.append((f"CtuIdxF{'ABCD'[int(f)]}", f"{fm[f]:.2f}",
+                  f"CTU-13 fold {f} mean, fold-index order"))
+    L += [("CtuNEval", int(len(cs)),
+           "fold x seed evaluations behind the CTU-13 estimate"),
+          ("CtuSdEval", f"{cs.macro_f1.std(ddof=1):.2f}",
+           "SD over those evaluations (ddof=1); NOT an across-fold SD")]
+
+    # Threshold transfer, all five protocols at the 1% target.
+    ft = pd.read_csv(A / "security/fixed_far_per_seed.csv")
+    ft = ft[(ft.neuron == "LeakyParallel") & (ft.encoding == "latency")
+            & (ft.target_far == 0.01)]
+    for proto, tag in tags.items():
+        g = ft[ft.protocol == proto]
+        if len(g):
+            L += [(f"FarDr{tag}", f"{100*g.test_dr.mean():.1f}",
+                   f"DR at the frozen 1% threshold, {proto}")]
 
     # CTU-13 fold 1 detection behaviour: the strict-results table shows latency
     # and rate flagging almost everything, which is what their macro-F1 there

@@ -302,7 +302,7 @@ def run_experiment(cfg: Dict) -> Dict:
         if opt in cfg and opt in loader_params:
             dataset_kwargs[opt] = cfg[opt]
     bundle = get_dataset(cfg["dataset"], **dataset_kwargs)
-    encoder = get_encoder(cfg["encoding"])
+    encoder = get_encoder(cfg["encoding"], cfg.get("encoder_threshold"))
     num_steps = cfg["num_steps"]
 
     model = SNN(
@@ -393,6 +393,7 @@ def run_experiment(cfg: Dict) -> Dict:
         "config": {k: cfg[k] for k in
                    ["num_steps", "hidden_size", "batch_size", "epochs", "lr",
                     "val_fraction", "seed", "device"]},
+        "encoder_threshold": cfg.get("encoder_threshold"),
         "hardware": hw,
         "provenance": protocol_provenance(cfg["dataset"]),
         "data": {

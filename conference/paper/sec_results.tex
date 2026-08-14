@@ -56,6 +56,20 @@ metric for these heavily imbalanced datasets, latency leads by $\FNKddFOneGain$ 
 metric before the analysis is what makes that resolution credible rather than
 convenient.
 
+The screening therefore identifies a leading group rather than a unique leader,
+and that is not an artifact of the Nemenyi resolution alone. Recomputing the
+screening ranks over the \FNNoCtuBlocks{} dataset-seed blocks that exclude
+CTU-13, the dataset the protocol audit shows to be most affected by the
+screening partition, exchanges the first two positions: \texttt{Leaky/latency}
+attains \FNNoCtuLeadRank{} and \texttt{LeakyParallel/latency}
+\FNNoCtuChampRank. The margin, \FNNoCtuMargin{} of a rank, is consistent with
+the pre-specified paired comparison that does not separate them
+($p=\FNScrLeakyP$). We select \texttt{LeakyParallel/latency} as the confirmation
+target from this co-leading pair and do not claim our evidence resolves the
+choice between the two. The encoding conclusion is unaffected: latency-encoded
+configurations occupy all \FNNoCtuLatTop{} leading positions under both
+aggregations.
+
 \subsection{Strict two-axis confirmation}
 \label{sec:res-strict}
 
@@ -95,8 +109,10 @@ $\FNCtuBNeuRLky$ for \texttt{RLeaky}, against $\FNCtuBNeuLP$).
 The largest effect of the strict protocol is on CTU-13. Under the submitted
 protocol, whole-scenario host aggregates with a random flow split, \texttt{LeakyParallel/latency} attains \FNCtuLegacy{} macro-F1. Making the
 aggregation causal alone leaves \FNCtuCausalRandom. Adding a scenario-disjoint
-partition brings it to $\mathbf{\FNCtuStrict \pm \FNCtuStrictSD}$, with folds at
-$\FNCtuFoldA$, $\FNCtuFoldB$, $\FNCtuFoldC$ and $\FNCtuFoldD$. We report the latter with its fold range as
+partition brings it to $\mathbf{\FNCtuStrict\%}$, with a standard deviation of
+$\FNCtuSdEval$ percentage points over the $\FNCtuNEval$ fold-seed evaluations.
+Fold means, in fold order, are $\FNCtuIdxFA$, $\FNCtuIdxFB$, $\FNCtuIdxFC$ and
+$\FNCtuIdxFD$. We report the latter with its fold range as
 the CTU-13 result and retain the former only as a labelled protocol comparison.
 The fold spread reflects genuine differences in scenario difficulty that a
 uniform perfect score concealed, which is why we never quote the mean alone.
@@ -156,22 +172,40 @@ and skewed.
 
 A short $T_{99}$ measures rapid attainment of a configuration's \emph{own}
 terminal performance and does not imply high-quality early inference. Delta
-reaches $T_{99}=1$ on NSL-KDD with a terminal score $\FNDeltaDeficitNsl$ pp below latency's:
-rapid stabilisation at a weaker solution, not an early-inference advantage.
+reaches $T_{99}=1$ on NSL-KDD with a terminal score $\FNDeltaDeficitNsl$ pp
+below latency's: rapid stabilisation at a weaker solution, not an
+early-inference advantage. That behaviour is a property of the representation
+rather than an empirical tendency. Applied to a static per-flow vector, delta
+modulation reduces exactly to one-step amplitude thresholding: all input
+activity occurs at $t=1$ ($\FNDeltaSpkNsl$ spikes per sample on NSL-KDD, against
+$\FNNslLatInSpk$ for latency, and $\FNDeltaSpkAfter$ at every subsequent timestep across all
+$\FNNslTestN$ test samples), and the emitted code agrees with the indicator
+$x_i>\theta_\delta$ on $\FNDeltaPairs$ of $\FNDeltaPairs$ feature-sample pairs.
+Its aggregate behaviour here should therefore be read as a result about one-step
+amplitude thresholding on static tabular input, not about delta modulation on
+temporally structured signals.
 
 \paragraph{Synaptic-operation demand is consistently lower.}
 % results/analysis/efficiency/summary.csv
 Unlike timing, the efficiency result holds on every strict protocol, and three
 quantities must be distinguished because only the first is structural.
 
-\emph{Input activity} is a property of the code: latency emits at most one spike
-per encoded feature, and none at all for features at or below its threshold of
-$\FNLatThresh$, whereas rate draws Bernoulli samples at each of the $T$
-timesteps. That threshold matters for reading the absolute counts: on NSL-KDD
-only $\FNNslLatInSpk$ of $\FNNslFeat$ features exceed it after min-max scaling,
-which is exactly the measured input-spike count. Measured, rate emits
-$\FNInpRatioMin\times$ to $\FNInpRatioMax\times$ more input spikes than
-latency.
+\emph{Input activity} separates for a reason with a closed form. Between
+$\FNZeroPctMin\%$ and $\FNZeroPctMax\%$ of features are exactly zero after
+preprocessing, a consequence of one-hot expansion and of min-max features
+sitting at their minimum rather than of any coding choice. Neither code pays for
+them: $\mathrm{Bernoulli}(0)$ is silent and a gated latency encoder does not
+fire. The separation is therefore determined entirely by how the two codes
+represent the \emph{active} features. Rate emits $T\,\mathbb{E}[x]$ spikes per
+active feature and latency emits exactly one, so the ratio should be
+$T\sum_{x>0}x\,/\,|\{x>\theta_\mathrm{lat}\}|$, independent of dimensionality
+and of sparsity. Measured across the five confirmation protocols, which span
+$\FNDimCtuA$ to $\FNDimNsl$ dimensions and $\FNZeroPctMin\%$ to
+$\FNZeroPctMax\%$ zero-sparsity, the ratio runs from $\FNInpRatioMin\times$ to
+$\FNInpRatioMax\times$ and matches that prediction to within $\FNPredErrMax\%$.
+The prediction also accounts for the range: CIC-IDS2017 sits at the low end
+because its active features carry the lowest mean magnitude ($\FNXbarActCic$
+against $\FNXbarActKdd$ on KDDCup99).
 
 \emph{Whole-network spike count} is not structurally guaranteed, and the measured
 gap is far smaller: rate emits only $\FNTotRatioMin\times$ to
@@ -220,6 +254,14 @@ KDDCup99). On the neuron axis the leading family is likewise unchanged
 everywhere, although the full ordering does change on KDDCup99. The encoding
 ordering is therefore not a consequence of memorised duplicate records.
 
+\paragraph{One protocol-level ordering rests on too small a margin.}
+On KDDCup99 the rate-versus-delta ordering rests on a mean margin of
+$\FNKddRateDeltaMargin$ pp, with per-seed differences spanning
+$\FNKddRateDeltaLo$ to $\FNKddRateDeltaHi$ pp and delta ahead in
+$\FNKddDeltaWins$ of the five seed-blocks against rate's $\FNKddRateWins$. We
+make no claim that either encoding is reliably ahead of the other there, and the
+protocol-level rank for that pair should not be over-read.
+
 \paragraph{CIC-IDS2017 lacks U2R test support.}
 % results/analysis/AMENDMENT_cic_u2r_support.md
 Under the order-disjoint CIC-IDS2017 protocol no U2R samples fall in the
@@ -238,11 +280,20 @@ CIC-IDS2017 is intrinsically harder than the other benchmarks.
 \paragraph{Calibrated operating points do not always transfer.}
 % results/analysis/security/fixed_far.csv
 Thresholds are selected on validation to hold false alarms at $1\%$, frozen, and
-then applied to test. Calibration itself is sound, realised validation FAR
-lands on target in every case. Transfer to test varies sharply: CIC-IDS2017
-holds ($\FNFarValCic\%$ validation to $\FNFarTestCic\%$ test), NSL-KDD drifts
-substantially ($\FNFarValNsl\%$ to $\FNFarTestNsl\%$), and CTU-13 fold~1 fails
-badly ($\FNFarValCtuB\%$ to $\FNFarTestCtuB\%$). This diagnoses
+then applied to test. Calibration itself is sound: realised validation FAR
+lands on target in every case. Transfer to test varies sharply across all five
+protocols. CIC-IDS2017 holds ($\FNFarValCic\%$ validation to $\FNFarTestCic\%$
+test, DR $\FNFarDrCic\%$); KDDCup99 drifts mildly ($\FNFarValKdd\%$ to
+$\FNFarTestKdd\%$, DR $\FNFarDrKdd\%$); NSL-KDD drifts substantially
+($\FNFarValNsl\%$ to $\FNFarTestNsl\%$, DR $\FNFarDrNsl\%$); and the two CTU-13
+folds fail in the same direction at very different magnitudes
+($\FNFarValCtuA\%$ to $\FNFarTestCtuA\%$ on fold~0, $\FNFarValCtuB\%$ to
+$\FNFarTestCtuB\%$ on fold~1) while both hold detection at $\FNFarDrCtuA\%$ and
+$\FNFarDrCtuB\%$. Holding recall while the false-alarm rate moves by an order of
+magnitude is the sharpest illustration here that the failure is one of threshold
+transfer. Note that the FAR in Table~\ref{tab:strict-results} is the argmax
+decision rule rather than this calibrated threshold; on CTU-13 fold~1 the two
+read $\FNCtuBFarLat$ and $\FNFarTestCtuB\%$. This diagnoses
 threshold-transfer instability under distribution shift rather than poor
 discrimination: a detector may rank samples well while a threshold calibrated on
 another distribution ceases to mean what it was set to mean.
@@ -280,6 +331,13 @@ three. What does generalise is compute demand: rate requires
 $\FNSopRatioMin\times$ to $\FNSopRatioMax\times$ more synaptic operations on
 every strict protocol. Predictive ranking, temporal behaviour and event
 efficiency are three separate properties, and this study separates them.
+
+It is worth stating plainly what the recommended configuration achieves in
+absolute terms on the hardest of these protocols. On strict NSL-KDD it detects
+$\FNNslDr$ of attacks at a $\FNNslFar\%$ false-alarm rate, and its macro-F1 of
+$\FNNslMacro$ is held down almost entirely by the two rarest categories: R2L
+recall $\FNNslRtlRec$ and U2R recall $\FNNslUtrRec$. Per-class figures for every
+confirmation protocol are given in the appendix.
 
 The scope of these claims is bounded by the same evidence. They imply nothing
 about open-set robustness, since every configuration collapses on unseen attack

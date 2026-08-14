@@ -212,7 +212,13 @@ def table_audit() -> str:
         r" job. Duplicate rows are \emph{reported}, not asserted away: KDDCup99"
         r" repeats most of its official test set inside training, which is the"
         r" documented reason NSL-KDD exists. No transform is fitted on test data"
-        r" in any protocol.}",
+        r" in any protocol. Feature dimensionality differs between the two"
+        r" protocol generations and each row states the confirmation figure:"
+        r" the screening protocol built its categorical vocabulary from the"
+        r" union of all splits, while the confirmation protocol fits it on"
+        r" training rows alone and adds one \texttt{<unk>} column per"
+        r" categorical field, so NSL-KDD is 122 columns under screening and"
+        r" 125 under confirmation.}",
         r"\label{tab:audit}",
         r"\resizebox{\columnwidth}{!}{%",
         r"\begin{tabular}{l l r r r r r}", r"\toprule",
