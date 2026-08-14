@@ -95,6 +95,31 @@ The post-hoc analyses stay post-hoc and stay labelled: the threshold-matched
 encoding ablation, the delta-equivalence derivation, the CTU-13 covariate-shift
 diagnostic, and any T-sweep.
 
+### 6.1 If the full sweep and the registered two-axis confirmation disagree
+
+They are different populations answering overlapping questions, so a
+disagreement is possible and the resolution rule is fixed here, before either
+result is known.
+
+Both are reported. The **registered two-axis confirmation is the confirmatory
+result**, because it was registered before any confirmation data existed. The
+**full sweep is the more complete but less strongly registered** result, for the
+reason stated in §1: it was registered before its own runs but after the
+two-axis results were known.
+
+A disagreement is reported as **evidence about the targeted design**, not
+resolved in either direction. Concretely: if the full sweep places a different
+neuron family first while the registered Axis~B placed `LeakyParallel` first, we
+report that the two-axis design's answer does not survive extension to the full
+configuration space, name both leaders, and state that our evidence does not
+establish which is preferable. We do not adopt whichever ranking is more
+favourable, and we do not treat the larger population as automatically
+superseding the registered one.
+
+The same rule applies to the encoding axis. If the full sweep and Axis~A
+disagree about the leading encoding, both are reported and the disagreement is
+described rather than adjudicated.
+
 ## 7. Cost, recorded for honesty about what was affordable
 
 Measured from the 235 completed runs rather than estimated: the remaining 440
