@@ -252,6 +252,51 @@ false-alarm rates of $\FNCtuBFarLat$ and $\FNCtuBFarRat$ respectively, so their
 macro-F1 there reflects near-indiscriminate flagging rather
 than discrimination, which is the behaviour delta avoids on that fold.
 
+\subsection{What spike timing is worth, in isolation}
+\label{sec:timing}
+
+% results/analysis/e1_timing_isolation.csv  (post-hoc, not pre-registered)
+The encoding comparison so far confounds two things: whether a code uses spike
+timing, and which features it encodes at all. Latency gates at
+$\theta_\mathrm{lat}$ and delta at $\theta_\delta$, so the two encode different
+feature sets. We separate them with a construction that removes the difference
+entirely. Delta applied to a static vector fires exactly where
+$x_i>\theta_\delta$ (Section~\ref{sec:res-delta}); setting
+$\theta_\delta=\theta_\mathrm{lat}$ therefore makes it fire on precisely the
+features latency encodes. The two arms then emit \emph{identical input spike
+sets} and differ only in whether the spike carries timing information.
+
+The construction verifies numerically: across all five confirmation protocols
+the mean input spikes per sample of the two arms agree exactly, to a maximum
+absolute difference of $\FNTimingMaxDiff$ (Table~\ref{tab:timing}). Any
+difference in detection quality between them is therefore attributable to
+temporal structure alone.
+
+% table generated: paper/tables/tab_timing.tex
+\input{tables/tab_timing}
+
+The result is that timing has no general value. Its contribution is
+$\FNTimingCtuA$~pp on CTU-13 fold~0 and $\FNTimingCic$~pp on CIC-IDS2017,
+$\FNTimingNsl$~pp on NSL-KDD and $\FNTimingKdd$~pp on KDDCup99, and
+$\FNTimingCtuB$~pp on CTU-13 fold~1: a spread of $\FNTimingSpread$
+percentage points that changes sign. Temporal coding is worth more than half the
+metric range on one protocol, nothing on two, and is a liability on another.
+Timing-based coding is therefore not a property that helps or hurts in general;
+its value is a property of the traffic distribution, and on the hardest
+scenario-disjoint condition it is a liability.
+
+This also settles the CTU-13 fold~1 inversion, which we previously reported
+without a mechanism. Matching the gates in both directions leaves it intact:
+moving latency to delta's gate gains only $\FNGateGainCtuB$~pp, and delta
+retains $\FNDeltaKeepsCtuB$~pp of advantage at latency's gate. Since the gate
+was the only alternative explanation and it is eliminated in both directions,
+the inversion is attributable to the temporal component itself.
+
+It follows that an aggregate encoding rank averages over a factor that swings by
+more than fifty percentage points between protocols. That is not a weakening of
+the ranking result but the same thesis stated one level down: a ranking can be
+stable while the mechanism producing it is not.
+
 \subsection{Robustness and boundary conditions}
 \label{sec:res-limits}
 

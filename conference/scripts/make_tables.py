@@ -154,6 +154,46 @@ def table_readout() -> str:
     return "\n".join(lines)
 
 
+def table_timing() -> str:
+    """Value of spike timing, isolated by construction.
+
+    Both arms emit identical input spike sets, so the macro-F1 difference is the
+    contribution of temporal structure alone. Generated rather than typed: the
+    identical-input claim is the load-bearing part of the argument and has to
+    come from the artifact that verifies it.
+    """
+    d = pd.read_csv(ROOT / "results/analysis/e1_timing_isolation.csv",
+                    index_col=0)
+    pretty = {"nslkdd_v2": "NSL-KDD", "kddcup99_v2": "KDDCup99",
+              "cicids2017_v2": "CIC-IDS2017", "ctu13_v2_f0": "CTU-13 f0",
+              "ctu13_v2_f1": "CTU-13 f1"}
+    lines = [
+        r"\begin{table}[t]", r"\centering",
+        r"\caption{Value of spike timing, isolated. Both arms use"
+        r" \texttt{LeakyParallel} and, by construction, emit \emph{identical}"
+        r" input spike sets: delta at latency's gate fires on exactly the"
+        r" features latency encodes, and the two columns agree to a maximum"
+        r" absolute difference of %.0e spikes per sample. The arms therefore"
+        r" differ only in whether the spike carries timing, and the final column"
+        r" is the contribution of temporal structure alone. Post-hoc analysis;"
+        r" not part of the registered confirmation.}" % d.in_spk_abs_diff.max(),
+        r"\label{tab:timing}",
+        r"\resizebox{\columnwidth}{!}{%",
+        r"\begin{tabular}{l r r r r}", r"\toprule",
+        r"Protocol & Input spikes & \multicolumn{2}{c}{macro-F1} & Timing \\",
+        r"\cmidrule(lr){3-4}",
+        r" & (both arms) & with & without & (pp) \\", r"\midrule",
+    ]
+    for proto, name in pretty.items():
+        if proto not in d.index:
+            continue
+        r = d.loc[proto]
+        lines.append(f"{name} & {r.in_spk_timing:.2f} & {r.f1_timing:.4f} & "
+                     f"{r.f1_notiming:.4f} & {r.timing_premium_pp:+.1f} \\\\")
+    lines += [r"\bottomrule", r"\end{tabular}}", r"\end{table}"]
+    return "\n".join(lines)
+
+
 def table_audit_revised() -> str:
     """Split the single Group/Overlap pair into group unit, what separation is
     actually claimed, and how many groups are shared.
@@ -294,6 +334,7 @@ def main():
                      ("tab_audit", table_audit),
                      ("tab_protocol_audit_revised", table_protocol_audit),
                      ("tab_readout", table_readout),
+                     ("tab_timing", table_timing),
                      ("tab_audit_revised", table_audit_revised)]:
         p = (OUT / f"{name}_{args.tag}.tex"
              if name in {"tab_ranking", "tab_focused"}

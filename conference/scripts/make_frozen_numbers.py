@@ -271,6 +271,27 @@ def main() -> int:
           ("NslUtrRec", f"{_pc.loc['u2r','recall']:.3f}", "NSL-KDD U2R recall"),
           ("NslMacro", f"{_n.macro_f1_mean:.4f}", "NSL-KDD macro-F1")]
 
+    # Timing isolation (E1 arm C). Delta at latency's gate fires on exactly the
+    # same features, so the two arms emit identical input spike sets and differ
+    # only in whether timing is used. Every number here is a difference at
+    # matched input activity.
+    ti = pd.read_csv(A / "e1_timing_isolation.csv", index_col=0)
+    tags = {"nslkdd_v2": "Nsl", "kddcup99_v2": "Kdd", "cicids2017_v2": "Cic",
+            "ctu13_v2_f0": "CtuA", "ctu13_v2_f1": "CtuB"}
+    for proto, tag in tags.items():
+        L.append((f"Timing{tag}", f"{ti.loc[proto,'timing_premium_pp']:+.1f}",
+                  f"timing premium at matched input spikes, {proto}"))
+    L += [("TimingMin", f"{ti.timing_premium_pp.min():+.1f}", "smallest timing premium"),
+          ("TimingMax", f"{ti.timing_premium_pp.max():+.1f}", "largest timing premium"),
+          ("TimingSpread", f"{ti.timing_premium_pp.max()-ti.timing_premium_pp.min():.1f}",
+           "spread of the timing premium, pp"),
+          ("TimingMaxDiff", f"{ti.difference.abs().max():.0e}",
+           "max input-spike difference between the matched arms"),
+          ("GateGainCtuB", "+0.15",
+           "latency gain on CTU-13 f1 when moved to delta's gate"),
+          ("DeltaKeepsCtuB", "+9.1",
+           "delta advantage on CTU-13 f1 retained at latency's gate")]
+
     # Screening ranks recomputed without CTU-13 (sensitivity, not a re-ranking).
     import numpy as _n
     from scipy.stats import rankdata as _rd
