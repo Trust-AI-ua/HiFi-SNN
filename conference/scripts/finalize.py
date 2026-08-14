@@ -55,6 +55,8 @@ STEPS = [
      ["scripts/strict_results.py"]),
     (2, "sensitivity: protocol as the unit of analysis",
      ["scripts/protocol_level.py"]),
+    (2, "protocol shift: Kendall tau, screening vs confirmation",
+     ["scripts/protocol_shift.py"]),
     (3, "mechanism — early readout, T95/T99, spike saving",
      ["scripts/early_readout.py"]),
     (3, "mechanism — spike decomposition and SOPs",

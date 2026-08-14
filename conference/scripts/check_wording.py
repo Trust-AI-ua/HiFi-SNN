@@ -72,6 +72,12 @@ HARDCODED = [
 
 SKIP = {"sec_frozen_numbers.tex", "fig_captions.tex"}
 
+#: Draft files are exempt from the literal/placeholder checks, because their
+#: purpose is to hold placeholders until the runs they wait on land. The moment
+#: a draft is promoted to a build filename, the \PH{} rule below catches
+#: anything still unfilled instead of letting it ship.
+DRAFT_SUFFIX = "_draft.tex"
+
 #: Numeric literals that are legitimately not experimental results.
 #: Everything else in Abstract/Results/Conclusion should arrive via a macro,
 #: so one stale value -- the pre-fix CIC delta figure, say -- cannot survive in
@@ -90,7 +96,8 @@ STRICT_FILES = {"sec_abstract.tex", "sec_results.tex", "sec_conclusion.tex"}
 
 def main() -> int:
     problems = []
-    files = [p for p in sorted(PAPER.glob("*.tex")) if p.name not in SKIP]
+    files = [p for p in sorted(PAPER.glob("*.tex"))
+             if p.name not in SKIP and not p.name.endswith(DRAFT_SUFFIX)]
     for path in files:
         text = path.read_text()
         # Strip comment lines: rationale in comments may quote a banned phrase.
@@ -101,6 +108,12 @@ def main() -> int:
                 line = body[:m.start()].count("\n") + 1
                 problems.append(f"{path.name}:~{line}  BANNED {m.group(0)!r}\n"
                                 f"    why: {why}")
+        if "\\PH{" in body:
+            n = body.count("\\PH{")
+            problems.append(
+                f"{path.name}: {n} unfilled \\PH{{}} placeholder(s) in a build "
+                "file. Fill them from the artifacts or keep the file named "
+                "*_draft.tex until the runs land.")
         for lit, why in DASHES:
             lit = lit.encode().decode("unicode_escape")
             start = 0
