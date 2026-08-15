@@ -292,6 +292,26 @@ def main() -> int:
           ("DeltaKeepsCtuB", "+9.1",
            "delta advantage on CTU-13 f1 retained at latency's gate")]
 
+    # Covariate shift (E5). Reported as a measured negative: it eliminates shift
+    # magnitude as the explanation for when timing is valuable. The Spearman is
+    # computed here, not carried, so the manuscript cannot drift from the file.
+    _cs = pd.read_csv(A / "covariate_shift/summary.csv").set_index("protocol")
+    _have = _cs.dropna(subset=["timing_premium_pp"])
+    _rho = _have[["w_p90", "timing_premium_pp"]].corr(method="spearman").iloc[0, 1]
+    _kddfam = _cs.loc[["kddcup99_v2", "nslkdd_v2"], "domain_auc"]
+    L += [("ShiftKsCtuB", f"{_cs.loc['ctu13_v2_f1','ks_median']:.4f}",
+           "median per-feature KS, CTU-13 f1 (most shifted condition)"),
+          ("ShiftAucCtuB", f"{_cs.loc['ctu13_v2_f1','domain_auc']:.4f}",
+           "train-vs-test domain-classifier AUC, CTU-13 f1"),
+          ("ShiftAucKddLo", f"{_kddfam.min():.2f}",
+           "lowest domain AUC in the KDD family"),
+          ("ShiftAucKddHi", f"{_kddfam.max():.2f}",
+           "highest domain AUC in the KDD family"),
+          ("ShiftRho", f"{_rho:.3f}",
+           "Spearman(shift, timing premium) over the confirmation protocols"),
+          ("ShiftNProto", f"{len(_have)}",
+           "protocols entering the shift-vs-timing correlation")]
+
     # Screening ranks recomputed without CTU-13 (sensitivity, not a re-ranking).
     import numpy as _n
     from scipy.stats import rankdata as _rd
