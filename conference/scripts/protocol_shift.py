@@ -49,11 +49,47 @@ def mean_ranks(wide: pd.DataFrame) -> pd.Series:
 
 
 def screening_ranks() -> pd.Series:
+    """The screening mean ranks, read from the committed artifact.
+
+    tau is a comparison between two rank vectors, so it is wrong --- and wrong
+    invisibly --- if this vector is not the one the manuscript reports. Both
+    sides used to be computed independently from `sweep_540.csv` by
+    `rank_analysis.py` and by this script. They agree exactly today, but they
+    agree by shared convention rather than by construction: a change to
+    tie-breaking or to the block definition in one would silently move tau
+    without moving any number in the paper.
+
+    So the committed artifact is authoritative and the recomputation is kept
+    only as a cross-check. If they ever diverge this raises instead of
+    returning a plausible tau.
+    """
     d = pd.read_csv(ROOT / "results/v1_submitted/sweep_540.csv")
     d["variant"] = d.neuron + "/" + d.encoding
     require_population(d.variant.unique(), "full_27_screening")
-    return mean_ranks(d.pivot_table(index=["dataset", "seed"], columns="variant",
-                                    values="f1_macro"))
+    recomputed = mean_ranks(d.pivot_table(index=["dataset", "seed"],
+                                          columns="variant", values="f1_macro"))
+
+    published = ROOT / "results/analysis/v1/mean_rank.csv"
+    if not published.exists():
+        raise SystemExit(
+            f"{published} is missing. Run scripts/rank_analysis.py first: tau "
+            "must be computed against the screening ranks the manuscript "
+            "reports, not against a private recomputation.")
+    authoritative = pd.read_csv(published, index_col=0)["mean_rank"]
+
+    if set(authoritative.index) != set(recomputed.index):
+        raise SystemExit(
+            "screening rank vectors disagree on membership: "
+            f"{len(authoritative)} published vs {len(recomputed)} recomputed.")
+    delta = (authoritative - recomputed.reindex(authoritative.index)).abs().max()
+    if delta > 1e-9:
+        raise SystemExit(
+            f"screening ranks disagree by up to {delta:.3e} between "
+            f"{published.relative_to(ROOT)} and this script's recomputation. "
+            "tau would be computed against a vector the paper does not report. "
+            "Reconcile rank_analysis.py and protocol_shift.py before "
+            "continuing.")
+    return authoritative
 
 
 def confirmation_ranks():

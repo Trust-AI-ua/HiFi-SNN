@@ -45,6 +45,54 @@ protocol rather than the seed as the unit and so does not count five seeds on
 one dataset as five independent observations, gives \PH{protocol-level
 summary}.
 
+\subsection{Which encoding leads, and where it does not}
+\label{sec:res-encoding}
+
+% results/analysis/protocol_shift/{rank_comparison.csv,encoding_aggregation.csv}
+% Report block wins FIRST and the mean rank second. This ordering is deliberate
+% and the paragraph states why; do not reorder it for concision.
+Collapsing the \FNScrVariants{}-way ranking by encoding family, latency coding
+leads: it holds rank one in \PH{k} of \PH{25} blocks, against \PH{k} for rate
+and \PH{k} for delta. Its mean rank over the family is also the lowest
+(\PH{rank} against \PH{rank} and \PH{rank}), but we report the block counts as
+the primary summary and the mean rank as secondary, for a reason specific to
+these data and given below.
+
+The exceptions are not scattered. They fall into two classes, and each is a
+protocol where the timing-isolation experiment of
+Section~\ref{sec:res-timing} independently predicts that latency should not
+lead. On NSL-KDD, where matched-input isolation puts the entire value of spike
+timing at $\FNTimingNsl$~pp, rate coding takes \PH{k} of the five blocks. On
+CTU-13 fold~1, where the same isolation makes timing a liability of
+$\FNTimingCtuB$~pp, delta coding leads outright. Every block latency does not
+win is a block in which timing was independently measured to be worth nothing
+or worth less than nothing.
+
+% This convergence is the point of the subsection; it is what makes the
+% exceptions evidence for the account rather than against it.
+The NSL-KDD case is worth stating separately, because three measurements of
+different kinds agree on it. Rate leads latency there under the screening
+protocol (\PH{rank} against \PH{rank}) and again under the confirmation
+protocol (\PH{rank} against \PH{rank}), a margin that survives a change of
+protocol designed to remove the optimism of the first. The matched-input
+isolation, which shares no analysis path with either ranking, puts the value of
+timing on that protocol at $\FNTimingNsl$~pp. A rank aggregation over
+\FNScrVariants{} configurations and a single-factor ablation at identical input
+activity are not the same instrument, and they return the same verdict:
+on NSL-KDD, temporal coding buys nothing.
+
+Finally, the reason for preferring block counts. The encoding means are
+compressed by a single protocol: on CTU-13 fold~1 the leading family sits at
+\PH{rank} while latency sits at \PH{rank}, a displacement of \PH{k} rank
+positions concentrated in one condition out of \PH{5}. Averaging that into a
+family mean produces a number describing neither the typical protocol nor the
+exception, in the same way that a standard deviation pooled across datasets of
+different difficulty describes neither (Section~\ref{sec:res-strict}). The
+block counts are not subject to that: a protocol where the ordering inverts
+contributes its five blocks and no more, whatever the size of the inversion.
+Where the two summaries disagree in emphasis, the disaggregated one is the one
+we rely on.
+
 \subsection{How far the screening protocol displaces the ranking}
 \label{sec:res-shift}
 
