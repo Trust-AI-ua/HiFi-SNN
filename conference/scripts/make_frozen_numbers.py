@@ -285,7 +285,7 @@ def main() -> int:
           ("TimingMax", f"{ti.timing_premium_pp.max():+.1f}", "largest timing premium"),
           ("TimingSpread", f"{ti.timing_premium_pp.max()-ti.timing_premium_pp.min():.1f}",
            "spread of the timing premium, pp"),
-          ("TimingMaxDiff", f"{ti.difference.abs().max():.0e}",
+          ("TimingMaxDiff", f"{ti.in_spk_abs_diff.abs().max():.0e}",
            "max input-spike difference between the matched arms"),
           ("GateGainCtuB", "+0.15",
            "latency gain on CTU-13 f1 when moved to delta's gate"),

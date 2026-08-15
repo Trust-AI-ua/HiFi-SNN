@@ -20,6 +20,7 @@ Emits:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -125,9 +126,103 @@ def slopegraph(cmp: pd.DataFrame, protocols, path: Path) -> None:
     plt.close(fig)
 
 
+def rehearsal(scr, conf, protocols, raw, out_dir: Path) -> int:
+    """Pipeline rehearsal on the complete-so-far protocols. Not a result.
+
+    Deliberately narrower than the registered run: ranking and encoding
+    aggregation only. No tau, no permutation test, no figure, nothing on a path
+    the manuscript reads.
+    """
+    print("=" * 78)
+    print("PARTIAL_4PROTOCOL_REHEARSAL --- pipeline exercise, NOT a result")
+    print("Kendall tau deliberately not computed: registered at 25 blocks.")
+    print("Prediction frozen before this run: PARTIAL_4PROTOCOL_PREDICTION.md")
+    print("=" * 78)
+    if conf.empty:
+        have = (raw.groupby("protocol").variant.nunique().to_dict()
+                if not raw.empty else {})
+        print("no confirmation protocol is complete at 27 configurations x 5 "
+              f"seeds yet.\n  configurations present per protocol: {have}")
+        return 0
+
+    cmp = pd.DataFrame({"rank_screening": scr,
+                        "rank_confirmation": conf}).dropna()
+    cmp.index.name = "variant"
+    cmp = cmp.reset_index().sort_values("rank_confirmation")
+    cmp["pos_screening"] = rankdata(cmp.rank_screening, method="average")
+    cmp["pos_confirmation"] = rankdata(cmp.rank_confirmation, method="average")
+    cmp["movement"] = cmp.pos_screening - cmp.pos_confirmation
+    cmp.to_csv(out_dir / "rank_comparison_PARTIAL.csv", index=False,
+               float_format="%.6f")
+
+    enc = encoding_aggregation(raw, protocols)
+    enc.to_csv(out_dir / "encoding_aggregation_PARTIAL.csv",
+               float_format="%.6f")
+    missing = [p for p in CONF_PROTOCOLS if p not in protocols]
+    (out_dir / "STATUS.json").write_text(json.dumps({
+        "status": "PARTIAL_4PROTOCOL_REHEARSAL",
+        "protocols_included": protocols, "protocols_missing": missing,
+        "n_blocks": int(len(protocols) * 5),
+        "kendall_tau": None,
+        "tau_withheld_because": "registered at 25 blocks in "
+                                "PREREGISTRATION_ADDENDUM.md §4",
+        "enters_manuscript": False,
+    }, indent=2))
+
+    print(f"\nprotocols included ({len(protocols)}): {', '.join(protocols)}")
+    print(f"protocols missing  ({len(missing)}): {', '.join(missing) or 'none'}")
+    print(f"blocks: {len(protocols) * 5} of 25\n")
+    print("top 10 by confirmation rank:")
+    print(cmp.head(10)[["variant", "rank_screening", "rank_confirmation",
+                        "movement"]].round(3).to_string(index=False))
+    print("\nencoding aggregation (mean rank over the 27-way ranking):")
+    print(enc.round(4).to_string())
+    print("\nBias direction committed in advance: CIC-IDS2017 carries the "
+          "largest\nlatency-over-rate margin of the five, so its absence pulls "
+          "latency down here.")
+    print(f"\nwrote {out_dir}  (not read by finalize.py)")
+    return 0
+
+
+def encoding_aggregation(raw: pd.DataFrame, protocols) -> pd.DataFrame:
+    """Mean rank collapsed by encoding, over the blocks actually present.
+
+    Ranks are formed over all 27 configurations first and then averaged within
+    an encoding, so this is a summary of the same ranking rather than a separate
+    9-way contest.
+    """
+    sub = raw[raw.protocol.isin(protocols)]
+    wide = sub.pivot_table(index=["protocol", "seed"], columns="variant",
+                           values="f1").dropna()
+    mr = mean_ranks(wide)
+    enc = pd.Series({v: v.split("/")[1] for v in mr.index})
+    out = (pd.DataFrame({"mean_rank": mr, "encoding": enc})
+           .groupby("encoding").mean_rank.agg(["mean", "min", "count"])
+           .rename(columns={"mean": "mean_rank_over_family",
+                            "min": "best_configuration_rank",
+                            "count": "n_configurations"})
+           .sort_values("mean_rank_over_family"))
+    return out
+
+
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--rehearsal", action="store_true",
+                    help="PARTIAL_4PROTOCOL_REHEARSAL: exercise the pipeline on "
+                         "the protocols complete so far. Writes to a separate "
+                         "directory, emits no figure, and computes NO tau --- "
+                         "tau is registered at 25 blocks and a value on fewer "
+                         "protocols has no registered status. See "
+                         "PARTIAL_4PROTOCOL_PREDICTION.md.")
+    args = ap.parse_args()
+
     scr = screening_ranks()
     conf, protocols, raw = confirmation_ranks()
+    out_dir = ROOT / ("results/analysis/protocol_shift_partial4" if args.rehearsal
+                      else "results/analysis/protocol_shift")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if args.rehearsal:
+        return rehearsal(scr, conf, protocols, raw, out_dir)
     OUT.mkdir(parents=True, exist_ok=True)
 
     if conf.empty:
