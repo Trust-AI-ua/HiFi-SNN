@@ -1,31 +1,40 @@
 #!/usr/bin/env python3
-"""Projected completion, and the C2 fallback rule evaluated mechanically.
+"""Projected completion of the run program. Projection only --- no recommendation.
 
-The fallback exists so that a schedule decision cannot be contaminated by
-results. It is written down and computable *before* C2 starts, so if the
-schedule deteriorates the amendment is applied because the clock said so, not
-because of whichever C2 cells happened to finish first.
+The C2 fallback rule that used to live here has been **retired**. It read:
 
-    Rule (frozen 2026-08-12, before C2 began)
-    -----------------------------------------
-    IF projected completion is later than 2026-08-14 04:00,
-    OR the program has accumulated more than FAILURE_BUDGET failed jobs,
-    THEN reduce C2 to 3 seeds across BOTH CTU-13 folds — never 5 seeds on one.
+    IF projected completion is later than 2026-08-14 04:00
+    OR more than 5 jobs have failed
+    THEN reduce C2 to 3 seeds across both CTU-13 folds.
 
-Two folds beat five seeds because CTU-13's fold-to-fold difficulty dominates its
-seed-to-seed variation: the scenario-disjoint folds span roughly 77 to 100
-macro-F1 while seeds move results by a fraction of that. A 3-seed, 2-fold design
-still asks whether the latency-family ranking survives two very different
-scenario conditions; a 5-seed single-fold design would make the confirmation
-look fold-specific, which is the criticism the CTU-13 work exists to answer.
+It is retired for three independent reasons, any one of which is sufficient:
 
-    python scripts/eta.py            # project and evaluate the rule
-    python scripts/eta.py --apply    # apply the amendment if the rule fires
+  1. **The decision it recommends has already been made differently.** C2 ran to
+     completion at the full 5 seeds x 2 folds (80 jobs, 0 failures) and no
+     amendment was ever written. There is nothing left to reduce.
+  2. **Its cutoff no longer exists.** The submission deadline moved to
+     2026-08-22. A rule evaluated against 2026-08-14 04:00 fires unconditionally
+     from here on and means nothing when it does.
+  3. **Its action was unsafe by the time it was reachable.** `--apply` rewrote
+     the seed list inside `scripts/run_program.py`, which the confirmation sweep
+     is currently executing. Applying it would have edited a running program.
+
+The projection arithmetic is kept because it is still useful. The trigger, the
+`--apply` path, and the amendment writer are gone: a machine-readable
+"re-run with --apply to reduce C2 to 3 seeds" is a loaded instruction, and the
+only thing standing between it and a tired hand at 3am was the discipline to
+re-derive why it was printed.
+
+Retired 2026-08-15. History is in git; nothing here needs to be resurrected.
+
+    python scripts/eta.py            # project completion
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import math
+from collections import defaultdict
 import re
 import sys
 from pathlib import Path
@@ -36,122 +45,157 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from run_program import PROGRAM, cost_h, jobs_for  # noqa: E402
 
-DEADLINE = dt.datetime(2026, 8, 14, 4, 0)
-FAILURE_BUDGET = 5
-FALLBACK_SEEDS = [42, 43, 44]
+#: Retired 2026-08-14 04:00 cutoff, kept only so the docstring above is
+#: checkable against a value rather than a memory. Never compared to.
+RETIRED_DEADLINE = dt.datetime(2026, 8, 14, 4, 0)
+RULE_RETIRED_ON = "2026-08-15"
+
+#: Every completed job logs its own wall time, so the projection is built from
+#: measured runtimes rather than from `cost_h`'s a-priori table. That table
+#: underestimates by 1.76x overall and by as much as 2.9x on individual phases,
+#: which is enough to move a finish estimate by most of a day.
+JOB_LINE = re.compile(
+    r"^\[(\w+) \d+/\d+\] (ok|FAIL)\s+(\S+)/(\S+)/(\S+)/s(\d+) \(([\d.]+)m\)")
 
 LOG = ROOT / "results/runs/program.log"
-STDOUT = ROOT / "results/runs/program_stdout.log"
-AMENDMENT = ROOT / "results/runs/C2_AMENDMENT.md"
+#: One stdout log per program invocation. All are read: the B/C tiers and the
+#: E2 confirmation sweep are separate invocations, and a projection that sees
+#: only one of them reports a throughput that is wrong by the ratio between
+#: them. (It did, until 2026-08-15: the phase regex matched ^[BC]\d and so
+#: counted every finished E2 run as outstanding.)
+STDOUTS = ["results/runs/program_stdout.log", "results/runs/e2_stdout.log"]
+PHASE_LINE = re.compile(r"^\[([A-Z]\d[a-z]?) ")
 
 
 def measure() -> dict:
-    starts = [l for l in LOG.read_text().splitlines() if "program start" in l]
+    """Project completion from measured job runtimes.
+
+    Cost is modelled as (neuron factor) x (protocol factor): a neuron's relative
+    expense is stable across protocols and a protocol's across neurons, so an
+    unstarted phase on an already-seen protocol can be priced from data instead
+    of from a guess.
+
+    Throughput is measured over the active invocation only --- jobs logged after
+    the most recent `program start`. Averaging from the first start would fold
+    in the idle hours between invocations (there were ~24 between the B/C tiers
+    and E2) and understate the rate by exactly the idle fraction.
+    """
+    jobs, starts, since_last = [], [], []
+    for l in LOG.read_text().splitlines():
+        if "program start" in l:
+            starts.append(dt.datetime.strptime(
+                re.search(r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)", l).group(1),
+                "%Y-%m-%d %H:%M:%S"))
+            since_last = []
+            continue
+        m = JOB_LINE.match(l)
+        if m:
+            j = {"phase": m.group(1), "ok": m.group(2) == "ok",
+                 "protocol": m.group(3), "neuron": m.group(4),
+                 "encoding": m.group(5), "seed": int(m.group(6)),
+                 "h": float(m.group(7)) / 60}
+            jobs.append(j)
+            since_last.append(j)
     if not starts:
         raise SystemExit("no program start recorded yet")
-    t0 = dt.datetime.strptime(
-        re.search(r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)", starts[-1]).group(1),
-        "%Y-%m-%d %H:%M:%S")
+    if not jobs:
+        raise SystemExit("no completed jobs logged yet")
+
+    done = {(j["protocol"], j["neuron"], j["encoding"], j["seed"]) for j in jobs}
+
+    # Cost model: log h ~ mu + a[neuron] + b[protocol], fitted by alternating
+    # means. A plain marginal-mean model would be confounded here, because the
+    # design is badly unbalanced: CIC-IDS2017 has only ever run with
+    # LeakyParallel, and the eight expensive neurons have only ever run on the
+    # light protocols. Marginals would then charge CIC the average neuron and
+    # the heavy neurons the average protocol, and the two errors do not cancel
+    # --- it priced the remaining CIC sweep at half its likely cost. Alternating
+    # means recover both factors as long as the observed cells connect the
+    # levels, which LeakyParallel does by spanning both protocol groups.
+    logs = [(j["neuron"], j["protocol"], math.log(max(j["h"], 1e-6)))
+            for j in jobs]
+    mu = sum(v for _, _, v in logs) / len(logs)
+    a, b = defaultdict(float), defaultdict(float)
+    for _ in range(200):
+        for key, tgt, other, idx in ((0, a, b, 1), (1, b, a, 0)):
+            acc = defaultdict(list)
+            for n_p in logs:
+                lvl = n_p[key]
+                acc[lvl].append(n_p[2] - mu - other[n_p[idx]])
+            for lvl, vs in acc.items():
+                tgt[lvl] = sum(vs) / len(vs)
+
+    def price(protocol, neuron):
+        """Expected wall hours for one job, from the fitted model."""
+        return math.exp(mu + a[neuron] + b[protocol])
+
+    remaining, per_phase = 0.0, defaultdict(float)
+    for phase in PROGRAM:
+        for _ph, protocol, neuron, encoding, seed, _rp in jobs_for(phase):
+            if (protocol, neuron, encoding, seed) in done:
+                continue
+            c = price(protocol, neuron)
+            remaining += c
+            per_phase[phase] += c
+
     now = dt.datetime.now()
-    elapsed = (now - t0).total_seconds() / 3600
-
-    lines = [l for l in STDOUT.read_text().splitlines() if re.match(r"^\[[BC]\d ", l)]
-    retired, failures = 0.0, 0
-    for l in lines:
-        m = re.search(r"(ok  |FAIL) (\S+)/(\S+)/(\S+)/s(\d+)", l)
-        if not m:
-            continue
-        retired += cost_h(m.group(2), m.group(3))
-        failures += m.group(1) == "FAIL"
-
-    total = {p: sum(cost_h(j[1], j[2]) for j in jobs_for(p)) for p in PROGRAM}
-    rate = retired / elapsed if elapsed > 0 else 0.0
-    remaining = sum(total.values()) - retired
+    t_active = max(starts)
+    active_h = (now - t_active).total_seconds() / 3600
+    rate = (sum(j["h"] for j in since_last) / active_h) if active_h > 0 else 0.0
     eta_h = remaining / rate if rate > 0 else float("inf")
-    finish = now + dt.timedelta(hours=eta_h)
-    c2_start = now + dt.timedelta(hours=(remaining - total["C2"]) / rate) if rate else None
     return {
-        "t0": t0, "now": now, "elapsed_h": elapsed, "jobs_done": len(lines),
-        "failures": failures, "retired_h": retired, "rate": rate,
-        "remaining_h": remaining, "eta_h": eta_h, "finish": finish,
-        "c2_start": c2_start, "c2_cost": total["C2"], "total": total,
+        "t0": min(starts), "t_active": t_active, "now": now,
+        "elapsed_h": (now - min(starts)).total_seconds() / 3600,
+        "active_h": active_h, "jobs_done": len(jobs),
+        "active_jobs": len(since_last),
+        "failures": sum(not j["ok"] for j in jobs),
+        "retired_h": sum(j["h"] for j in jobs), "rate": rate,
+        "remaining_h": remaining, "per_phase": dict(per_phase),
+        "eta_h": eta_h, "finish": now + dt.timedelta(hours=eta_h),
+        "neuron_h": {k: math.exp(mu + v) for k, v in a.items()},
+        "protocol_h": {k: math.exp(mu + v) for k, v in b.items()},
     }
-
-
-def apply_amendment(m: dict, reason: str) -> None:
-    """Rewrite the C2 seed list in the program and record why, with a timestamp."""
-    p = ROOT / "scripts/run_program.py"
-    s = p.read_text()
-    if "C2_SEEDS" not in s:
-        s = s.replace(
-            'SEEDS = [42, 43, 44, 45, 46]',
-            'SEEDS = [42, 43, 44, 45, 46]\n'
-            '#: C2 may be reduced by the frozen deadline rule in scripts/eta.py.\n'
-            'C2_SEEDS = SEEDS')
-        s = s.replace(
-            '                for seed in SEEDS:',
-            '                seeds = C2_SEEDS if phase == "C2" else SEEDS\n'
-            '                for seed in seeds:')
-    s = re.sub(r"^C2_SEEDS = .*$", f"C2_SEEDS = {FALLBACK_SEEDS}", s,
-               flags=re.MULTILINE)
-    p.write_text(s)
-    AMENDMENT.write_text(
-        f"""# C2 amendment — deadline-driven, {m['now']:%Y-%m-%d %H:%M}
-
-Tier C2 reduced from 5 seeds to {len(FALLBACK_SEEDS)} ({FALLBACK_SEEDS}) across
-**both** CTU-13 folds, per the rule frozen in `scripts/eta.py` before C2 began.
-
-**Trigger:** {reason}
-
-Measured at amendment time:
-- elapsed {m['elapsed_h']:.2f} h, {m['jobs_done']} jobs done, {m['failures']} failed
-- throughput {m['rate']:.2f} GPU-h per wall-hour
-- projected finish {m['finish']:%Y-%m-%d %H:%M} against a {DEADLINE:%Y-%m-%d %H:%M} cutoff
-
-This is a computational amendment, not a result-driven one. No C2 result
-influenced it; the rule and its threshold were fixed in advance and evaluated
-against the clock. Both folds are retained because CTU-13's fold-to-fold
-difficulty dominates its seed-to-seed variation.
-""")
-    print(f"AMENDMENT APPLIED — C2 seeds now {FALLBACK_SEEDS}. Recorded in {AMENDMENT}")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true",
-                    help="apply the C2 amendment if the rule fires")
+                    help=argparse.SUPPRESS)   # retired; hard-fails, see below
     args = ap.parse_args()
+
+    if args.apply:
+        print("REFUSED: the C2 fallback rule was retired on "
+              f"{RULE_RETIRED_ON}.\n"
+              "  C2 already completed at 5 seeds x 2 CTU-13 folds (80 jobs, 0 "
+              "failures);\n"
+              "  there is nothing to reduce, the 14 Aug cutoff it tested no "
+              "longer exists\n"
+              "  (deadline is 22 Aug), and applying it would rewrite the seed "
+              "list inside\n"
+              "  scripts/run_program.py while the confirmation sweep is "
+              "executing it.\n"
+              "  If a schedule cut is genuinely needed, decide it deliberately "
+              "and write\n"
+              "  the amendment by hand. Do not let a retired rule make it.",
+              file=sys.stderr)
+        return 2
+
     m = measure()
-
-    print(f"start            {m['t0']:%a %d %b %H:%M}")
-    print(f"elapsed          {m['elapsed_h']:.2f} h   ({m['jobs_done']} jobs, "
-          f"{m['failures']} failed)")
+    print(f"first start      {m['t0']:%a %d %b %H:%M}")
+    print(f"active since     {m['t_active']:%a %d %b %H:%M}   "
+          f"({m['active_h']:.1f} h)")
+    print(f"jobs done        {m['jobs_done']}  ({m['active_jobs']} this "
+          f"invocation, {m['failures']} failed)")
+    print(f"consumed         {m['retired_h']:.1f} GPU-h measured")
     print(f"throughput       {m['rate']:.2f} GPU-h per wall-hour")
-    print(f"remaining        {m['remaining_h']:.1f} GPU-h")
+    print(f"remaining        {m['remaining_h']:.1f} GPU-h projected")
+    for ph, h in sorted(m["per_phase"].items()):
+        print(f"  {ph:5s}         {h:6.1f} GPU-h")
     print(f"projected finish {m['finish']:%a %d %b %H:%M}")
-    if m["c2_start"]:
-        print(f"C2 starts        {m['c2_start']:%a %d %b %H:%M}  "
-              f"({m['c2_cost']:.1f} GPU-h)")
-    print(f"cutoff           {DEADLINE:%a %d %b %H:%M}")
-
-    reasons = []
-    if m["finish"] > DEADLINE:
-        reasons.append(f"projected finish {m['finish']:%d %b %H:%M} is after the "
-                       f"{DEADLINE:%d %b %H:%M} cutoff")
-    if m["failures"] > FAILURE_BUDGET:
-        reasons.append(f"{m['failures']} failed jobs exceeds the budget of "
-                       f"{FAILURE_BUDGET}")
-
-    if reasons:
-        print(f"\nRULE FIRES: {'; '.join(reasons)}")
-        if args.apply:
-            apply_amendment(m, "; ".join(reasons))
-        else:
-            print("re-run with --apply to reduce C2 to 3 seeds across both folds")
-        return 1
-    margin = (DEADLINE - m["finish"]).total_seconds() / 3600
-    print(f"\nrule does not fire — {margin:.1f} h of margin. C2 stays at 5 seeds "
-          "x 2 folds.")
+    print("\nCosts are modelled from measured runtimes, not from cost_h's table.")
+    print("Projection only. The C2 fallback rule was retired on "
+          f"{RULE_RETIRED_ON}; this script\nrecommends nothing and changes "
+          "nothing.")
     return 0
 
 

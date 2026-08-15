@@ -24,6 +24,13 @@ OUT = ROOT / "paper/sec_frozen_numbers.tex"
 
 
 def main() -> int:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", type=Path, default=OUT,
+                    help="write elsewhere; used by check_macros.py to verify "
+                         "that the committed file is what this script produces")
+    ap.add_argument("--quiet", action="store_true")
+    _args = ap.parse_args()
     L = []          # (macro, value, comment)
 
     # ---- 1. screening ----
@@ -390,7 +397,7 @@ def main() -> int:
     body = "\n".join(
         f"\\newcommand{{\\FN{m}}}{{{v}}}%".ljust(56) + f" % {c}"
         for m, v, c in L)
-    OUT.write_text(f"""% =====================================================================
+    _args.out.write_text(f"""% =====================================================================
 % sec_frozen_numbers.tex — GENERATED, DO NOT EDIT BY HAND.
 %
 % Regenerate with:
@@ -407,7 +414,8 @@ def main() -> int:
 
 {body}
 """)
-    print(f"wrote {OUT}  ({len(L)} macros)")
+    if not _args.quiet:
+        print(f"wrote {_args.out}  ({len(L)} macros)")
     return 0
 
 

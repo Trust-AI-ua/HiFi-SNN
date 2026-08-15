@@ -17,6 +17,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
+import tempfile
 import sys
 import time
 from pathlib import Path
@@ -25,6 +27,63 @@ ROOT = Path(__file__).resolve().parents[1]
 PAPER = ROOT / "paper"
 ANALYSIS = ROOT / "results/analysis"
 DEFS = PAPER / "sec_frozen_numbers.tex"
+
+
+
+def check_regeneration_is_live() -> list[str]:
+    """Refuse to pass if the frozen-numbers regeneration path is broken or stale.
+
+    The manuscript's guarantee is that every number comes from a committed
+    artifact. That guarantee is enforced by `make_frozen_numbers.py`, and on
+    2026-08-14 it stopped working: a column was renamed, the script raised, and
+    `finalize.py` faithfully recorded `FAILED` in a manifest nobody read. For a
+    day the guarantee was not in force and nothing said so. Nothing had drifted,
+    but only by luck.
+
+    The failure class is *a guard reporting its own breakage into a channel with
+    no reader*, so the fix is to make the breakage block rather than log. Two
+    checks:
+
+      1. The manifest's most recent entry for the step is not FAILED.
+      2. Regenerating right now reproduces `sec_frozen_numbers.tex` byte for
+         byte. This is direct verification rather than a staleness proxy: it
+         catches a broken generator, a stale committed file, and a hand edit,
+         and it cannot be fooled by an mtime that a checkout rewrote.
+    """
+    problems = []
+
+    manifest = ANALYSIS / "FINAL_MANIFEST.md"
+    if manifest.exists():
+        for line in manifest.read_text().splitlines():
+            if "frozen manuscript numbers" in line and line.strip().startswith("- FAILED"):
+                problems.append(
+                    f"{manifest.name} records the frozen-numbers step as FAILED. "
+                    "The manuscript's numbers are not currently guaranteed to "
+                    "come from the artifacts. Run "
+                    "`python scripts/make_frozen_numbers.py` and fix the error "
+                    "it reports before building.")
+
+    gen = ROOT / "scripts/make_frozen_numbers.py"
+    target = PAPER / "sec_frozen_numbers.tex"
+    if gen.exists():
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td) / "regenerated.tex"
+            r = subprocess.run([sys.executable, str(gen), "--out", str(tmp),
+                                "--quiet"], cwd=ROOT, capture_output=True,
+                               text=True)
+            if r.returncode != 0:
+                last = (r.stderr.strip().splitlines() or ["<no stderr>"])[-1]
+                problems.append(
+                    f"make_frozen_numbers.py fails to run ({last}). Every macro "
+                    "in the manuscript is currently unverifiable.")
+            elif not target.exists():
+                problems.append(f"{target.name} does not exist.")
+            elif tmp.read_bytes() != target.read_bytes():
+                problems.append(
+                    f"{target.name} is not what make_frozen_numbers.py produces "
+                    "right now --- it is stale, or it was edited by hand. "
+                    "Re-run `python scripts/make_frozen_numbers.py`.")
+    return problems
 
 
 def main() -> int:
@@ -48,6 +107,16 @@ def main() -> int:
         return 1
     print(f"all {len(used)} macros used in prose are defined "
           f"({len(defined)} defined in total, {len(unused)} unused)")
+
+    # ---- the regeneration path must be live, not merely reported ----
+    stale = check_regeneration_is_live()
+    if stale:
+        print("FROZEN NUMBERS ARE NOT VERIFIED:")
+        for v in stale:
+            print("  -", v)
+        return 1
+    print("frozen numbers verified: regeneration reproduces "
+          "sec_frozen_numbers.tex exactly")
 
     # ---- provenance ----
     entries = {}
