@@ -56,6 +56,42 @@ BANNED = [
      "development scaffolding left in the manuscript"),
 ]
 
+
+#: Orderings that encode an argument rather than a preference.
+#:
+#: Some sequences in the Results are chains: a later finding only means anything
+#: once the earlier ones have removed the alternatives. Reordering them for
+#: concision, which is exactly what a page-fitting pass does, silently destroys
+#: the argument while leaving every sentence individually true. The reason a
+#: given order is required lives in a conversation that will not exist at
+#: submission time, so it is checked here rather than left in a comment that a
+#: hurried edit can step over.
+#:
+#: (file, [anchors in required order], why the order is load-bearing)
+ORDER_LOCKS = [
+    ("sec_results.tex",
+     [r"\emph{Input activity}",
+      r"\emph{Whole-network spike count}",
+      r"\emph{Synaptic operations}"],
+     "the sparsity decomposition is a chain: input activity is the only "
+     "structural saving, whole-network count shows it is diluted, and synaptic "
+     "operations recover it only because of where the spikes occur. The third "
+     "finding is uninterpretable before the first two have removed the "
+     "alternatives"),
+    ("sec_results.tex",
+     ["Matching the gates in both directions",
+      "Distributional shift does not explain it either"],
+     "the fold-1 argument eliminates the amplitude gate first and "
+     "distributional shift second; the closing claim that no mechanism remains "
+     "depends on both exclusions having been stated, in that order"),
+    ("sec_results_v2_draft.tex",
+     ["holds rank one in", "Its mean rank over the family"],
+     "block wins are the primary summary and the mean rank the secondary one, "
+     "because the family means are compressed by a single protocol whose "
+     "leader is neither latency nor rate. Leading with the mean rank leads "
+     "with the weaker statistic"),
+]
+
 #: Dash style. Em dashes are rejected in both spellings so the house style is
 #: uniform and a copy-paste from a draft cannot reintroduce one.
 DASHES = [("---", "LaTeX em dash; use a comma, colon, or parentheses"),
@@ -92,6 +128,32 @@ ALLOWED_LITERAL = re.compile(
 
 #: Sections where every experimental number must come from a macro.
 STRICT_FILES = {"sec_abstract.tex", "sec_results.tex", "sec_conclusion.tex"}
+
+
+def _check_order_locks(paper: Path) -> list[str]:
+    """Verify that argument-bearing sequences still appear in the required order."""
+    out = []
+    for fname, anchors, why in ORDER_LOCKS:
+        f = paper / fname
+        if not f.exists():
+            continue
+        text = f.read_text()
+        pos = []
+        for a in anchors:
+            # Literal search: these anchors are LaTeX, and escaping them as
+            # regexes is how this check broke the first time it was written.
+            i = text.find(a)
+            if i < 0:
+                out.append(f"{fname}: anchor {a!r} has gone missing, so the "
+                           f"required ordering can no longer be verified. {why}")
+                pos = None
+                break
+            pos.append((i, a))
+        if pos and pos != sorted(pos):
+            order = " then ".join(a for _, a in sorted(pos))
+            out.append(f"{fname}: reordered to {order}. Required order is "
+                       + " then ".join(anchors) + f". {why}")
+    return out
 
 
 def main() -> int:
@@ -148,11 +210,14 @@ def main() -> int:
                 f"{path.name}:~{line}  LITERAL RESULT {val!r} — experimental "
                 "numbers in this section must come from a \\FN* macro")
 
+    problems += [f"ORDER LOCK  {v}" for v in _check_order_locks(PAPER)]
+
     if problems:
         print(f"{len(problems)} wording problem(s):\n")
         for p in problems:
             print("  " + p)
         return 1
+    print(f"order locks: {len(ORDER_LOCKS)} argument-bearing sequences intact")
     print(f"wording clean across {len(files)} tex files: no banned phrasing, "
           "no hard-coded frozen number")
     return 0

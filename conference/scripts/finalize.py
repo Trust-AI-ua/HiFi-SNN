@@ -57,6 +57,8 @@ STEPS = [
      ["scripts/protocol_level.py"]),
     (2, "protocol shift: Kendall tau, screening vs confirmation",
      ["scripts/protocol_shift.py"]),
+    (2, "audit: latency's exception blocks against the timing isolation",
+     ["scripts/exception_audit.py"]),
     (3, "mechanism — early readout, T95/T99, spike saving",
      ["scripts/early_readout.py"]),
     (3, "mechanism — spike decomposition and SOPs",
