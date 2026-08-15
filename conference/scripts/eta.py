@@ -57,6 +57,19 @@ RULE_RETIRED_ON = "2026-08-15"
 JOB_LINE = re.compile(
     r"^\[(\w+) \d+/\d+\] (ok|FAIL)\s+(\S+)/(\S+)/(\S+)/s(\d+) \(([\d.]+)m\)")
 
+#: Failures that were diagnosed, fixed and re-run. They stay in the log because
+#: the log is the record, but a bare count of them is a trap: whoever reads this
+#: output during final reconciliation should not have to re-derive that the
+#: failures predate the fix. Anything NOT matching an entry here is printed in
+#: full, so this annotates known history without hiding anything new.
+RESOLVED_FAILURES = [
+    {"phase": "B1", "variant": "LeakyParallel/rate", "protocol": "nslkdd_v2",
+     "count": 5, "on": "2026-08-12",
+     "why": "two-pass evaluation drew fresh Bernoulli samples on the "
+            "stochastic rate encoding; replaced by the single-pass "
+            "authoritative _eval_prefix and re-run successfully"},
+]
+
 LOG = ROOT / "results/runs/program.log"
 #: One stdout log per program invocation. All are read: the B/C tiers and the
 #: E2 confirmation sweep are separate invocations, and a projection that sees
@@ -91,6 +104,7 @@ def measure() -> dict:
         m = JOB_LINE.match(l)
         if m:
             j = {"phase": m.group(1), "ok": m.group(2) == "ok",
+                 "invocation": len(starts),
                  "protocol": m.group(3), "neuron": m.group(4),
                  "encoding": m.group(5), "seed": int(m.group(6)),
                  "h": float(m.group(7)) / 60}
@@ -147,6 +161,29 @@ def measure() -> dict:
     # error is invisible in the marginals and obvious in the occupancy pattern
     # --- every one of the three would have been caught by looking at which
     # cells are empty before taking the mean.
+    #
+    # Second clause, learned on 2026-08-15 when CIC-IDS2017 first ran with a
+    # family other than LeakyParallel. The occupancy pattern tells you which
+    # combinations you have no information about. It does not tell you whether
+    # the model interpolating across them has the right *shape*. Additivity in
+    # logs was the assumption sitting underneath the fix above, and it is
+    # wrong here: CIC's cost multiplier grows with the neuron's own cost
+    # (3.57x for LeakyParallel, 4.33x Lapicque, 4.59x Alpha), so there is a
+    # positive interaction the model cannot express.
+    #
+    # Both failures compounded in the same direction, which is the part worth
+    # remembering. The one cell identifying the CIC column was LeakyParallel:
+    # simultaneously the cheapest family and the one with the *smallest* CIC
+    # penalty. So the fitted multiplier was the minimum of the nine rather than
+    # a typical one, and the E2e estimate came out at roughly half its true
+    # cost. The unobserved cells were not missing at random with respect to the
+    # quantity being estimated --- the same structure as the marginal-means
+    # error, one level further down.
+    #
+    # Not fixed by fitting an interaction: there are three CIC-observed
+    # families and one of them is the atypical LeakyParallel, so a slope would
+    # rest on two informative points. The working number is CIC ~ 4.45 x the
+    # light-protocol cost, and results are reported against actuals.
     cells = defaultdict(int)
     for j in jobs:
         cells[(j["neuron"], j["protocol"])] += 1
@@ -171,6 +208,8 @@ def measure() -> dict:
         "active_h": active_h, "jobs_done": len(jobs),
         "active_jobs": len(since_last),
         "failures": sum(not j["ok"] for j in jobs),
+        "failed_jobs": [j for j in jobs if not j["ok"]],
+        "active_failures": sum(not j["ok"] for j in since_last),
         "retired_h": sum(j["h"] for j in jobs), "rate": rate,
         "remaining_h": remaining, "per_phase": dict(per_phase),
         "eta_h": eta_h, "finish": now + dt.timedelta(hours=eta_h),
@@ -178,6 +217,34 @@ def measure() -> dict:
         "neuron_h": {k: math.exp(mu + v) for k, v in a.items()},
         "protocol_h": {k: math.exp(mu + v) for k, v in b.items()},
     }
+
+
+def annotate_failures(failed) -> list[str]:
+    """Explain known-and-resolved failures; surface anything unrecognised.
+
+    A raw failure count in a status line is a trap during reconciliation: it
+    looks like an open problem and costs whoever reads it a trip through the
+    log to establish that it is not. Resolved incidents are named with their
+    cause and their fix. Anything that does not match one is printed in full
+    rather than folded into a total.
+    """
+    out, unexplained = [], list(failed)
+    for inc in RESOLVED_FAILURES:
+        hit = [j for j in unexplained
+               if j["phase"] == inc["phase"]
+               and j["protocol"] == inc["protocol"]
+               and f"{j['neuron']}/{j['encoding']}" == inc["variant"]]
+        if not hit:
+            continue
+        for j in hit:
+            unexplained.remove(j)
+        out.append(f"{len(hit)} x {inc['phase']} {inc['protocol']}/"
+                   f"{inc['variant']} ({inc['on']}, RESOLVED): {inc['why']}")
+    for j in unexplained:
+        out.append(f"UNEXPLAINED: {j['phase']} {j['protocol']}/{j['neuron']}/"
+                   f"{j['encoding']}/s{j['seed']} --- not a known incident, "
+                   "investigate before relying on any table that includes it")
+    return out
 
 
 def main() -> int:
@@ -230,7 +297,11 @@ def main() -> int:
     print(f"active since     {m['t_active']:%a %d %b %H:%M}   "
           f"({m['active_h']:.1f} h)")
     print(f"jobs done        {m['jobs_done']}  ({m['active_jobs']} this "
-          f"invocation, {m['failures']} failed)")
+          f"invocation)")
+    print(f"failures         {m['failures']} total, "
+          f"{m['active_failures']} in the active invocation")
+    for line in annotate_failures(m["failed_jobs"]):
+        print(f"  {line}")
     print(f"consumed         {m['retired_h']:.1f} GPU-h measured")
     print(f"throughput       {m['rate']:.2f} GPU-h per wall-hour")
     print(f"remaining        {m['remaining_h']:.1f} GPU-h projected")
