@@ -129,6 +129,28 @@ def measure() -> dict:
         """Expected wall hours for one job, from the fitted model."""
         return math.exp(mu + a[neuron] + b[protocol])
 
+    # Print the cell counts before averaging over anything. This is a habit,
+    # not a check --- there is no threshold it fails at --- and it is here
+    # because the same mistake has now been made three times in this project in
+    # three different costumes:
+    #
+    #   * a 145 GPU-h estimate for E2, extrapolated from LeakyParallel without
+    #     asking whether LeakyParallel was representative (it is the cheapest
+    #     of the nine families);
+    #   * an 88 GPU-h estimate for the remaining CIC sweep, from marginal means
+    #     on a design where CIC had only ever run with LeakyParallel;
+    #   * a 55-67% figure for the input share of SOPs, from a readout fanout
+    #     averaged over datasets with different class counts.
+    #
+    # The invariant: do not average over a factor whose levels are not balanced
+    # across the factor you are averaging within. The useful part is that the
+    # error is invisible in the marginals and obvious in the occupancy pattern
+    # --- every one of the three would have been caught by looking at which
+    # cells are empty before taking the mean.
+    cells = defaultdict(int)
+    for j in jobs:
+        cells[(j["neuron"], j["protocol"])] += 1
+
     remaining, per_phase = 0.0, defaultdict(float)
     for phase in PROGRAM:
         for _ph, protocol, neuron, encoding, seed, _rp in jobs_for(phase):
@@ -152,6 +174,7 @@ def measure() -> dict:
         "retired_h": sum(j["h"] for j in jobs), "rate": rate,
         "remaining_h": remaining, "per_phase": dict(per_phase),
         "eta_h": eta_h, "finish": now + dt.timedelta(hours=eta_h),
+        "cells": dict(cells),
         "neuron_h": {k: math.exp(mu + v) for k, v in a.items()},
         "protocol_h": {k: math.exp(mu + v) for k, v in b.items()},
     }
@@ -159,6 +182,9 @@ def measure() -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--cells", action="store_true",
+                    help="print the neuron x protocol occupancy crosstab the "
+                         "cost model is fitted on, and exit")
     ap.add_argument("--apply", action="store_true",
                     help=argparse.SUPPRESS)   # retired; hard-fails, see below
     args = ap.parse_args()
@@ -181,6 +207,25 @@ def main() -> int:
         return 2
 
     m = measure()
+
+    if args.cells:
+        neurons = sorted({n for n, _ in m["cells"]})
+        protos = sorted({p for _, p in m["cells"]})
+        w = max(len(n) for n in neurons)
+        print(f"{'':{w}}  " + "  ".join(f"{p[:11]:>11s}" for p in protos))
+        for n in neurons:
+            row = [m["cells"].get((n, p), 0) for p in protos]
+            print(f"{n:{w}s}  " + "  ".join(
+                f"{'.':>11s}" if c == 0 else f"{c:>11d}" for c in row))
+        empty = sum(1 for n in neurons for p in protos
+                    if (n, p) not in m["cells"])
+        print(f"\n{len(neurons)*len(protos) - empty} of "
+              f"{len(neurons)*len(protos)} cells observed, {empty} empty.")
+        print("Marginal means over an unbalanced design like this one are "
+              "confounded:\nthe cost model is fitted as "
+              "log h ~ mu + a[neuron] + b[protocol] instead.")
+        return 0
+
     print(f"first start      {m['t0']:%a %d %b %H:%M}")
     print(f"active since     {m['t_active']:%a %d %b %H:%M}   "
           f"({m['active_h']:.1f} h)")
