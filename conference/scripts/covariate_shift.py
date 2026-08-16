@@ -89,6 +89,13 @@ def shift_for(protocol: str, rng) -> dict:
 
     per = pd.DataFrame({"protocol": protocol, "feature": np.arange(d),
                         "ks": ks, "wasserstein": wd, "occupancy_shift": occ})
+    # Concentration. Two protocols can carry the same total shift with very
+    # different structure: a few features moving a lot, or many moving a little.
+    # A timing code maps magnitude to spike time per feature, so the two are not
+    # equivalent for it, and the aggregate statistics above cannot tell them
+    # apart.
+    top5 = float(np.sort(wd)[::-1][:5].sum() / wd.sum()) if wd.sum() else 0.0
+    n_big = int((wd > 0.1).sum())
     return {
         "protocol": protocol, "d": d,
         "ks_median": float(np.median(ks)), "ks_mean": float(ks.mean()),
@@ -100,6 +107,8 @@ def shift_for(protocol: str, rng) -> dict:
         # If continuous magnitudes move more than threshold occupancy does, a
         # magnitude-discarding code sees less of the shift. Ratio > 1 is the
         # pattern the hypothesis predicts.
+        "w_top5_share_pct": 100.0 * top5,
+        "n_features_w_gt_0p1": n_big,
         "w_over_occ_p90": float(np.percentile(wd, 90) /
                                 max(np.percentile(occ, 90), 1e-9)),
     }, per

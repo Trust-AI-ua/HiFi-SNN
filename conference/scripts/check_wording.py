@@ -37,7 +37,7 @@ BANNED = [
     (r"leakage[- ]free",
      "we removed specific leakage modes; absence of all leakage is not proven"),
     (r"generali[sz]es to unseen attacks",
-     "unseen-type DR falls to 0.25-0.38 for every configuration"),
+     "unseen-type DR falls to 0.26-0.43 across all 27 configurations"),
     (r"operationally low (FAR|false[- ]alarm)",
      "a validation-calibrated 1% FAR reaches 48% on CTU-13 fold 1"),
     (r"\bchampion\b",

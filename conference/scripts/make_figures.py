@@ -290,6 +290,117 @@ def fig_pareto() -> str:
             f"N NSL-KDD, K KDDCup99, C CIC-IDS2017, T0/T1 CTU-13 folds.")
 
 
+# ------------------------------------------------------------------ 5. timing
+def fig_timing() -> str:
+    """The value of spike timing alone, at matched input activity.
+
+    The paper's strongest single result and, until now, the only major one
+    without a figure. Horizontal bars because the protocol names are long and
+    the quantity is signed: a diverging layout about zero shows at a glance that
+    this is not an effect with a direction.
+    """
+    d = pd.read_csv(A / "e1_timing_isolation.csv", index_col=0)
+    d = d.reindex([p for p in ORDER if p in d.index])
+    d = d.sort_values("timing_premium_pp")            # ascending: best on top
+
+    fig, ax = plt.subplots(figsize=(COL_W, 2.5), layout="constrained")
+    y = np.arange(len(d))
+    pos = d.timing_premium_pp > 0
+    ax.barh(y, d.timing_premium_pp,
+            color=[ENC["latency"]["c"] if v else ENC["delta"]["c"]
+                   for v in pos],
+            height=0.62, zorder=3, edgecolor="white", linewidth=0.5)
+    ax.axvline(0, color="#444444", lw=0.8, zorder=4)
+
+    for i, (proto, r) in enumerate(d.iterrows()):
+        v = r.timing_premium_pp
+        # Annotate with the two macro-F1 values the difference is taken between,
+        # so the bar cannot be read without its operands.
+        txt = f"{r.f1_timing:.3f} / {r.f1_notiming:.3f}"
+        off, ha = (1.6, "left") if v > 0 else (-1.6, "right")
+        ax.text(v + off, i, txt, va="center", ha=ha, fontsize=6.0,
+                color="#333333")
+
+    ax.set_yticks(y)
+    ax.set_yticklabels([PROTO_LABEL[p] for p in d.index], fontsize=7)
+    ax.set_xlabel("value of spike timing (pp macro-F1)")
+    # Asymmetric padding: the annotations run outward from the bar end, so the
+    # negative side needs room for a label AND must not reach the tick labels.
+    lo, hi = d.timing_premium_pp.min(), d.timing_premium_pp.max()
+    rng = hi - lo
+    ax.set_xlim(lo - 0.60 * rng, hi + 0.30 * rng)
+    ax.grid(axis="y", visible=False)
+    save(fig, "fig_timing")
+    return (f"\\textbf{{What spike timing is worth, in isolation.}} Each bar is "
+            f"latency coding minus delta coding with both gates set to "
+            f"$\\vartheta=0.01$, a construction under which the two arms emit "
+            f"\\emph{{identical input spike sets}} (maximum difference "
+            f"$\\FNTimingMaxDiff$ spikes per sample) and differ only in whether "
+            f"the spike carries timing information. Annotations give the two "
+            f"macro-F1 values the difference is taken between, with timing "
+            f"first. LeakyParallel, three seeds, five confirmation protocols. "
+            f"The effect spans $\\FNTimingSpread$ percentage points and changes "
+            f"sign, so temporal coding is not a property that helps or hurts in "
+            f"general.")
+
+
+# --------------------------------------------------------- 6. sparsity cascade
+def fig_sparsity_cascade() -> str:
+    """Contraction at the input, dilution in the total, recovery in operations.
+
+    The three ratios are the whole argument of the efficiency subsection and
+    they are hard to compare in a table because they live on different scales.
+    A log axis with a rule at unity makes the contract-then-re-expand shape
+    legible in one look.
+    """
+    e = pd.read_csv(A / "efficiency/summary.csv")
+    e = e[e.neuron == SEL.split("/")[0]]
+    piv = lambda c: e.pivot(index="protocol", columns="encoding", values=c)
+    series = {
+        "input spikes": piv("input_spikes")["rate"] / piv("input_spikes")["latency"],
+        "total spikes": piv("total_spikes")["rate"] / piv("total_spikes")["latency"],
+        "synaptic ops": piv("sops_mean")["rate"] / piv("sops_mean")["latency"],
+    }
+    hue = {"input spikes": "#0072B2", "total spikes": "#999999",
+           "synaptic ops": "#CC79A7"}
+
+    fig, ax = plt.subplots(figsize=(COL_W, 2.45), layout="constrained")
+    protos = [p for p in ORDER if p in series["input spikes"].index]
+    x = np.arange(len(protos))
+    w = 0.26
+    for k, (name, ser) in enumerate(series.items()):
+        ax.bar(x + (k - 1) * w, [ser[p] for p in protos], width=w,
+               label=name, color=hue[name], zorder=3,
+               edgecolor="white", linewidth=0.4)
+    ax.axhline(1.0, color="#444444", lw=0.8, ls="--", zorder=4)
+    ax.text(len(protos) - 0.42, 1.04, "parity", fontsize=6, color="#444444",
+            ha="right", va="bottom")
+    ax.set_yscale("log")
+    ax.set_ylabel("rate / latency")
+    ax.set_xticks(x)
+    ax.set_xticklabels([PROTO_LABEL[p] for p in protos], fontsize=6.4,
+                       rotation=12, ha="right")
+    ax.set_yticks([1, 2, 5, 10, 20])
+    ax.set_yticklabels(["1x", "2x", "5x", "10x", "20x"])
+    ax.legend(ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.16),
+              handlelength=1.1, columnspacing=1.0)
+    ax.grid(axis="x", visible=False)
+    save(fig, "fig_sparsity_cascade")
+    return (f"\\textbf{{Where latency's efficiency advantage is created and where "
+            f"it is lost.}} Ratios of rate to latency on a logarithmic axis, "
+            f"LeakyParallel, five confirmation protocols, five seeds. Input "
+            f"activity separates by $\\FNInpRatioMin\\times$ to "
+            f"$\\FNInpRatioMax\\times$, a separation with a closed form that "
+            f"depends on neither dimensionality nor sparsity. Most of it is then "
+            f"diluted: whole-network spike counts differ by only "
+            f"$\\FNTotRatioMin\\times$ to $\\FNTotRatioMax\\times$. It "
+            f"reappears in synaptic operations "
+            f"($\\FNSopRatioMin\\times$ to $\\FNSopRatioMax\\times$) because "
+            f"latency's reduction falls ahead of the high-fanout input "
+            f"projection. Where spikes occur matters more than how many there "
+            f"are.")
+
+
 def main() -> int:
     matplotlib.rcParams.update(RC)
     print("rendering at IEEE print scale "
@@ -299,9 +410,13 @@ def main() -> int:
         "fig:axes": fig_axes(),
         "fig:readout": fig_readout(),
         "fig:pareto": fig_pareto(),
+        "fig:timing": fig_timing(),
+        "fig:sparsitycascade": fig_sparsity_cascade(),
     }
     widths = {"fig:screening": "\\columnwidth", "fig:axes": "\\textwidth",
-              "fig:readout": "\\textwidth", "fig:pareto": "\\columnwidth"}
+              "fig:readout": "\\textwidth", "fig:pareto": "\\columnwidth",
+              "fig:timing": "\\columnwidth",
+              "fig:sparsitycascade": "\\columnwidth"}
     stars = {"fig:axes": "*", "fig:readout": "*"}
     out = ["% GENERATED by scripts/make_figures.py — do not edit by hand.",
            "% Each caption states the population and block count it draws on,",

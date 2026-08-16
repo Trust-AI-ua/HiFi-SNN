@@ -148,11 +148,17 @@ def main() -> int:
     ku = pd.read_csv(A / "known_unseen/known_unseen.csv")
     kn = ku[ku.regime == "known"].DR_mean
     un = ku[ku.regime == "unseen"].DR_mean
+    _ku_n = (ku.neuron + "/" + ku.encoding).nunique()
     L += [("KnownLo", f"{kn.min():.2f}", "lowest known-type DR"),
           ("KnownHi", f"{kn.max():.2f}", "highest known-type DR"),
           ("UnseenLo", f"{un.min():.2f}", "lowest unseen-type DR"),
           ("UnseenHi", f"{un.max():.2f}", "highest unseen-type DR"),
-          ("UnseenFrac", "29.2", "percent of KDDTest+ attack rows of unseen type")]
+          ("UnseenFrac", "29.2", "percent of KDDTest+ attack rows of unseen type"),
+          # State the population size: this used to be an 11-configuration
+          # cross-shaped subset, and "every configuration" was an overclaim
+          # until E2a completed the NSL-KDD sweep.
+          ("UnseenConfigs", f"{_ku_n}",
+           "configurations entering the known-vs-unseen comparison")]
 
     # Literals the wording guard flagged in prose: each must be a macro so a
     # corrected analysis cannot leave a stale value behind in the text.

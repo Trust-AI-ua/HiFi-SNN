@@ -31,3 +31,17 @@
   \caption{Detection quality against synaptic-operation demand, \texttt{LeakyParallel}, one point per strict protocol and encoding (seed means). Rate encoding requires $7.2\times$ to $13.0\times$ more operations per sample than latency on every protocol, while emitting only $1.7\times$ to $2.5\times$ more spikes in total: the saving comes from where the spikes occur, ahead of the high-fanout input projection, not merely from how many there are. Macro-F1 is the fixed-universe metric, capped at 0.80 on CIC-IDS2017 where U2R has no test support. Point labels give the protocol: N NSL-KDD, K KDDCup99, C CIC-IDS2017, T0/T1 CTU-13 folds.}
   \label{fig:pareto}
 \end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/fig_timing}
+  \caption{\textbf{What spike timing is worth, in isolation.} Each bar is latency coding minus delta coding with both gates set to $\vartheta=0.01$, a construction under which the two arms emit \emph{identical input spike sets} (maximum difference $\FNTimingMaxDiff$ spikes per sample) and differ only in whether the spike carries timing information. Annotations give the two macro-F1 values the difference is taken between, with timing first. LeakyParallel, three seeds, five confirmation protocols. The effect spans $\FNTimingSpread$ percentage points and changes sign, so temporal coding is not a property that helps or hurts in general.}
+  \label{fig:timing}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/fig_sparsitycascade}
+  \caption{\textbf{Where latency's efficiency advantage is created and where it is lost.} Ratios of rate to latency on a logarithmic axis, LeakyParallel, five confirmation protocols, five seeds. Input activity separates by $\FNInpRatioMin\times$ to $\FNInpRatioMax\times$, a separation with a closed form that depends on neither dimensionality nor sparsity. Most of it is then diluted: whole-network spike counts differ by only $\FNTotRatioMin\times$ to $\FNTotRatioMax\times$. It reappears in synaptic operations ($\FNSopRatioMin\times$ to $\FNSopRatioMax\times$) because latency's reduction falls ahead of the high-fanout input projection. Where spikes occur matters more than how many there are.}
+  \label{fig:sparsitycascade}
+\end{figure}
