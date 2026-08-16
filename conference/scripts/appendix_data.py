@@ -72,24 +72,64 @@ def dedup_per_protocol() -> pd.DataFrame:
 
 
 def sparsity_per_protocol() -> pd.DataFrame:
-    """Zero, gate-band and active feature counts, per protocol.
+    """Per-protocol decomposition of active feature mass into three intervals.
 
-    `feature_sparsity.csv` already carries the zero and band counts. What it
-    does not carry is the active count, which is the denominator every ratio in
-    Section IV-C is implicitly taken over, and the band interval is not named in
-    the file so a reader cannot tell which two thresholds it lies between.
+    The active features split at the two gates:
+
+        (0, THETA_LAT]        latency's own gate removes this; neither code
+                              that gates sees it
+        (THETA_LAT, THETA_DELTA]  latency fires here and delta does not. This
+                              is the interval that separates the two codes, and
+                              it is the one the gate-matched ablation exists to
+                              neutralise
+        (THETA_DELTA, 1]      both codes fire
+
+    `feature_sparsity.csv` carries a column named `band_per_sample`, which is
+    the FIRST of these, not the second. The name does not say which, and the
+    two differ by more than an order of magnitude on NSL-KDD (0.000 against
+    1.020), so reading it as the gate-separating band understates that band to
+    zero on exactly the protocols where the encoding comparison is closest.
+    `make_frozen_numbers.py` labels it correctly as $(0, \theta_{lat}]$; this
+    file previously did not.
+
+    The second interval is not in any stored table. It is recovered from the E1
+    arms, which is the only place both gates were run: latency@0.01 minus
+    latency@0.05 is exactly the mass between them. The three parts are asserted
+    to sum to the active count, so a future mislabelling cannot pass silently.
     """
     d = pd.read_csv(A / "feature_sparsity.csv")
     d = d.rename(columns={"zero_per_sample": "zero_count",
-                          "band_per_sample": "gate_band_count"})
+                          # Renamed on read: the source name is ambiguous and
+                          # this is the sub-latency-gate mass, not the band
+                          # between the gates.
+                          "band_per_sample": "sub_lat_gate_count"})
     d["active_count"] = d.d - d.zero_count
-    d["above_delta_gate_count"] = d.active_count - d.gate_band_count
+
+    arms = pd.read_csv(OUT / "e1_arms_complete.csv").pivot_table(
+        index="protocol", columns="arm", values="in_spk")
+    band = (arms["BASELINE_latency_thr001"] - arms["B_latency_thr005"])
+    above = arms["B_latency_thr005"]
+    d = d.set_index("protocol")
+    d["gate_band_count"] = band
+    d["above_delta_gate_count"] = above
+
+    parts = d.sub_lat_gate_count + d.gate_band_count + d.above_delta_gate_count
+    err = (parts - d.active_count).abs().max()
+    if err > 1e-6:
+        raise SystemExit(
+            f"sparsity decomposition does not close: the three intervals sum "
+            f"to the active count with error {err:.3e}. One of them is "
+            "mislabelled or measured against a different gate.")
+
+    d["sub_lat_gate_interval"] = f"(0, {THETA_LAT}]"
     d["gate_band_interval"] = f"({THETA_LAT}, {THETA_DELTA}]"
     d["active_pct"] = 100.0 * d.active_count / d.d
     d["gate_band_pct_of_active"] = 100.0 * d.gate_band_count / d.active_count
-    return d[["protocol", "d", "zero_count", "zero_pct", "active_count",
-              "active_pct", "gate_band_interval", "gate_band_count",
-              "gate_band_pct_of_active", "above_delta_gate_count"]]
+    return d.reset_index()[
+        ["protocol", "d", "zero_count", "zero_pct", "active_count",
+         "active_pct", "sub_lat_gate_interval", "sub_lat_gate_count",
+         "gate_band_interval", "gate_band_count", "gate_band_pct_of_active",
+         "above_delta_gate_count"]]
 
 
 def e1_arms_complete() -> pd.DataFrame:
@@ -175,9 +215,11 @@ def covariate_shift_appendix() -> pd.DataFrame:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     made = []
+    # e1_arms_complete must run before sparsity: the gate-separating band is
+    # derived from its arms, not stored anywhere.
     for name, fn in (("dedup_per_protocol", dedup_per_protocol),
-                     ("sparsity_per_protocol", sparsity_per_protocol),
                      ("e1_arms_complete", e1_arms_complete),
+                     ("sparsity_per_protocol", sparsity_per_protocol),
                      ("covariate_shift_appendix", covariate_shift_appendix)):
         try:
             df = fn()

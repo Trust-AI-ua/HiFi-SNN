@@ -228,6 +228,7 @@ def main() -> int:
     # bar, so every component of it must be generated rather than typed.
     sp = pd.read_csv(A / "feature_sparsity.csv").set_index("protocol")
     xb = pd.read_csv(A / "xbar_active_prediction.csv").set_index("protocol")
+    _gb = pd.read_csv(A / "appendix/sparsity_per_protocol.csv").set_index("protocol")
     tags = {"nslkdd_v2": "Nsl", "kddcup99_v2": "Kdd", "cicids2017_v2": "Cic",
             "ctu13_v2_f0": "CtuA", "ctu13_v2_f1": "CtuB"}
     for proto, tag in tags.items():
@@ -237,6 +238,16 @@ def main() -> int:
                f"percent exactly zero, {proto}"),
               (f"Band{tag}", f"{sp.loc[proto,'band_per_sample']:.4f}",
                f"features in (0, theta_lat], {proto}"),
+              # The interval BETWEEN the gates, which is the one that actually
+              # separates the two codes. It is not in feature_sparsity.csv;
+              # appendix_data.py recovers it from the E1 arms. Distinguished
+              # from Band* by name because the two differ by more than an order
+              # of magnitude on NSL-KDD and confusing them understates the
+              # separating mass to zero.
+              (f"GateBand{tag}", f"{_gb.loc[proto,'gate_band_count']:.3f}",
+               f"features in (theta_lat, theta_delta], {proto}"),
+              (f"GateBandPct{tag}", f"{_gb.loc[proto,'gate_band_pct_of_active']:.2f}",
+               f"that band as a percent of active features, {proto}"),
               (f"XbarAct{tag}", f"{xb.loc[proto,'xbar_active_gt0']:.3f}",
                f"mean value of active features, {proto}"),
               (f"Dim{tag}", int(sp.loc[proto, "d"]), f"feature dimension, {proto}")]
