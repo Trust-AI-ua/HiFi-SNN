@@ -136,6 +136,20 @@ def main() -> int:
     # configuration is latency and moves by a different amount.
     _dd = pd.read_csv(A / "dedup/encoding_axis_lp/summary.csv")
     _dd = _dd[_dd.protocol == "kddcup99_v2"].set_index("variant")
+    # The KDDCup99 cell's per-seed spread. Quoted because the median alone
+    # reads as a stable small effect, and the underlying blocks are not: two of
+    # the five are negative and the range is seven points wide.
+    _ps = pd.read_csv(A / "dedup/encoding_axis_lp/per_seed.csv")
+    _ps = _ps[_ps.protocol == "kddcup99_v2"].pivot_table(
+        index="seed", columns="variant", values="f1_official")
+    _sd = 100.0 * (_ps["LeakyParallel/latency"] - _ps["LeakyParallel/rate"])
+    L += [("DedupKddSeedLo", f"{_sd.min():+.2f}",
+           "most negative per-seed latency-rate difference, KDDCup99, pp"),
+          ("DedupKddSeedHi", f"{_sd.max():+.2f}", "most positive, pp"),
+          ("DedupKddSeedWins", int((_sd > 0).sum()),
+           "seed-blocks where latency leads on KDDCup99"),
+          ("DedupKddSeedN", int(len(_sd)), "seed-blocks on KDDCup99")]
+
     L += [("DedupKddLpLat", f"{_dd.loc['LeakyParallel/latency','delta_pp']:+.2f}",
            "KDDCup99 dedup effect on LeakyParallel/latency, pp"),
           ("DedupKddLpRat", f"{_dd.loc['LeakyParallel/rate','delta_pp']:+.2f}",
