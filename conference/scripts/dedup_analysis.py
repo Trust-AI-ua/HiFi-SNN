@@ -34,26 +34,62 @@ from scipy.stats import rankdata, wilcoxon
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.populations import POPULATIONS, members, require_population  # noqa: E402
+from src.populations import (POPULATIONS, macro_f1_pair, members,  # noqa: E402
+                             require_population)
 from src.readout import discover  # noqa: E402
 
 OUT_BASE = ROOT / "results/analysis/dedup"
 
 
 def collect() -> pd.DataFrame:
+    """Per-run official and duplicate-free macro-F1, on a fixed label universe.
+
+    The stored `f1_macro` is model-dependent on CIC-IDS2017. U2R has zero test
+    support there, so a model that never predicts it is scored over four
+    classes while a model that predicts it once is scored over five. Delta is
+    the former and latency and rate are the latter, which put three rows of the
+    same table on two different denominators: delta read 0.6226 where its
+    fixed-universe value is 0.4981, exactly 4/5 of it.
+
+    `f1_official` is therefore recomputed from the saved predictions on the
+    registered label universe, which is authoritative.
+
+    `f1_dedup` cannot be recomputed here: the duplicate mask is not stored in
+    the artifacts, only its cardinality. It is corrected instead by the ratio
+    the official pair reveals, which is exact provided the classes missing from
+    the stored average score zero and the same classes are missing from the
+    duplicate-free average. Both hold when the missing class has no test
+    support at all, since removing test rows can neither create support for it
+    nor cause it to be predicted. The factor is detected per run rather than
+    assumed, and recorded in `denominator_factor` so the correction is visible
+    rather than silent.
+    """
     rows = []
     for r in discover(require_artifacts=False):
         m = r.record()["test_plus"]["metrics"]
         d = m.get("duplicate_free")
         if not d:
             continue
+        stored = m["f1_macro"]
+        try:
+            pre = r.prefix()
+            pair = macro_f1_pair(pre["y_true"].astype(np.int64),
+                                 pre["y_pred"].astype(np.int64),
+                                 r.record()["data"]["num_classes"])
+            official = pair["macro_f1_fixed_universe"]
+        except Exception:                                         # noqa: BLE001
+            official = stored
+        factor = (official / stored) if stored else 1.0
+        dedup = d["metrics"]["macro_f1"] * factor
         rows.append({
             "protocol": r.protocol, "neuron": r.neuron, "encoding": r.encoding,
             "variant": r.variant, "seed": r.seed,
             "pct_excluded": d["pct_excluded"],
-            "f1_official": m["f1_macro"],
-            "f1_dedup": d["metrics"]["macro_f1"],
-            "delta_pp": d["delta_macro_f1_pp"],
+            "f1_official": official,
+            "f1_dedup": dedup,
+            "delta_pp": 100.0 * (dedup - official),
+            "denominator_factor": factor,
+            "denominator_corrected": abs(factor - 1.0) > 1e-9,
             "mcc_official": m["matthews_corrcoef"],
             "mcc_dedup": d["metrics"]["mcc"],
         })
@@ -114,7 +150,11 @@ def main() -> int:
                   f1_official_sd=("f1_official", "std"),
                   f1_dedup=("f1_dedup", "mean"),
                   f1_dedup_sd=("f1_dedup", "std"),
-                  delta_pp=("delta_pp", "mean"))
+                  delta_pp=("delta_pp", "mean"),
+                  # Carried into the summary so a corrected row is visible in
+                  # the table a reader actually sees, not only per seed.
+                  denominator_factor=("denominator_factor", "first"),
+                  denominator_corrected=("denominator_corrected", "any"))
              .reset_index())
     agg.to_csv(OUT / "summary.csv", index=False)
 

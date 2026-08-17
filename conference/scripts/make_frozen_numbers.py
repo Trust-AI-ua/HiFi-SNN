@@ -131,6 +131,15 @@ def main() -> int:
            "LP lat-vs-rate margin, official"),
           ("DedupKddDed", f"{ded['kddcup99_v2']['paired_dedup']['median_delta_pp']:+.3f}",
            "same, deduplicated")]
+    # The absolute effect of deduplication on the recommended configuration.
+    # Threats quoted -0.79 pp, which is the value for rate; the recommended
+    # configuration is latency and moves by a different amount.
+    _dd = pd.read_csv(A / "dedup/encoding_axis_lp/summary.csv")
+    _dd = _dd[_dd.protocol == "kddcup99_v2"].set_index("variant")
+    L += [("DedupKddLpLat", f"{_dd.loc['LeakyParallel/latency','delta_pp']:+.2f}",
+           "KDDCup99 dedup effect on LeakyParallel/latency, pp"),
+          ("DedupKddLpRat", f"{_dd.loc['LeakyParallel/rate','delta_pp']:+.2f}",
+           "same for LeakyParallel/rate, pp")]
 
     # ---- 5. boundary ----
     far = pd.read_csv(A / "security/fixed_far.csv")

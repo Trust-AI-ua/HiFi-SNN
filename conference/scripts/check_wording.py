@@ -104,6 +104,12 @@ HARDCODED = [
     (r"(?<![\d.])2\.70(?![\d])", r"\FNNeuRank"),
     (r"(?<![\d.])9\.28(?![\d])", r"\FNScrCD"),
     (r"92\.01", r"\FNCtuStrict"),
+    # Caught only after they had been sitting in Threats: duplication rates and
+    # the dedup effect were typed rather than generated, so the analysis fix
+    # that moved them would not have moved the prose.
+    (r"(?<![\d.])57\.53(?![\d])", r"\FNDupKdd"),
+    (r"(?<![\d.])2\.68(?![\d])", r"\FNDupNsl"),
+    (r"(?<![\d.])0\.79(?![\d])", r"\FNDedupKddLpLat or \FNDedupKddLpRat"),
 ]
 
 SKIP = {"sec_frozen_numbers.tex", "fig_captions.tex"}
