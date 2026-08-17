@@ -339,6 +339,30 @@ def main() -> int:
           ("DeltaKeepsCtuB", "+9.1",
            "delta advantage on CTU-13 f1 retained at latency's gate")]
 
+    # Confirmation-protocol omnibus over the full design space: 27
+    # configurations x 25 (protocol x seed) blocks. Deliberately computed here
+    # from the same helper rank_analysis.py uses for the screening figure, so
+    # \FNConfCD and \FNScrCD are comparable rather than two conventions --- the
+    # two differ only because N rises from 20 to 25.
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "scripts"))
+    from scipy.stats import friedmanchisquare as _fried          # noqa: E402
+    from rank_analysis import nemenyi_cd as _ncd                 # noqa: E402
+    from protocol_shift import confirmation_ranks as _cr         # noqa: E402
+
+    _cf, _protos, _rawc = _cr()
+    if not _cf.empty:
+        _w = (_rawc[_rawc.protocol.isin(_protos)]
+              .pivot_table(index=["protocol", "seed"], columns="variant",
+                           values="f1").dropna())
+        _n, _k = _w.shape[0], _w.shape[1]
+        _chi, _pv = _fried(*[_w[c].to_numpy() for c in _w.columns])
+        L += [("ConfBlocks", _n, "confirmation protocol x seed blocks"),
+              ("ConfVariants", _k, "configurations in the confirmation sweep"),
+              ("ConfChi", f"{_chi:.1f}", "Friedman chi2, confirmation"),
+              ("ConfP", f"{_pv:.1e}", "Friedman p, confirmation"),
+              ("ConfCD", f"{_ncd(_k, _n):.2f}", "Nemenyi CD, confirmation")]
+
     # Covariate shift (E5). Reported as a measured negative: it eliminates shift
     # magnitude as the explanation for when timing is valuable. The Spearman is
     # computed here, not carried, so the manuscript cannot drift from the file.
