@@ -363,6 +363,19 @@ def main() -> int:
               ("ConfP", f"{_pv:.1e}", "Friedman p, confirmation"),
               ("ConfCD", f"{_ncd(_k, _n):.2f}", "Nemenyi CD, confirmation")]
 
+    # Pareto span over the full design space (fig_pareto27). One protocol:
+    # SOP counts scale with input dimension, so a span pooled across protocols
+    # of different width would not be a property of the design space. NSL-KDD
+    # is the protocol the manuscript quotes.
+    _pa = pd.read_csv(A / "pareto27.csv")
+    _pa = _pa[_pa.protocol == "nslkdd_v2"]
+    L += [("ParetoCostSpan", f"{_pa.sops.max() / _pa.sops.min():.0f}",
+           "rate/latency SOP span across all 27 configurations, NSL-KDD"),
+          ("ParetoCostMin", f"{_pa.sops.min():,.0f}".replace(",", "{,}"),
+           "cheapest configuration, SOPs per sample"),
+          ("ParetoCostMax", f"{_pa.sops.max():,.0f}".replace(",", "{,}"),
+           "most expensive configuration, SOPs per sample")]
+
     # Covariate shift (E5). Reported as a measured negative: it eliminates shift
     # magnitude as the explanation for when timing is valuable. The Spearman is
     # computed here, not carried, so the manuscript cannot drift from the file.

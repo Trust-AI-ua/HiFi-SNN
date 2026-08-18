@@ -31,9 +31,12 @@ from scipy.stats import kendalltau, rankdata
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 from src.populations import macro_f1_pair, members, require_population  # noqa: E402
 from src.readout import discover  # noqa: E402
+from figstyle import (ANNOT, COL_W, ENC, ENC_ORDER, FS_TICK, RC,  # noqa: E402
+                      TEXT)
 
 OUT = ROOT / "results/analysis/protocol_shift"
 FIG = ROOT / "paper/figures"
@@ -123,40 +126,92 @@ def confirmation_ranks():
     return mean_ranks(wide), full, df
 
 
-def slopegraph(cmp: pd.DataFrame, protocols, path: Path) -> None:
+#: Configurations named in the Results prose as the largest movers. They are
+#: emphasised so the sentence and the picture point at the same lines.
+HIGHLIGHT = ("SLSTM/latency", "SConv2dLSTM/delta", "Lapicque/latency")
+SELECTED = "LeakyParallel/latency"
+
+
+def slopegraph(cmp: pd.DataFrame, protocols, path: Path,
+               tau: float | None = None, n_screening_blocks: int = 20) -> None:
+    """Screening rank on the left, confirmation rank on the right.
+
+    Positioned by rank POSITION (1..27), evenly spaced, not by the mean-rank
+    value. The mean ranks cluster: eleven of the twenty-seven configurations sit
+    between 10 and 16, so a value-positioned slopegraph stacks their labels on
+    top of one another. Even spacing makes collisions impossible, and what a
+    slopegraph is for --- who crossed whom --- is carried by the ordering.
+
+    Encoding is carried by colour, line style and end markers together, using
+    the shared mapping in figstyle.py. Delta was grey here and green on the
+    Pareto plot; one constant now serves both.
+
+    Emphasis is reserved: the selected configuration and the three movers named
+    in the text are the only bold labels. Bolding every latency row, as an
+    earlier version did, weights the family before the reader has judged the
+    movement the figure exists to show.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
 
+    matplotlib.rcParams.update(RC)
     matplotlib.rcParams.update({
-        "figure.dpi": 200, "savefig.dpi": 600, "savefig.bbox": None,
-        "savefig.pad_inches": 0.0, "font.family": "serif", "font.size": 8,
-        "axes.labelsize": 8, "xtick.labelsize": 7, "ytick.labelsize": 7,
-        "axes.spines.top": False, "axes.spines.right": False,
+        "axes.grid": False,
         "axes.spines.left": False, "axes.spines.bottom": False,
     })
-    fig, ax = plt.subplots(figsize=(3.487, 4.6), layout="constrained")
+    fig, ax = plt.subplots(figsize=(COL_W, 4.95), layout="constrained")
+
     for _, r in cmp.iterrows():
-        lat = r["variant"].endswith("/latency")
-        ax.plot([0, 1], [r.rank_screening, r.rank_confirmation],
-                color="#0072B2" if lat else "#BBBBBB",
-                lw=1.4 if lat else 0.7, alpha=1.0 if lat else 0.55,
-                zorder=3 if lat else 1)
-    for side, col, x, ha in ((("rank_screening"), "screening", -0.03, "right"),
-                             (("rank_confirmation"), "confirmation", 1.03, "left")):
+        enc = r["variant"].split("/")[1]
+        st = ENC[enc]
+        sel = r["variant"] == SELECTED
+        hot = r["variant"] in HIGHLIGHT
+        lw = 2.0 if sel else (1.7 if hot else 0.75)
+        ax.plot([0, 1], [r.pos_screening, r.pos_confirmation],
+                color=st["c"], ls=st["ls"], lw=lw,
+                marker=st["m"], ms=2.6 if (sel or hot) else 1.8,
+                markevery=[0, 1],
+                alpha=1.0 if (sel or hot) else 0.62,
+                zorder=5 if sel else (4 if hot else 2),
+                solid_capstyle="round")
+
+    for side, xpos, ha, dx in (("pos_screening", 0.0, "right", -0.045),
+                               ("pos_confirmation", 1.0, "left", 0.045)):
+        rank_col = ("rank_screening" if side == "pos_screening"
+                    else "rank_confirmation")
         for _, r in cmp.iterrows():
-            ax.text(x, r[side], r["variant"], fontsize=5.0, ha=ha,
-                    va="center",
-                    color="#0072B2" if r["variant"].endswith("/latency")
-                    else "#777777")
-    ax.set_xlim(-0.72, 1.72)
-    ax.set_ylim(cmp[["rank_screening", "rank_confirmation"]].max().max() + 1, 0)
+            sel = r["variant"] == SELECTED
+            hot = r["variant"] in HIGHLIGHT
+            txt = (f"{r['variant']}  {r[rank_col]:.2f}" if ha == "left"
+                   else f"{r[rank_col]:.2f}  {r['variant']}")
+            ax.text(xpos + dx, r[side], txt, fontsize=5.1, ha=ha, va="center",
+                    color=(ENC["latency"]["c"] if sel else
+                           TEXT if hot else ANNOT),
+                    fontweight="bold" if (sel or hot) else "normal")
+
+    ax.set_xlim(-1.05, 2.05)
+    ax.set_ylim(len(cmp) + 0.9, 0.1)
     ax.set_xticks([0, 1])
-    ax.set_xticklabels(["screening", "confirmation"], fontsize=8)
+    ax.set_xticklabels([f"screening\n({n_screening_blocks} blocks)",
+                        f"confirmation\n({5 * len(protocols)} blocks)"],
+                       fontsize=FS_TICK)
+    ax.tick_params(axis="x", length=0, pad=4)
     ax.set_yticks([])
-    ax.set_ylabel("mean rank (1 = best, top)")
-    ax.set_title(f"{len(protocols)} confirmation protocols", fontsize=8,
-                 loc="left")
+    ax.set_ylabel("rank position (1 = best, top)")
+
+    if tau is not None:
+        ax.text(1.0, 1.012, rf"Kendall $\tau={tau:.4f}$", transform=ax.transAxes,
+                ha="right", va="bottom", fontsize=FS_TICK, color=TEXT)
+
+    ax.legend(handles=[Line2D([], [], color=ENC[e]["c"], ls=ENC[e]["ls"],
+                              marker=ENC[e]["m"], ms=2.8, lw=1.2, label=e)
+                       for e in ENC_ORDER],
+              loc="lower left", bbox_to_anchor=(0.0, 1.005), ncol=3,
+              handlelength=1.8, columnspacing=1.0, fontsize=FS_TICK,
+              borderaxespad=0.0)
+
     for ext in ("pdf", "png"):
         fig.savefig(path.with_suffix("." + ext))
     plt.close(fig)
@@ -302,7 +357,9 @@ def main() -> int:
         "biggest_losers": dn.to_dict("records"),
     }
     (OUT / "tau.json").write_text(json.dumps(payload, indent=2))
-    slopegraph(cmp, protocols, FIG / "fig_rank_shift")
+    _scr_blocks = json.load(open(ROOT / "results/analysis/v1/friedman.json"))["n_blocks"]
+    slopegraph(cmp, protocols, FIG / "fig_rank_shift", tau=float(tau),
+               n_screening_blocks=int(_scr_blocks))
 
     status = "COMPLETE" if payload["complete"] else "PARTIAL"
     print(f"=== protocol shift [{status}] over {len(protocols)} protocols: "

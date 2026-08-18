@@ -38,36 +38,17 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 A = ROOT / "results/analysis"
 FIG = ROOT / "paper/figures"
 
-# IEEEtran, US letter, two columns.
-COL_W = 3.487           # \columnwidth in inches
-TEXT_W = 7.16           # \textwidth in inches
+from figstyle import (ANNOT, BG_LIGHT, COL_W, DERIVED, ENC, ENC_ORDER,  # noqa: E402
+                      FS_ANNOT, FS_LABEL, GRID, MS_LEADER, MS_ORDINARY,
+                      NEUTRAL, NEUTRAL_DK, RC, TEXT, TEXT_W, ZERO)
 
-# Sized for reading at 100%, not while zoomed in. 7pt is the practical floor
-# for a serif tick label in print; nothing here goes below it.
-RC = {
-    "figure.dpi": 200, "savefig.dpi": 600,
-    "savefig.bbox": None,          # exact width; see module docstring
-    "savefig.pad_inches": 0.0,
-    "font.family": "serif", "font.size": 8,
-    "axes.titlesize": 8, "axes.labelsize": 8,
-    "xtick.labelsize": 7, "ytick.labelsize": 7,
-    "legend.fontsize": 7, "legend.frameon": False,
-    "axes.grid": True, "grid.alpha": 0.25, "grid.linestyle": ":",
-    "grid.linewidth": 0.4,
-    "axes.spines.top": False, "axes.spines.right": False,
-    "axes.linewidth": 0.6,
-    "xtick.major.width": 0.6, "ytick.major.width": 0.6,
-    "lines.linewidth": 1.1,
-}
+# IEEEtran, US letter, two columns. Sizes and colours live in figstyle.py so
+# every generator shares one mapping; see rule 1 there.
 
-ENC = {
-    "latency": {"c": "#0072B2", "m": "o", "ls": "-"},
-    "rate":    {"c": "#D55E00", "m": "s", "ls": "--"},
-    "delta":   {"c": "#009E73", "m": "^", "ls": ":"},
-}
 SEL = "LeakyParallel/latency"
 PROTO_LABEL = {"nslkdd_v2": "NSL-KDD", "kddcup99_v2": "KDDCup99",
                "cicids2017_v2": "CIC-IDS2017", "ctu13_v2_f0": "CTU-13 f0",
@@ -95,18 +76,18 @@ def fig_screening() -> str:
     fig, ax = plt.subplots(figsize=(COL_W, 4.15), layout="constrained")
     y = np.arange(len(mr))
     within = mr.mean_rank <= best + cd
-    colors = ["#0072B2" if w else "#BBBBBB" for w in within]
+    colors = [ENC["latency"]["c"] if w else NEUTRAL for w in within]
     ax.barh(y, mr.mean_rank, color=colors, height=0.68, zorder=3)
     ax.set_yticks(y)
     ax.set_yticklabels(mr.index, fontsize=6.2)
     ax.get_yticklabels()[0].set_fontweight("bold")
     ax.invert_yaxis()
-    ax.axvspan(best, best + cd, color="#CC79A7", alpha=0.13, zorder=1)
-    ax.axvline(best + cd, color="#CC79A7", lw=0.9, ls="--", zorder=2)
+    ax.axvspan(best, best + cd, color=BG_LIGHT, zorder=0)
+    ax.axvline(best + cd, color=TEXT, lw=1.2, ls="--", zorder=2)
     # Top of the plot, not the bottom: with the y-axis inverted, index 0 is
     # the top row, so the label sat on the worst bar and overlapped it.
-    ax.text(best + cd + 0.3, -0.4, f"CD = {cd:.2f}", color="#8B2E63",
-            fontsize=6.5, va="center")
+    ax.text(best + cd + 0.3, -0.4, f"CD = {cd:.2f}", color=TEXT, fontsize=FS_ANNOT,
+            va="center")
     ax.set_xlabel("mean rank over 20 blocks")   # shorter: full text overran
     ax.set_xlim(0, mr.mean_rank.max() * 1.12)
     ax.set_ylim(len(mr) - 0.4, -1.1)            # headroom for the CD label
@@ -134,7 +115,7 @@ def fig_axes() -> str:
         d = json.load(open(A / f"v2_{axis}_axis/summary.json"))
         caps.append(d)
         y = np.arange(len(mr))
-        cols = ["#0072B2" if i == 0 else "#9DBBD0" for i in range(len(mr))]
+        cols = [ENC["latency"]["c"] if i == 0 else NEUTRAL for i in range(len(mr))]
         ax.barh(y, mr.mean_rank, color=cols, height=0.62, zorder=3)
         ax.set_yticks(y)
         ax.set_yticklabels(mr.index, fontsize=7)
@@ -201,7 +182,7 @@ def fig_readout() -> str:
     ax.plot(x + 0.11, rat, ENC["rate"]["m"], color=ENC["rate"]["c"],
             ms=4.5, ls="none", label="rate")
     for i, (a, b) in enumerate(zip(lat, rat)):
-        ax.plot([i - 0.11, i + 0.11], [a, b], color="#999999", lw=0.6, zorder=0)
+        ax.plot([i - 0.11, i + 0.11], [a, b], color=NEUTRAL, lw=0.6, zorder=0)
         # Annotate the earlier point, beneath it, so the word names the marker
         # it sits next to. Placing it above the pair left it ambiguous which
         # encoding the label referred to.
@@ -257,15 +238,15 @@ def fig_pareto() -> str:
         for _, r in g.iterrows():
             ax.annotate(short[r.protocol], (r.sops_mean, r.f1_mean),
                         xytext=(4.5, 2.5), textcoords="offset points",
-                        fontsize=5.6, color="#444444")
+                        fontsize=FS_ANNOT, color=ANNOT)
     # The CIC-IDS2017 points cannot exceed 0.80 under the fixed label universe
     # because U2R has no test support. Without this line the "C" points read as
     # a harder dataset rather than a metric with a structural ceiling, and a
     # caption alone does not reach a reader skimming the figure.
-    ax.axhline(0.80, color="#8B2E63", lw=0.8, ls=(0, (4, 2)), zorder=1)
+    ax.axhline(0.80, color=ANNOT, lw=0.8, ls=(0, (4, 2)), zorder=1)
     ax.text(ax.get_xlim()[1] if False else 1.5e3, 0.815,
-            "CIC-IDS2017 ceiling (no U2R in test)", fontsize=5.6,
-            color="#8B2E63", va="bottom")
+            "CIC-IDS2017 ceiling (no U2R in test)", fontsize=FS_ANNOT,
+            color=ANNOT, va="bottom")
     ax.set_xscale("log")
     ax.set_xlabel("synaptic operations per sample (log)")
     ax.set_ylabel("macro-F1 (fixed universe)")   # shorter: full text overran
@@ -307,10 +288,13 @@ def fig_timing() -> str:
     y = np.arange(len(d))
     pos = d.timing_premium_pp > 0
     ax.barh(y, d.timing_premium_pp,
-            color=[ENC["latency"]["c"] if v else ENC["delta"]["c"]
-                   for v in pos],
+            # One colour on purpose: the direction about zero already carries
+            # the sign, and colour-coding it would read as "helpful" versus
+            # "harmful" when the finding is that the premium has no universal
+            # sign.
+            color=ENC["latency"]["c"],
             height=0.62, zorder=3, edgecolor="white", linewidth=0.5)
-    ax.axvline(0, color="#444444", lw=0.8, zorder=4)
+    ax.axvline(0, color=ZERO, lw=1.3, zorder=4)
 
     for i, (proto, r) in enumerate(d.iterrows()):
         v = r.timing_premium_pp
@@ -318,8 +302,8 @@ def fig_timing() -> str:
         # so the bar cannot be read without its operands.
         txt = f"{r.f1_timing:.3f} / {r.f1_notiming:.3f}"
         off, ha = (1.6, "left") if v > 0 else (-1.6, "right")
-        ax.text(v + off, i, txt, va="center", ha=ha, fontsize=6.0,
-                color="#333333")
+        ax.text(v + off, i, txt, va="center", ha=ha, fontsize=FS_ANNOT,
+                color=TEXT)
 
     ax.set_yticks(y)
     ax.set_yticklabels([PROTO_LABEL[p] for p in d.index], fontsize=7)
@@ -330,6 +314,7 @@ def fig_timing() -> str:
     rng = hi - lo
     ax.set_xlim(lo - 0.60 * rng, hi + 0.30 * rng)
     ax.grid(axis="y", visible=False)
+    ax.grid(axis="x", color=GRID, lw=0.5)
     save(fig, "fig_timing")
     return (f"\\textbf{{What spike timing is worth, in isolation.}} Each bar is "
             f"latency coding minus delta coding with both gates set to "
@@ -361,8 +346,13 @@ def fig_sparsity_cascade() -> str:
         "total spikes": piv("total_spikes")["rate"] / piv("total_spikes")["latency"],
         "synaptic ops": piv("sops_mean")["rate"] / piv("sops_mean")["latency"],
     }
-    hue = {"input spikes": "#0072B2", "total spikes": "#999999",
-           "synaptic ops": "#CC79A7"}
+    # Fill colour AND texture, because IEEE prints in greyscale: three greys
+    # are indistinguishable, three hatches are not. Order is fixed to the
+    # cascade's own logic -- created, diluted, recovered -- everywhere it
+    # appears.
+    style = {"input spikes":  {"c": ENC["latency"]["c"], "h": "///"},
+             "total spikes":  {"c": NEUTRAL_DK,          "h": "..."},
+             "synaptic ops":  {"c": DERIVED,             "h": "\\\\"}}
 
     fig, ax = plt.subplots(figsize=(COL_W, 2.45), layout="constrained")
     protos = [p for p in ORDER if p in series["input spikes"].index]
@@ -370,10 +360,10 @@ def fig_sparsity_cascade() -> str:
     w = 0.26
     for k, (name, ser) in enumerate(series.items()):
         ax.bar(x + (k - 1) * w, [ser[p] for p in protos], width=w,
-               label=name, color=hue[name], zorder=3,
-               edgecolor="white", linewidth=0.4)
-    ax.axhline(1.0, color="#444444", lw=0.8, ls="--", zorder=4)
-    ax.text(len(protos) - 0.42, 1.04, "parity", fontsize=6, color="#444444",
+               label=name, color=style[name]["c"], hatch=style[name]["h"],
+               zorder=3, edgecolor=TEXT, linewidth=0.5)
+    ax.axhline(1.0, color=ZERO, lw=1.0, ls="--", zorder=4)
+    ax.text(len(protos) - 0.42, 1.04, "parity", fontsize=FS_ANNOT, color=TEXT,
             ha="right", va="bottom")
     ax.set_yscale("log")
     ax.set_ylabel("rate / latency")
@@ -401,6 +391,96 @@ def fig_sparsity_cascade() -> str:
             f"are.")
 
 
+# ------------------------------------------------------- 7. pareto, all 27
+def fig_pareto27() -> str:
+    """Quality against synaptic operations for the whole design space.
+
+    fig_pareto shows only the LeakyParallel family, three points, which cannot
+    support a claim about the design space. This is all 27 confirmation
+    configurations on one protocol, so Pareto-optimality is a statement about
+    the space rather than about one family's slice of it.
+
+    NSL-KDD, because it is the protocol whose SOP span the manuscript quotes and
+    because SOP counts are not comparable across protocols of different
+    dimension: pooling them would average a 78-feature dataset with a
+    125-feature one and the x-axis would mean nothing. The protocol is named on
+    the figure, not only in the caption, because the y-range alone would let a
+    reader take this for an aggregate.
+
+    The Pareto front is deliberately NOT drawn. A staircase through this cloud
+    passes along cheap, weak delta configurations, which are non-dominated only
+    because nothing cheaper exists, and the line reads as though they were
+    sensible operating points. The cloud makes the argument on its own: the
+    selected configuration is the global macro-F1 maximum, so no line is needed
+    to show it is undominated.
+    """
+    d = pd.read_csv(A / "pareto27.csv")
+    d = d[d.protocol == "nslkdd_v2"]
+
+    fig, ax = plt.subplots(figsize=(COL_W, 2.95), layout="constrained")
+    for enc, st in ENC.items():
+        g = d[d.encoding == enc]
+        ax.scatter(g.sops, g.f1, s=MS_ORDINARY, marker=st["m"], c=st["c"],
+                   label=enc, zorder=3, edgecolor="white", linewidth=0.4)
+    # The selected configuration is drawn larger so it is findable without
+    # relying on the annotation alone.
+    _s = d[d.variant == SEL]
+    ax.scatter(_s.sops, _s.f1, s=MS_LEADER, marker=ENC["latency"]["m"],
+               c=ENC["latency"]["c"], zorder=4, edgecolor="white", linewidth=0.6)
+
+    sel = d[d.variant == SEL].iloc[0]
+    rate_min = d[d.encoding == "rate"].sops.min()
+    ratio = rate_min / sel.sops
+    ax.axvline(sel.sops, color=NEUTRAL, lw=0.6, ls=":", zorder=1)
+    # Parked in the empty band mid-range: the bottom-left corner belongs to the
+    # Alpha/delta extreme label and the two collide there.
+    y_mid = d.f1.min() + 0.32 * (d.f1.max() - d.f1.min())
+    ax.annotate(f"{ratio:.1f}$\\times$ cheaper than\nany rate configuration",
+                (sel.sops, y_mid), fontsize=FS_ANNOT, color=ANNOT,
+                xytext=(5, 0), textcoords="offset points", va="center")
+    ax.annotate(SEL, (sel.sops, sel.f1), fontsize=FS_LABEL, xytext=(7, -1),
+                textcoords="offset points", color=ENC["latency"]["c"],
+                fontweight="bold")
+
+    ax.set_xscale("log")
+    # The two extremes, so the span is readable off the axis. They are placed in
+    # margin space rather than inside the cloud: at this density any in-cloud
+    # offset lands on a neighbouring marker, and the extremes are by definition
+    # the points with empty space beside them.
+    ax.set_xlim(d.sops.min() * 0.42, d.sops.max() * 2.6)
+    lo = d.loc[d.sops.idxmin()]
+    hi = d.loc[d.sops.idxmax()]
+    ax.annotate(f"{lo.variant}\n{lo.sops:,.0f}", (lo.sops, lo.f1), fontsize=FS_ANNOT,
+                xytext=(-5, 0), textcoords="offset points", ha="right",
+                va="center", color=ANNOT)
+    ax.annotate(f"{hi.variant}\n{hi.sops:,.0f}", (hi.sops, hi.f1), fontsize=FS_ANNOT,
+                xytext=(5, 0), textcoords="offset points", ha="left",
+                va="center", color=ANNOT)
+
+    ax.set_xlabel("synaptic operations per sample (log)")
+    ax.set_ylabel("macro-F1")
+    ax.set_title("NSL-KDD, confirmation protocol, 5 seeds", fontsize=7,
+                 loc="left", pad=3, color=ANNOT)
+    ax.legend(ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.20),
+              handlelength=1.1, columnspacing=1.0, fontsize=6.5)
+    save(fig, "fig_pareto27")
+    span = d.sops.max() / d.sops.min()
+    return (f"\\textbf{{Quality against synaptic operations across the whole "
+            f"design space.}} All \\FNScrVariants{{}} configurations on strict "
+            f"NSL-KDD, confirmation protocol, five seeds each, macro-F1 on the "
+            f"fixed label universe. Synaptic operations span {span:.0f}$\\times$ "
+            f"({d.sops.min():,.0f} to {d.sops.max():,.0f} per sample) while "
+            f"macro-F1 spans {100*(d.f1.max()-d.f1.min()):.1f} percentage "
+            f"points, so most of the design space buys no quality for its cost. "
+            f"\\texttt{{{SEL}}} attains the highest macro-F1 of any "
+            f"configuration at {ratio:.1f}$\\times$ fewer operations than the "
+            f"cheapest rate-coded one. No Pareto front is drawn: a staircase "
+            f"here would pass through cheap, weak configurations that are "
+            f"non-dominated only because nothing cheaper exists. Operation "
+            f"counts are not comparable across protocols of differing "
+            f"dimension, so one protocol is shown rather than a pooled average.")
+
+
 def main() -> int:
     matplotlib.rcParams.update(RC)
     print("rendering at IEEE print scale "
@@ -412,11 +492,13 @@ def main() -> int:
         "fig:pareto": fig_pareto(),
         "fig:timing": fig_timing(),
         "fig:sparsitycascade": fig_sparsity_cascade(),
+        "fig:pareto27": fig_pareto27(),
     }
     widths = {"fig:screening": "\\columnwidth", "fig:axes": "\\textwidth",
               "fig:readout": "\\textwidth", "fig:pareto": "\\columnwidth",
               "fig:timing": "\\columnwidth",
-              "fig:sparsitycascade": "\\columnwidth"}
+              "fig:sparsitycascade": "\\columnwidth",
+              "fig:pareto27": "\\columnwidth"}
     stars = {"fig:axes": "*", "fig:readout": "*"}
     out = ["% GENERATED by scripts/make_figures.py — do not edit by hand.",
            "% Each caption states the population and block count it draws on,",
