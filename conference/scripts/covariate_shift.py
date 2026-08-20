@@ -38,6 +38,9 @@ from scipy.stats import ks_2samp, wasserstein_distance
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
+from figstyle import (COL_W, FS_ANNOT, LATENCY, MS_ORDINARY, RC,  # noqa: E402
+                      TEXT, ZERO)
 
 OUT = ROOT / "results/analysis/covariate_shift"
 FIG = ROOT / "paper/figures"
@@ -118,22 +121,25 @@ def plot(summary: pd.DataFrame, path: Path) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    matplotlib.rcParams.update({
-        "figure.dpi": 200, "savefig.dpi": 600, "savefig.bbox": None,
-        "savefig.pad_inches": 0.0, "font.family": "serif", "font.size": 8,
-        "axes.labelsize": 8, "xtick.labelsize": 7, "ytick.labelsize": 7,
-        "axes.spines.top": False, "axes.spines.right": False,
-        "axes.grid": True, "grid.alpha": 0.25, "grid.linestyle": ":",
-    })
+    matplotlib.rcParams.update(RC)
     s = summary.dropna(subset=["timing_premium_pp"])
-    fig, ax = plt.subplots(figsize=(3.487, 2.75), layout="constrained")
-    ax.axhline(0, color="#999999", lw=0.7, ls="--", zorder=1)
-    ax.scatter(s.w_p90, s.timing_premium_pp, s=34, color="#0072B2",
+    fig, ax = plt.subplots(figsize=(COL_W, 2.75), layout="constrained")
+    ax.axhline(0, color=ZERO, lw=1.0, ls="--", zorder=1)
+    # One colour: the points are protocols, not encodings, so the three-hue
+    # mapping does not apply here.
+    ax.scatter(s.w_p90, s.timing_premium_pp, s=MS_ORDINARY, color=LATENCY,
                zorder=3, edgecolor="white", linewidth=0.4)
+    # NSL-KDD and KDDCup99 sit almost on top of each other: their shifts differ
+    # by 0.008 and their timing premiums by 1.2 pp on an axis spanning 64. A
+    # single offset for every point puts one label through the other, so the
+    # two are pushed apart vertically and the rest keep the default.
+    nudge = {"nslkdd": (4, 5), "kddcup99": (4, -9)}
     for _, r in s.iterrows():
-        ax.annotate(r.label, (r.w_p90, r.timing_premium_pp), fontsize=6,
-                    xytext=(4, 3), textcoords="offset points")
-    ax.set_xlabel("train-test shift: 90th pct.\\ Wasserstein")
+        ax.annotate(r.label, (r.w_p90, r.timing_premium_pp),
+                    fontsize=FS_ANNOT, color=TEXT,
+                    xytext=nudge.get(r.label, (4, 3)),
+                    textcoords="offset points")
+    ax.set_xlabel("train-test shift: 90th pct. Wasserstein")
     ax.set_ylabel("value of timing (pp macro-F1)")
     # Deliberately no fitted line: five points cannot support one.
     for ext in ("pdf", "png"):

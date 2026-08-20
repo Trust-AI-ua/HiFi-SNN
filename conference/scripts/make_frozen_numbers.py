@@ -363,6 +363,24 @@ def main() -> int:
               ("ConfP", f"{_pv:.1e}", "Friedman p, confirmation"),
               ("ConfCD", f"{_ncd(_k, _n):.2f}", "Nemenyi CD, confirmation")]
 
+    # Protocol displacement: the study's own question as one number.
+    _tau = json.load(open(A / "protocol_shift/tau.json"))
+    _np = _tau["n_permutations"]
+    # A permutation test cannot report p = 0. With N permutations the smallest
+    # resolvable value is 1/N, so the honest statement is an upper bound; a
+    # literal 0.0000 in the manuscript would be a claim the procedure cannot
+    # make.
+    _pv = (rf"<10^{{-{len(str(_np)) - 1}}}" if _tau["permutation_p"] < 1.0 / _np
+           else f"{_tau['permutation_p']:.4f}")
+    L += [("Kendall", f"{_tau['kendall_tau']:.4f}",
+           "Kendall tau, screening vs confirmation ranking"),
+          ("KendallP", _pv, "permutation p for that tau (bounded by 1/N)"),
+          ("KendallPerms", f"{_np:,}".replace(",", "{,}"),
+           "permutations in the tau test"),
+          ("KendallSeed", str(_tau["rng_seed"]), "RNG seed, registered"),
+          ("KendallConfigs", _tau["n_configurations"],
+           "configurations ranked under both protocols")]
+
     # Pareto span over the full design space (fig_pareto27). One protocol:
     # SOP counts scale with input dimension, so a span pooled across protocols
     # of different width would not be a property of the design space. NSL-KDD

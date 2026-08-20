@@ -447,7 +447,11 @@ def fig_pareto27() -> str:
     # margin space rather than inside the cloud: at this density any in-cloud
     # offset lands on a neighbouring marker, and the extremes are by definition
     # the points with empty space beside them.
-    ax.set_xlim(d.sops.min() * 0.42, d.sops.max() * 2.6)
+    # Left margin sized for the label, not guessed: "Alpha/delta" is about
+    # 0.4 in wide at this font, and the axis runs roughly one decade per inch,
+    # so it needs ~0.55 of a decade to clear the spine. 0.42x gave 0.38 and the
+    # label ran into the y-axis.
+    ax.set_xlim(d.sops.min() * 0.26, d.sops.max() * 2.2)
     lo = d.loc[d.sops.idxmin()]
     hi = d.loc[d.sops.idxmax()]
     ax.annotate(f"{lo.variant}\n{lo.sops:,.0f}", (lo.sops, lo.f1), fontsize=FS_ANNOT,
