@@ -381,6 +381,40 @@ def main() -> int:
           ("KendallConfigs", _tau["n_configurations"],
            "configurations ranked under both protocols")]
 
+    # Top-weighted rank agreement. These answer the "a frozen tail inflates
+    # tau" objection, so they belong beside the tau block rather than in a
+    # one-off computation. Names are spelled out because a LaTeX control
+    # sequence cannot contain a digit.
+    _ra = json.load(open(A / "rank_agreement/agreement.json"))
+    _tk = _ra["topk_overlap"]
+    L += [("TauTop", f"{_ra['tau_within']:.4f}",
+           "tau over the configurations within one screening CD"),
+          ("TauBottom", f"{_ra['tau_outside']:.4f}", "tau over the remainder"),
+          ("TauWithinN", _ra["n_within_cd"], "configurations within one CD"),
+          ("TauCutoff", f"{_ra['within_cd_cutoff']:.4f}",
+           "mean-rank cutoff for the leading group"),
+          ("TauConcordant", _ra["concordant"], "concordant pairs"),
+          ("TauDiscordant", _ra["discordant"], "discordant pairs"),
+          ("TauPairs", _ra["n_pairs"], "pairs compared"),
+          ("RBOninety", f"{_ra['rbo_p90']:.4f}", "rank-biased overlap, p=0.9"),
+          ("RBOeighty", f"{_ra['rbo_p80']:.4f}", "rank-biased overlap, p=0.8"),
+          ("TauAPscr", f"{_ra['tau_ap_screening_ref']:.4f}",
+           "AP rank correlation, screening as reference"),
+          ("TauAPconf", f"{_ra['tau_ap_confirmation_ref']:.4f}",
+           "same, confirmation as reference"),
+          ("TopKthree", _tk["3"], "top-3 membership overlap"),
+          ("TopKfive", _tk["5"], "top-5 membership overlap"),
+          ("TopKten", _tk["10"], "top-10 membership overlap"),
+          ("TopKfourteen", _tk["14"], "top-14 membership overlap"),
+          # Resolvable at 100,000 permutations (16 hits), so the measured value
+          # is reported rather than a bound. Contrast \FNKendallP, where zero
+          # hits at 10,000 permutations forces an upper bound.
+          ("TauTopP", f"{_ra['leading_permutation_p']:.1e}".replace(
+              "e-0", r"\times10^{-").replace("e-", r"\times10^{-") + "}",
+           "permutation p, leading group only"),
+          ("TauTopPerms", f"{_ra['leading_permutation_n']:,}".replace(",", "{,}"),
+           "permutations in the leading-group test")]
+
     # Pareto span over the full design space (fig_pareto27). One protocol:
     # SOP counts scale with input dimension, so a span pooled across protocols
     # of different width would not be a property of the design space. NSL-KDD
