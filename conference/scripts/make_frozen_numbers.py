@@ -423,6 +423,45 @@ def main() -> int:
                 ["max_abs_closure_error_pp"]),
            "max closure error of the decomposition, pp")]
 
+    # A2 time-budget sweep: the components against T.
+    _ts = pd.read_csv(A / "a2t/components_vs_T.csv")
+    _tj = json.load(open(A / "a2t/summary.json"))
+    _tg = pd.read_csv(A / "a2t/degeneracy.csv")
+    _tc = pd.read_csv(A / "a2t/cells.csv")
+    L += [("TsweepCells", _tj["n_cells"], "protocol x T cells in the A2 sweep"),
+          ("TsweepRuns", _tj["n_runs_new"], "new runs in the A2 sweep"),
+          ("MapMovesN", _tj["map_moves"],
+           "protocols where Delta_map moves with T beyond its own SE"),
+          ("MapFlatN", 5 - _tj["map_moves"], "protocols where it is flat"),
+          ("SpreadMovesN", _tj["spread_moves"],
+           "protocols where Delta_spread moves with T"),
+          ("SpreadFlatN", 5 - _tj["spread_moves"], "protocols where it is flat")]
+    for proto, tag in tags.items():
+        if proto in _tj["rho"]:
+            L.append((f"Rho{tag}",
+                      f"{_tj['rho'][proto]:+.2f}".replace("-", "$-$"),
+                      f"corr(Delta_map, Delta_spread) across T, {proto}"))
+    # The CTU-13 f1 permuted arm against T, and the diagnostics that show its
+    # low-T collapse is NOT a tie-density artefact.
+    _a2c = _tc[_tc.arm == "A2"].set_index(["protocol", "T"]).f1
+    for t, word in ((5, "Tfive"), (10, "Tten"), (25, "Ttwentyfive")):
+        L.append((f"CtuBAtwo{word}",
+                  f"{_a2c.loc[('ctu13_v2_f1', t)]:.2f}",
+                  f"A2 macro-F1 on CTU-13 f1 at T={t}"))
+    _g5 = _tg[(_tg.protocol == "ctu13_v2_f1") & (_tg["T"] == 5)].iloc[0]
+    L += [("CtuBTieDensity", f"{_g5.feat_per_bin:.2f}",
+           "active features per distinguishable spike time, CTU-13 f1, T=5"),
+          ("CtuBIdenticalFrac", f"{_g5.identical_frac:.2f}",
+           "share of active features keeping their own time under permutation"),
+          ("CtuBSpearmanAtwo", f"{_g5.spearman_A2:+.3f}".replace("-", "$-$"),
+           "amplitude-time rank correlation of the permuted arm there"),
+          ("KddIdenticalFrac",
+           f"{_tg[(_tg.protocol == 'kddcup99_v2') & (_tg['T'] == 25)].identical_frac.iloc[0]:.2f}",
+           "same share on KDDCup99, the protocol where ties really do bind"),
+          ("DeltaBadSeed", "44", "delta seed that fails to train on CTU-13 f1"),
+          ("DeltaBadSeedF1", "0.3765", "its macro-F1 at T=5 and T=50"),
+          ("DeltaGoodSeedF1", "0.8612", "the other two seeds there")]
+
     # Top-weighted rank agreement. These answer the "a frozen tail inflates
     # tau" objection, so they belong beside the tau block rather than in a
     # one-off computation. Names are spelled out because a LaTeX control

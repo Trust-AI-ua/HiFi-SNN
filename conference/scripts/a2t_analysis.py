@@ -91,6 +91,49 @@ def collect() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def tie_diagnostics() -> pd.DataFrame:
+    """How much room the permutation actually has, per (protocol, T).
+
+    Two measured quantities in place of a judgement call:
+
+      feat_per_bin    active features divided by T. When several features share
+                      one distinguishable spike time, permuting among them
+                      cannot change the assignment.
+      identical_frac  the realised version: the share of active features whose
+                      permuted time equals their original time. As it
+                      approaches 1 the manipulation approaches a null operation
+                      on the assignment while still destroying the code, which
+                      is the regime where the permuted arm collapses rather
+                      than degrades.
+    """
+    import torch
+    from scipy.stats import spearmanr
+
+    from src.data import get_dataset
+    from src.encoding import get_encoder
+
+    lat, per = get_encoder("latency", 0.01), get_encoder("permuted_latency", 0.01)
+    out = []
+    for p_ in PROTOCOLS:
+        b = get_dataset(p_, batch_size=4096, seed=42)
+        x, _ = next(iter(b.test_loader))
+        for t in TS:
+            A1, A2 = lat(x, t), per(x, t)
+            act = A1.sum(0) > 0
+            t1, t2 = A1.argmax(0), A2.argmax(0)
+            n_act = act.sum(1).float().mean().item()
+            same = ((t1 == t2) & act).sum().item() / max(act.sum().item(), 1)
+            out.append({"protocol": p_, "T": t,
+                        "active_per_sample": n_act,
+                        "feat_per_bin": n_act / t,
+                        "identical_frac": same,
+                        "spearman_A1": float(spearmanr(
+                            x[act].numpy(), t1[act].numpy()).statistic),
+                        "spearman_A2": float(spearmanr(
+                            x[act].numpy(), t2[act].numpy()).statistic)})
+    return pd.DataFrame(out)
+
+
 def main() -> int:
     df = collect()
     if df.empty:
@@ -159,6 +202,60 @@ def main() -> int:
                   f"   {'flat within noise' if rng / mx < 2 else 'MOVES'}")
         r = np.corrcoef(d["T"].astype(float), d[col])[0, 1]
         print(f"    pooled Pearson(T, {comp}) = {r:+.3f}  (n={len(d)})")
+
+    # --- component coupling across T --------------------------------------
+    print("\n=== coupling: rho(Delta_map, Delta_spread) across T ===")
+    print("a negative value means the two terms move against each other, so a")
+    print("flat sum is a moving cancellation rather than two static terms")
+    rho = {}
+    for p_ in PROTOCOLS:
+        q = d[d.protocol == p_].sort_values("T")
+        if len(q) < 3:
+            continue
+        rho[p_] = float(np.corrcoef(q.d_map_pp, q.d_spread_pp)[0, 1])
+        print(f"  {LABEL[p_]:14s} rho = {rho[p_]:+.2f}")
+    print("  CTU-13 f1's value is driven by the degenerate low-T cells and is "
+          "not interpreted")
+
+    # --- cross-file consistency: A2T must reproduce E3's Delta_time ---------
+    e3 = ROOT / "results/analysis/e3/timing_premium_vs_T.csv"
+    if e3.exists():
+        t3 = pd.read_csv(e3).set_index(["protocol", "T"]).premium_pp
+        mine = d.set_index(["protocol", "T"]).d_time_pp
+        common = t3.index.intersection(mine.index)
+        err = (t3.loc[common] - mine.loc[common]).abs().max()
+        print(f"\n=== cross-check against E3 (Table XVII) ===")
+        print(f"max |A2T d_time - E3 premium| = {err:.3e} pp over "
+              f"{len(common)} shared cells")
+        # Tolerance is 1e-6, not 1e-9: both sides round-trip through CSVs
+        # written at eight decimals, so values of order 10 carry about 1e-8 of
+        # representation error. A tighter bound tests the file format rather
+        # than the pipeline.
+        if err > 1e-6:
+            raise SystemExit(
+                "A2T and E3 disagree on the timing premium. They read the same "
+                "A1 and A3 runs, so any difference is a pipeline fault.")
+
+    # --- degeneracy, measured rather than judged ---------------------------
+    print("\n=== degeneracy diagnostics per (protocol, T) ===")
+    deg = tie_diagnostics()
+    deg.to_csv(OUT / "degeneracy.csv", index=False, float_format="%.8f")
+    print(deg.to_string(index=False))
+    print("\nfeat_per_bin = active features / T. identical_frac = share of "
+          "active features\nwhose permuted time equals their original time; as "
+          "it approaches 1 the\nmanipulation approaches a null operation on the "
+          "assignment.")
+
+    (OUT / "summary.json").write_text(json.dumps({
+        "n_cells": int(len(d)), "n_runs_new": 45,
+        "rho": rho,
+        "map_moves": int(sum(
+            float(np.ptp(d[d.protocol == q].d_map_pp))
+            / d[d.protocol == q].se_map_pp.max() >= 2 for q in PROTOCOLS)),
+        "spread_moves": int(sum(
+            float(np.ptp(d[d.protocol == q].d_spread_pp))
+            / d[d.protocol == q].se_spread_pp.max() >= 2 for q in PROTOCOLS)),
+    }, indent=2))
 
     print(f"\nwrote {OUT}")
     return 0
