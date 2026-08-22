@@ -132,6 +132,21 @@ def main() -> int:
     print(f"all {len(used)} macros used in prose are defined "
           f"({len(defined)} defined in total, {len(unused)} unused)")
 
+    # ---- no digits in a control word ----
+    # TeX ends a control word at the first non-letter, so \FNDeltaBadSeedF1 is
+    # read as \FNDeltaBadSeedF followed by a literal 1, and \newcommand then
+    # receives a two-token first argument and aborts. Spell the digit out
+    # (FOne, TNN) as the rest of the file does.
+    digity = sorted(set(re.findall(r"\\newcommand\{\\(FN[A-Za-z]*[0-9]\w*)\}",
+                                   DEFS.read_text())))
+    if digity:
+        print(f"{len(digity)} macro name(s) contain a digit; TeX cannot parse "
+              "these as control words:")
+        for m in digity:
+            print("  ", m)
+        return 1
+    print("macro names: no digits in any control word")
+
     # ---- one sign convention, enforced ----
     # Every signed macro is emitted bare and wrapped at the use site. A macro
     # that carries its own $-$ produces $$-$3.58$ the moment a later author

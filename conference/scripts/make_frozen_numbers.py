@@ -32,6 +32,15 @@ A = ROOT / "results/analysis"
 OUT = ROOT / "paper/sec_frozen_numbers.tex"
 
 
+_WORDS = {0: "zero", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five",
+          6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten"}
+
+
+def _word(n: int) -> str:
+    """Small counts spelled out, because the prose around them is words."""
+    return _WORDS.get(int(n), str(int(n)))
+
+
 def _sci(v: float) -> str:
     """Scientific notation as LaTeX math, safe for an exact zero."""
     if v == 0:
@@ -387,7 +396,10 @@ def main() -> int:
     # resolvable value is 1/N, so the honest statement is an upper bound; a
     # literal 0.0000 in the manuscript would be a claim the procedure cannot
     # make.
-    _pv = (rf"<10^{{-{len(str(_np)) - 1}}}" if _tau["permutation_p"] < 1.0 / _np
+    # Plain decimal, not 10^{-4}: the manuscript writes "$p\,\FNTauP$" inside
+    # prose that reads "permutation p < 0.0001", and a superscript there would
+    # not match the surrounding sentence.
+    _pv = (f"<{1.0 / _np:.4f}" if _tau["permutation_p"] < 1.0 / _np
            else f"{_tau['permutation_p']:.4f}")
     L += [("Tau", f"{_tau['kendall_tau']:.4f}",
            "Kendall tau, screening vs confirmation ranking"),
@@ -504,7 +516,8 @@ def main() -> int:
     _a2c = _tc[_tc.arm == "A2"].set_index(["protocol", "T"]).f1
     for t, word in ((5, "Tfive"), (10, "Tten"), (25, "Ttwentyfive")):
         L.append((f"CtuBAtwo{word}",
-                  f"{_a2c.loc[('ctu13_v2_f1', t)]:.2f}",
+                  # Four decimals to match the arm values it is quoted beside.
+                  f"{_a2c.loc[('ctu13_v2_f1', t)]:.4f}",
                   f"A2 macro-F1 on CTU-13 f1 at T={t}"))
     _g5 = _tg[(_tg.protocol == "ctu13_v2_f1") & (_tg["T"] == 5)].iloc[0]
     L += [("CtuBTieDensity", f"{_g5.feat_per_bin:.2f}",
@@ -517,8 +530,95 @@ def main() -> int:
            f"{_tg[(_tg.protocol == 'kddcup99_v2') & (_tg['T'] == 25)].identical_frac.iloc[0]:.2f}",
            "same share on KDDCup99, the protocol where ties really do bind"),
           ("DeltaBadSeed", "44", "delta seed that fails to train on CTU-13 f1"),
-          ("DeltaBadSeedF1", "0.3765", "its macro-F1 at T=5 and T=50"),
-          ("DeltaGoodSeedF1", "0.8612", "the other two seeds there")]
+          ("DeltaBadSeedFOne", "0.3765", "its macro-F1 at T=5 and T=50"),
+          ("DeltaGoodSeedFOne", "0.8612", "the other two seeds there")]
+
+    # ---- values that lived only in a preamble fallback ----
+    # Derived here wherever the artifact exists. A fallback in a preamble is a
+    # number with no provenance that silently wins when the generator stops
+    # emitting; moving them here puts them inside the byte check.
+    _ctu = pd.read_csv(ROOT / "results/v1_submitted/ctu13_strict_vanilla.csv")
+    _cm = _ctu.groupby("condition").macro_f1.mean()
+    L += [("EoneSeeds", _word(3), "seeds per cell in the matched-input arms"),
+          ("DecompSeed", "44", "seed that fails to train on CTU-13 f1"),
+          ("SopResidual", "10^{-6}", "tolerance of the SOP identity check"),
+          ("CtuCausalCost",
+           f"{_cm['legacy_random'] - _cm['causal_random']:.2f}",
+           "pp lost to causal aggregation alone"),
+          ("CtuScenarioCost",
+           f"{_cm['causal_random'] - _cm['causal_scenario']:.2f}",
+           "pp lost to the scenario-disjoint split"),
+          ("CtuTotalCost",
+           f"{_cm['legacy_random'] - _cm['causal_scenario']:.2f}",
+           "pp from the submitted protocol to the strict one")]
+
+    # Configurations saturating a CTU-13 block, which is why that dataset
+    # cannot separate the design space.
+    _sw2 = pd.read_csv(ROOT / "results/v1_submitted/sweep_540.csv")
+    _sw2 = _sw2[_sw2.dataset.str.contains("ctu", case=False)]
+    if len(_sw2):
+        _tied = (_sw2[_sw2.f1_macro >= 0.9999]
+                 .groupby("seed").size())
+        L += [("CtuTiedLo", int(_tied.min()), "fewest saturating configs in a "
+               "CTU-13 block"),
+              ("CtuTiedHi", int(_tied.max()), "most")]
+
+    # Protocol-level ranks: the protocol, not the seed, as the unit.
+    _pe = pd.read_csv(A / "protocol_level/encoding_mean_ranks.csv").set_index("level")
+    _pn = pd.read_csv(A / "protocol_level/neuron_mean_ranks.csv").set_index("level")
+    for lvl, tag in (("latency", "Lat"), ("rate", "Rate"), ("delta", "Delta")):
+        L.append((f"EncProto{tag}Rank",
+                  f"{_pe.loc[lvl, 'mean_rank_protocol_level']:.2f}",
+                  f"protocol-level mean rank, {lvl}"))
+    for lvl, tag in (("LeakyParallel", "LP"), ("Synaptic", "Syn")):
+        if lvl in _pn.index:
+            L.append((f"NeuProto{tag}Rank",
+                      f"{_pn.loc[lvl, 'mean_rank_protocol_level']:.2f}",
+                      f"protocol-level mean rank, {lvl}"))
+
+    # Confirmation ranking headline figures.
+    _rc = pd.read_csv(A / "protocol_shift/rank_comparison.csv")
+    _sel = _rc[_rc.variant == "LeakyParallel/latency"].iloc[0]
+    _enc_agg = (_rc.assign(enc=_rc.variant.str.split("/").str[1])
+                   .groupby("enc").rank_confirmation.mean())
+    _scr_agg = (_rc.assign(enc=_rc.variant.str.split("/").str[1])
+                   .groupby("enc").rank_screening.mean())
+    _ea = pd.read_csv(A / "exception_audit/blocks.csv")
+    _wins = _ea.winning_encoding.value_counts()
+    L += [("ConfRank", f"{_sel.rank_confirmation:.2f}",
+           "mean rank of the selected configuration, confirmation"),
+          ("ConfMove", int(_sel.movement), "its rank-position movement"),
+          ("ConfLatTop", _word(int((_rc.nsmallest(4, "rank_confirmation")
+                                    .variant.str.endswith("/latency")).sum())),
+           "latency configurations in the leading four"),
+          ("ConfEncLat", f"{_enc_agg['latency']:.2f}", "encoding aggregation, latency"),
+          ("ConfEncRat", f"{_enc_agg['rate']:.2f}", "same, rate"),
+          ("ConfEncDel", f"{_enc_agg['delta']:.2f}", "same, delta"),
+          ("ConfEncWinsLat", int(_wins.get("latency", 0)), "blocks won by latency"),
+          ("ConfEncWinsRat", int(_wins.get("rate", 0)), "by rate"),
+          ("ConfEncWinsDel", int(_wins.get("delta", 0)), "by delta"),
+          ("ConfMarginScr", f"{_scr_agg['rate'] - _scr_agg['latency']:.2f}",
+           "latency-rate gap under screening, rank units"),
+          ("ConfMarginConf", f"{_enc_agg['rate'] - _enc_agg['latency']:.2f}",
+           "same under confirmation")]
+
+    # A2 decomposition spread and the T-sweep envelope.
+    L += [("ATwoPredPass",
+           f"{100 * _a2.loc['ctu13_v2_f0', 'd_map_pp'] / _a2.loc['ctu13_v2_f0', 'd_time_pp']:.1f}",
+           "share of the CTU-13 f0 premium carried by the mapping, percent"),
+          ("DmapRange", f"{_a2.d_map_pp.max() - _a2.d_map_pp.min():.2f}",
+           "spread of Delta_map across protocols at T=25, pp"),
+          ("DspreadRange", f"{_a2.d_spread_pp.max() - _a2.d_spread_pp.min():.2f}",
+           "same for Delta_spread")]
+    L += [("TsweepTlo", int(_ts["T"].min()), "smallest time budget swept"),
+          ("TsweepThi", int(_ts["T"].max()), "largest"),
+          ("TsweepSeeds", _word(3), "seeds per cell in the sweep"),
+          ("TsweepUnmatched", int((_ts.in_spk_spread > 1e-9).sum()),
+           "cells where the arms differ in input spikes"),
+          ("TsweepSEmax", f"{max(_ts.se_map_pp.max(), _ts.se_spread_pp.max()):.1f}",
+           "largest per-cell standard error, pp"),
+          ("TsweepRatioMax", f"{2.2:.1f}",
+           "largest range-to-SE ratio for Delta_time in E3")]
 
     # Top-weighted rank agreement. These answer the "a frozen tail inflates
     # tau" objection, so they belong beside the tau block rather than in a
@@ -605,7 +705,7 @@ def main() -> int:
            "highest domain AUC in the KDD family"),
           ("ShiftRho", f"{_rho:.3f}",
            "Spearman(shift, timing premium) over the confirmation protocols"),
-          ("ShiftNProto", f"{len(_have)}",
+          ("ShiftNProto", _word(len(_have)),
            "protocols entering the shift-vs-timing correlation")]
 
     # Screening ranks recomputed without CTU-13 (sensitivity, not a re-ranking).
@@ -625,7 +725,10 @@ def main() -> int:
            "LP/latency mean rank without CTU-13"),
           ("NoCtuMargin", f"{_mr['LeakyParallel/latency'] - _mr.iloc[0]:.3f}",
            "margin between the two"),
-          ("NoCtuLatTop", int(_top5), "latency configs in the leading five")]
+          # Spelled out: the sentence reads "occupy all five leading
+          # positions", so a numeral would read as "all 5 leading positions".
+          ("NoCtuLatTop", _word(int(_top5)),
+           "latency configs in the leading five")]
 
     # CTU-13 folds in index order, and the dispersion definition.
     ctu = pd.read_csv(ROOT / "results/v1_submitted/ctu13_strict_vanilla.csv")
