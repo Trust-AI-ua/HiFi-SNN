@@ -200,3 +200,51 @@ The permutation is a deterministic function of the sample's own feature vector
 and the run seed, so it is fixed per sample across epochs and invariant to
 shuffling and batch composition. A permutation redrawn each epoch would be data
 augmentation and would confound the control with a regularisation effect.
+
+### §8 outcome, recorded 2026-08-22
+
+Measured after 15 A2 runs, zero failures. Full detail in
+`results/analysis/a2/`.
+
+| protocol | $\Delta_\mathrm{map}$ | $\Delta_\mathrm{spread}$ | $\Delta_\mathrm{time}$ |
+|---|---:|---:|---:|
+| NSL-KDD | +7.04 | −5.87 | +1.17 |
+| KDDCup99 | +5.70 | −5.76 | −0.06 |
+| CIC-IDS2017 | +16.38 | +13.62 | +29.99 |
+| CTU-13 f0 | +23.92 | +30.60 | +54.52 |
+| CTU-13 f1 | +3.71 | −12.73 | −9.02 |
+
+**Prediction 1 (closure), CONFIRMED.** Maximum absolute error
+$3.6\times10^{-15}$ pp over five protocols. Input spikes per sample are
+identical across all three arms to $0.0$.
+
+**Prediction 2 (CTU-13 fold 0: $\Delta_\mathrm{map}$ carries more than half of
+$+54.5$ pp), FAILED.** Measured $\Delta_\mathrm{map} = +23.92$ pp, which is
+43.9%. Temporal spreading carries the larger share at $+30.60$ pp. Recorded as
+a failed prediction rather than revised after the fact.
+
+**Prediction 3 (CTU-13 fold 1: $|\Delta_\mathrm{map}| < 5$ pp and the liability
+sits in spreading), CONFIRMED.** $\Delta_\mathrm{map} = +3.71$ pp and
+$\Delta_\mathrm{spread} = -12.73$ pp.
+
+**Prediction 4 (manipulation), CONFIRMED with one qualification.** Zero cells
+differ in input spike count, the per-sample time multiset is identical on every
+row, and the per-timestep input profile is identical to $0.0$. The
+amplitude-time rank correlation moves from $-0.99$ to $\approx-0.03$ on four
+protocols. On KDDCup99 it moves from $-0.860$ to $-0.210$ rather than from
+$-1$ to $0$: that protocol has heavy amplitude ties, so many features share a
+spike time and permuting within a tied multiset cannot fully decorrelate
+amplitude from time. The control is therefore weaker on KDDCup99 than
+elsewhere, and its $\Delta_\mathrm{map}$ should be read as a lower bound.
+
+**Outcome-map branch taken: none of the three cleanly.** The registered
+branches asked whether $\Delta_\mathrm{map}$ carries most of
+$\Delta_\mathrm{time}$. The measured pattern is different and stronger than any
+branch anticipated: $\Delta_\mathrm{map}$ is **positive on all five protocols**
+($+3.7$ to $+23.9$ pp) while $\Delta_\mathrm{spread}$ changes sign
+($-12.7$ to $+30.6$ pp). The sign-changing character of the published
+$\Delta_\mathrm{time}$ is therefore a property of temporal *spreading*, not of
+the amplitude-to-time *code*. No published number is retracted; what changes is
+which component the protocol dependence belongs to. Because this was not a
+registered branch, it is reported as an unregistered post-hoc observation and
+not as a confirmed hypothesis.
