@@ -8,6 +8,15 @@ and a number that no analysis produces simply does not exist as a macro.
 
 Generated 2026-08-13 from the closed experimental record: 235 runs, 5 seeds per
 cell, zero failures.
+
+Sign convention
+---------------
+Every signed value is emitted **bare**: ``-3.58``, not ``$-$3.58``. Call sites
+wrap in ``$...$``, where a hyphen is typeset as a proper minus. Mixing the two
+conventions is the failure that survives one paste and breaks on the next,
+because a macro that already carries ``$-$`` produces ``$$-$3.58$`` when a
+later author wraps it like its neighbours. One rule, applied everywhere:
+**emit bare, wrap at use**.
 """
 from __future__ import annotations
 
@@ -454,7 +463,7 @@ def main() -> int:
     _kd = _psd[(_psd.protocol == "kddcup99_v2") & (_psd["name"] == "dos")]
     _kw = _kd.pivot_table(index="seed", columns="encoding", values="f1")
     _kdiff = 100 * (_kw["latency"] - _kw["rate"])
-    L += [("KddDosRangeLo", f"{_kdiff.min():+.3f}".replace("-", "$-$"),
+    L += [("KddDosRangeLo", f"{_kdiff.min():+.3f}",
            "most negative per-seed DoS difference, pp"),
           ("KddDosRangeHi", f"{_kdiff.max():+.3f}", "most positive, pp"),
           ("KddDosLatWins", int((_kdiff > 0).sum()),
@@ -488,7 +497,7 @@ def main() -> int:
                    f"mean Delta_time over T, {proto}")]
         if proto in _tj["rho"]:
             L.append((f"Rho{tag}",
-                      f"{_tj['rho'][proto]:+.2f}".replace("-", "$-$"),
+                      f"{_tj['rho'][proto]:+.2f}",
                       f"corr(Delta_map, Delta_spread) across T, {proto}"))
     # The CTU-13 f1 permuted arm against T, and the diagnostics that show its
     # low-T collapse is NOT a tie-density artefact.
@@ -502,7 +511,7 @@ def main() -> int:
            "active features per distinguishable spike time, CTU-13 f1, T=5"),
           ("CtuBIdenticalFrac", f"{_g5.identical_frac:.2f}",
            "share of active features keeping their own time under permutation"),
-          ("CtuBSpearmanAtwo", f"{_g5.spearman_A2:+.3f}".replace("-", "$-$"),
+          ("CtuBSpearmanAtwo", f"{_g5.spearman_A2:+.3f}",
            "amplitude-time rank correlation of the permuted arm there"),
           ("KddIdenticalFrac",
            f"{_tg[(_tg.protocol == 'kddcup99_v2') & (_tg['T'] == 25)].identical_frac.iloc[0]:.2f}",

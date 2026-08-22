@@ -108,6 +108,22 @@ def main() -> int:
     print(f"all {len(used)} macros used in prose are defined "
           f"({len(defined)} defined in total, {len(unused)} unused)")
 
+    # ---- one sign convention, enforced ----
+    # Every signed macro is emitted bare and wrapped at the use site. A macro
+    # that carries its own $-$ produces $$-$3.58$ the moment a later author
+    # wraps it like its neighbours, and the breakage is invisible until it
+    # reaches a PDF. Checking is cheaper than remembering.
+    mixed = [ln.strip() for ln in
+             (PAPER / "sec_frozen_numbers.tex").read_text().splitlines()
+             if ln.startswith("\\newcommand") and "$" in ln.split("}%")[0]]
+    if mixed:
+        print(f"{len(mixed)} macro(s) carry math mode in their value; emit "
+              "them bare and wrap at the use site:")
+        for m in mixed[:10]:
+            print("  ", m)
+        return 1
+    print("sign convention: no macro carries its own math mode")
+
     # ---- the regeneration path must be live, not merely reported ----
     stale = check_regeneration_is_live()
     if stale:
