@@ -1,11 +1,15 @@
 from src.encoding.rate import rate_encode
 from src.encoding.latency import latency_encode
 from src.encoding.delta import delta_encode
+from src.encoding.permuted_latency import permuted_latency_encode
 
 ENCODERS = {
     "rate": rate_encode,
     "latency": latency_encode,
     "delta": delta_encode,
+    # Arm A2: latency with the amplitude-to-time assignment permuted. Gated
+    # like latency, so it accepts a threshold.
+    "permuted_latency": permuted_latency_encode,
 }
 
 
