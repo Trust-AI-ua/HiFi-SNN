@@ -87,13 +87,37 @@ def check_regeneration_is_live() -> list[str]:
 
 
 def main() -> int:
-    defined = set(re.findall(r"\\newcommand\{\\(FN[A-Za-z]+)\}", DEFS.read_text()))
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--extra", nargs="*", default=[], type=Path,
+                    help="additional .tex files to scan for \\FN references, "
+                         "for a master document kept outside this repository. "
+                         "Any \\FN macro they cite must be emitted here, so "
+                         "a \\providecommand fallback in a preamble can no "
+                         "longer mask a macro the generator never produced.")
+    _args = ap.parse_args()
+    # Commented-out lines are not definitions. Without this a "% \newcommand"
+    # still counted as defined, so disabling a macro was caught only
+    # incidentally by the byte check rather than named by this one.
+    defined = set(re.findall(
+        r"\\newcommand\{\\(FN[A-Za-z]+)\}",
+        "\n".join(l for l in DEFS.read_text().splitlines()
+                   if not l.lstrip().startswith("%"))))
+    scan = list(PAPER.rglob("*.tex")) + [Path(f) for f in _args.extra]
+    missing_extra = [f for f in _args.extra if not Path(f).exists()]
+    if missing_extra:
+        print("cannot read: " + ", ".join(str(f) for f in missing_extra))
+        return 1
     used = {}
-    for path in sorted(PAPER.glob("*.tex")):
+    for path in sorted(set(scan)):
         if path.name == DEFS.name:
             continue
-        body = "\n".join(l for l in path.read_text().splitlines()
-                         if not l.lstrip().startswith("%"))
+        # Strip comments before scanning, including trailing ones: a macro
+        # named only inside a comment is not a reference, and a commented-out
+        # \newcommand is not a definition.
+        body = re.sub(r"(?<!\\)%.*", "",
+                      "\n".join(l for l in path.read_text().splitlines()
+                                 if not l.lstrip().startswith("%")))
         for m in re.finditer(r"\\(FN[A-Za-z]+)", body):
             used.setdefault(m.group(1), set()).add(path.name)
 

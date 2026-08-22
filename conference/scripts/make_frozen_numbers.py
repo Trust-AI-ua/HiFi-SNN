@@ -389,13 +389,13 @@ def main() -> int:
     # make.
     _pv = (rf"<10^{{-{len(str(_np)) - 1}}}" if _tau["permutation_p"] < 1.0 / _np
            else f"{_tau['permutation_p']:.4f}")
-    L += [("Kendall", f"{_tau['kendall_tau']:.4f}",
+    L += [("Tau", f"{_tau['kendall_tau']:.4f}",
            "Kendall tau, screening vs confirmation ranking"),
-          ("KendallP", _pv, "permutation p for that tau (bounded by 1/N)"),
-          ("KendallPerms", f"{_np:,}".replace(",", "{,}"),
+          ("TauP", _pv, "permutation p for that tau (bounded by 1/N)"),
+          ("TauPerms", f"{_np:,}".replace(",", "{,}"),
            "permutations in the tau test"),
-          ("KendallSeed", str(_tau["rng_seed"]), "RNG seed, registered"),
-          ("KendallConfigs", _tau["n_configurations"],
+          ("TauSeed", str(_tau["rng_seed"]), "RNG seed, registered"),
+          ("TauConfigs", _tau["n_configurations"],
            "configurations ranked under both protocols")]
 
     # Arm-A2 decomposition (Table VI). Delta_map and Delta_spread are emitted at
@@ -529,8 +529,11 @@ def main() -> int:
     L += [("TauTop", f"{_ra['tau_within']:.4f}",
            "tau over the configurations within one screening CD"),
           ("TauBottom", f"{_ra['tau_outside']:.4f}", "tau over the remainder"),
-          ("TauWithinN", _ra["n_within_cd"], "configurations within one CD"),
-          ("TauCutoff", f"{_ra['within_cd_cutoff']:.4f}",
+          ("TauTopN", _ra["n_within_cd"], "configurations within one CD"),
+          # Derived, not typed: the two counts must partition the design space.
+          ("TauBottomN", _ra["n_configurations"] - _ra["n_within_cd"],
+           "configurations outside one CD"),
+          ("CDCutoff", f"{_ra['within_cd_cutoff']:.4f}",
            "mean-rank cutoff for the leading group"),
           ("TauConcordant", _ra["concordant"], "concordant pairs"),
           ("TauDiscordant", _ra["discordant"], "discordant pairs"),
@@ -553,6 +556,24 @@ def main() -> int:
            "permutation p, leading group only"),
           ("TauTopPerms", f"{_ra['leading_permutation_n']:,}".replace(",", "{,}"),
            "permutations in the leading-group test")]
+
+    # Amplitude-time rank correlation, mapped arm against spread-only arm.
+    # Emitted as MEDIANS over the five protocols, with the range beside them,
+    # because a single rounded figure would hide KDDCup99: it sits at -0.860
+    # and -0.210 where the others are near -1.00 and -0.03, since heavy
+    # amplitude ties leave many features sharing a spike time. A caption that
+    # quotes only the median should quote the range too. These are summaries of
+    # five per-protocol values and are not the same quantity as
+    # \FNCtuBSpearmanAtwo, which is one protocol at one T.
+    _mc = pd.read_csv(A / "a2/manipulation_checks.csv")
+    L += [("SpearmanLatency", f"{_mc.spearman_amp_time_A1.median():.2f}",
+           "median amplitude-time rank correlation, mapped arm"),
+          ("SpearmanSpread", f"{_mc.spearman_amp_time_A2.median():.2f}",
+           "same, spread-only arm"),
+          ("SpearmanLatencyLo", f"{_mc.spearman_amp_time_A1.max():.2f}",
+           "weakest per-protocol value, mapped arm (KDDCup99)"),
+          ("SpearmanSpreadLo", f"{_mc.spearman_amp_time_A2.min():.2f}",
+           "strongest residual correlation, spread-only arm (KDDCup99)")]
 
     # Pareto span over the full design space (fig_pareto27). One protocol:
     # SOP counts scale with input dimension, so a span pooled across protocols
