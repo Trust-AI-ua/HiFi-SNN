@@ -127,3 +127,76 @@ cells cost **266.9 GPU-hours**, dominated by CIC-IDS2017 (157.3 h for 120 runs)
 and by the slower neuron families (Alpha 3.00×, SConv2dLSTM 2.19× and Lapicque
 1.93× the `LeakyParallel` reference). At the measured throughput of 5.17 GPU-h
 per wall-hour at six-way concurrency, that is roughly 52 wall-clock hours.
+
+---
+
+## §8. Permuted-timing control (arm A2), frozen 2026-08-17
+
+**Frozen before any A2 run existed.** Post-hoc and exploratory, at the same
+evidence grade as E1 and E5: see `DIAGNOSTIC_SPECIFICATIONS.md`.
+
+### Design
+
+Three arms, LeakyParallel, $T=25$, five confirmation protocols, three seeds.
+
+| arm | which features spike | when |
+|---|---|---|
+| A1 latency@0.01 | $x_i > \vartheta_\mathrm{lat}$ | $t_i=\lfloor(1-x_i)(T-1)\rfloor$ |
+| A2 permuted-time | identical to A1 | random permutation of A1's own time multiset |
+| A3 delta@0.01 | identical to A1 | all at $t=0$ |
+
+$\Delta_\mathrm{map} = A1 - A2$ (value of the amplitude-to-time mapping),
+$\Delta_\mathrm{spread} = A2 - A3$ (value of temporal distribution as such),
+and $\Delta_\mathrm{time} = A1 - A3 = \Delta_\mathrm{map} +
+\Delta_\mathrm{spread}$ exactly by construction.
+
+A2 preserves, per sample: the set of features that spike, the total input
+spike count, and the multiset of spike times. It destroys only which feature
+receives which time. Uniform random times would be a weaker control, because
+latency's time distribution is skewed by the amplitude distribution and
+uniform sampling would also change the temporal envelope.
+
+### Predictions, fixed now
+
+1. **The decomposition closes.** The three measured means satisfy
+   $\Delta_\mathrm{time} = \Delta_\mathrm{map} + \Delta_\mathrm{spread}$ to
+   floating point. This is a harness check, not a finding; failure halts the
+   analysis.
+2. **CTU-13 fold 0**: $\Delta_\mathrm{map}$ is the dominant positive term,
+   carrying more than half of the published $+54.5$ pp. Reasoning: fold 0 has
+   25 features of which 91.4% are active per sample, so nearly every feature
+   contributes an amplitude, and there is a large premium to explain.
+3. **CTU-13 fold 1**: $\Delta_\mathrm{map}$ is small in magnitude
+   ($|\Delta_\mathrm{map}| < 5$ pp) and the published $-9.0$ pp liability sits
+   mainly in $\Delta_\mathrm{spread}$. Reasoning: a liability produced by the
+   *mapping* would mean amplitude order is actively misleading there, whereas a
+   liability produced by *spreading* means the network is penalised for
+   receiving evidence late, which is the simpler account.
+4. **Manipulation check**: rank correlation between amplitude and spike time is
+   $-1.000$ for A1 by construction (modulo floor ties) and $\approx 0.000$ for
+   A2, on every protocol.
+
+### Outcome map, fixed now
+
+- **$\Delta_\mathrm{map}$ carries most of $\Delta_\mathrm{time}$ on the
+  protocols where it is large**: the published result stands and sharpens. The
+  claim becomes that the amplitude-to-time code, not temporal spreading, is
+  what timing buys.
+- **$\Delta_\mathrm{map} \approx 0$ everywhere**: the published
+  $\Delta_\mathrm{time}$ is temporal spreading, not an amplitude-to-time code.
+  The headline is reframed in IV-D and the abstract as *amplitude-ordered
+  temporal delivery versus simultaneous delivery*, and the title changes. No
+  number is retracted; what changes is what the number is said to measure.
+- **Mixed across protocols**: report the decomposition per protocol and make no
+  general claim about which component matters, in the same form as the existing
+  protocol-dependence result.
+- **Prediction 2 or 3 fails**: recorded as a failed prediction in this file,
+  with the measured values, and the account is revised rather than the
+  prediction quietly dropped.
+
+### Determinism
+
+The permutation is a deterministic function of the sample's own feature vector
+and the run seed, so it is fixed per sample across epochs and invariant to
+shuffling and batch composition. A permutation redrawn each epoch would be data
+augmentation and would confound the control with a regularisation effect.
