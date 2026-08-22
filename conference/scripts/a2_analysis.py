@@ -168,6 +168,14 @@ def main() -> int:
     d = pd.DataFrame(rows)
     d["closure_err_pp"] = (d.d_map_pp + d.d_spread_pp - d.d_time_pp).abs()
     d.to_csv(OUT / "decomposition.csv", index=False, float_format="%.8f")
+    # The residual is ~1e-15 and would round to zero in an 8-decimal CSV, so it
+    # is persisted separately at full precision. A macro built from the CSV
+    # column would report a precision the artifact no longer carries.
+    (OUT / "closure.json").write_text(json.dumps({
+        "max_abs_closure_error_pp": float(d.closure_err_pp.max()),
+        "n_protocols": int(len(d)),
+        "note": "d_time - (d_map + d_spread), exact by construction",
+    }, indent=2))
 
     print("\n=== closure check: d_time == d_map + d_spread ===")
     print(f"max |error| = {d.closure_err_pp.max():.3e} pp over {len(d)} protocols")

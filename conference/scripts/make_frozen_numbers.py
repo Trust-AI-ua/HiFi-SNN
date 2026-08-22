@@ -23,6 +23,14 @@ A = ROOT / "results/analysis"
 OUT = ROOT / "paper/sec_frozen_numbers.tex"
 
 
+def _sci(v: float) -> str:
+    """Scientific notation as LaTeX math, safe for an exact zero."""
+    if v == 0:
+        return "0"
+    m, e = f"{v:.1e}".split("e")
+    return rf"{m}\times10^{{{int(e)}}}"
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser()
@@ -380,6 +388,40 @@ def main() -> int:
           ("KendallSeed", str(_tau["rng_seed"]), "RNG seed, registered"),
           ("KendallConfigs", _tau["n_configurations"],
            "configurations ranked under both protocols")]
+
+    # Arm-A2 decomposition (Table VI). Delta_map and Delta_spread are emitted at
+    # TWO decimals, and a two-decimal Delta_time is emitted alongside them,
+    # because the table's last three columns must visibly sum. At the one
+    # decimal \FNTiming* uses in prose they do not: NSL-KDD reads
+    # 7.0 + (-5.9) = 1.1 against a printed 1.2. Use \FNDtime* inside the table
+    # and \FNTiming* in running text.
+    _a2 = pd.read_csv(A / "a2/decomposition.csv").set_index("protocol")
+    for proto, tag in tags.items():
+        if proto not in _a2.index:
+            continue
+        r = _a2.loc[proto]
+        L += [(f"ArmLat{tag}", f"{r.A1_latency:.4f}",
+               f"A1 latency@0.01 macro-F1, 3 seeds, {proto}"),
+              (f"ArmPerm{tag}", f"{r.A2_permuted:.4f}",
+               f"A2 permuted-time macro-F1, {proto}"),
+              (f"ArmDelta{tag}", f"{r.A3_delta:.4f}",
+               f"A3 delta@0.01 macro-F1, {proto}"),
+              (f"Dmap{tag}", f"{r.d_map_pp:+.2f}",
+               f"value of the amplitude-to-time mapping, pp, {proto}"),
+              (f"Dspread{tag}", f"{r.d_spread_pp:+.2f}",
+               f"value of temporal spreading, pp, {proto}"),
+              (f"Dtime{tag}", f"{r.d_time_pp:+.2f}",
+               f"timing premium at two decimals so the row sums, {proto}")]
+    L += [("DmapMin", f"{_a2.d_map_pp.min():+.2f}", "smallest mapping term"),
+          ("DmapMax", f"{_a2.d_map_pp.max():+.2f}", "largest mapping term"),
+          ("DspreadMin", f"{_a2.d_spread_pp.min():+.2f}", "smallest spreading term"),
+          ("DspreadMax", f"{_a2.d_spread_pp.max():+.2f}", "largest spreading term"),
+          # Read from closure.json, not the CSV column: the residual is
+          # ~1e-15 and an eight-decimal CSV rounds it to exactly zero.
+          ("DclosureErr",
+           _sci(json.load(open(A / "a2/closure.json"))
+                ["max_abs_closure_error_pp"]),
+           "max closure error of the decomposition, pp")]
 
     # Top-weighted rank agreement. These answer the "a frozen tail inflates
     # tau" objection, so they belong beside the tau block rather than in a
