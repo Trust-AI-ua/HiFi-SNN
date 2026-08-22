@@ -423,6 +423,44 @@ def main() -> int:
                 ["max_abs_closure_error_pp"]),
            "max closure error of the decomposition, pp")]
 
+    # ---- per-class cells, every protocol x class x encoding ----
+    # Named FN<Encoding><Protocol><Class>, with a matching ...Sd, so a table
+    # cell and its dispersion always travel together. Emitted for the whole
+    # grid rather than only for the cells currently cited: a per-class number
+    # typed into a table because no macro existed is how the CTU-13 delta cells
+    # came to be printed at three decimals while the rest of their column was
+    # at four.
+    _pc = pd.read_csv(A / "per_class/per_class.csv")
+    _cls = {"normal": "Normal", "dos": "Dos", "probe": "Probe", "r2l": "Rtl",
+            "u2r": "Utr", "botnet": "Botnet"}
+    _enc = {"latency": "Lat", "rate": "Rate", "delta": "Delta"}
+    for _, r in _pc.iterrows():
+        if r.protocol not in tags or r["name"] not in _cls:
+            continue
+        nm = f"{_enc[r.encoding]}{tags[r.protocol]}{_cls[r['name']]}"
+        L.append((nm, f"{r.f1:.4f}",
+                  f"F1, {r.protocol} {r['name']} {r.encoding}"))
+        if pd.notna(r.sd):
+            L.append((f"{nm}Sd", f"{r.sd:.4f}", "its across-seed SD"))
+    for (proto, cname), gsup in _pc.groupby(["protocol", "name"]):
+        if proto in tags and cname in _cls:
+            L.append((f"Sup{tags[proto]}{_cls[cname]}",
+                      f"{int(gsup.support.iloc[0]):,}".replace(",", "{,}"),
+                      f"test support, {proto} {cname}"))
+
+    # Per-seed spread of the KDDCup99 DoS difference: the evidence for calling
+    # that class tied rather than won.
+    _psd = pd.read_csv(A / "per_class/per_class_per_seed.csv")
+    _kd = _psd[(_psd.protocol == "kddcup99_v2") & (_psd["name"] == "dos")]
+    _kw = _kd.pivot_table(index="seed", columns="encoding", values="f1")
+    _kdiff = 100 * (_kw["latency"] - _kw["rate"])
+    L += [("KddDosRangeLo", f"{_kdiff.min():+.3f}".replace("-", "$-$"),
+           "most negative per-seed DoS difference, pp"),
+          ("KddDosRangeHi", f"{_kdiff.max():+.3f}", "most positive, pp"),
+          ("KddDosLatWins", int((_kdiff > 0).sum()),
+           "seeds where latency leads on KDDCup99 DoS"),
+          ("KddDosSeeds", int(len(_kdiff)), "seeds compared")]
+
     # A2 time-budget sweep: the components against T.
     _ts = pd.read_csv(A / "a2t/components_vs_T.csv")
     _tj = json.load(open(A / "a2t/summary.json"))
@@ -437,6 +475,17 @@ def main() -> int:
            "protocols where Delta_spread moves with T"),
           ("SpreadFlatN", 5 - _tj["spread_moves"], "protocols where it is flat")]
     for proto, tag in tags.items():
+        _q = _ts[_ts.protocol == proto]
+        if len(_q):
+            # Means over T, computed from the components rather than from the
+            # printed cells: averaging rounded table entries is how a CTU-13 f1
+            # mean of -3.21 reads as -3.22.
+            L += [(f"MapMean{tag}", f"{_q.d_map_pp.mean():+.2f}",
+                   f"mean Delta_map over T, {proto}"),
+                  (f"SpreadMean{tag}", f"{_q.d_spread_pp.mean():+.2f}",
+                   f"mean Delta_spread over T, {proto}"),
+                  (f"DtimeMean{tag}", f"{_q.d_time_pp.mean():+.2f}",
+                   f"mean Delta_time over T, {proto}")]
         if proto in _tj["rho"]:
             L.append((f"Rho{tag}",
                       f"{_tj['rho'][proto]:+.2f}".replace("-", "$-$"),
