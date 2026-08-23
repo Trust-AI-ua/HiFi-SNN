@@ -556,6 +556,27 @@ def main() -> int:
           ("DeltaBadSeedFOne", "0.3765", "its macro-F1 at T=5 and T=50"),
           ("DeltaGoodSeedFOne", "0.8612", "the other two seeds there")]
 
+    # Smallest attainable two-sided exact signed-rank p at this many blocks.
+    # Computed, not typed: it is 2/2^n, and deriving it from the seed count
+    # means the claim follows automatically if the design ever changes. The
+    # observed minimum across the per-class tests is reported beside it, so the
+    # sentence is about what happened and not only about what was possible.
+    from scipy.stats import wilcoxon as _wil
+    # From the PER-SEED file: per_class.csv is already aggregated to one row
+    # per cell, so counting rows there gives n=1 and a floor of 1.0000 -- a
+    # wrong number that looks like a real one. The assertion below is what
+    # makes that failure loud instead of silent.
+    _pcs = pd.read_csv(A / "per_class/per_class_per_seed.csv")
+    _n = int(_pcs.groupby(["protocol", "encoding", "cls"]).seed.nunique().max())
+    if _n < 3:
+        raise SystemExit(
+            f"paired-block count came out as {_n}; the signed-rank floor "
+            "would be meaningless. Check that the per-seed file is being read.")
+    _floor = _wil(list(range(1, _n + 1)), [0] * _n).pvalue
+    L += [("WilcoxonFloor", f"{_floor:.4f}",
+           f"smallest attainable two-sided exact signed-rank p at n={_n}"),
+          ("WilcoxonBlocks", _word(_n), "paired blocks per class test")]
+
     # ---- values that lived only in a preamble fallback ----
     # Derived here wherever the artifact exists. A fallback in a preamble is a
     # number with no provenance that silently wins when the generator stops
