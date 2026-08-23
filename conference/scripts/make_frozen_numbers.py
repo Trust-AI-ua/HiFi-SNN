@@ -153,9 +153,16 @@ def main() -> int:
     unchanged = sum(v["leader_unchanged"] for v in ded.values())
     L += [("DedupProtocols", len(ded), "protocols with duplicates, encoding axis"),
           ("DedupLeaderUnchanged", unchanged, "of which leader unchanged"),
-          ("DedupKddOff", f"{ded['kddcup99_v2']['paired_official']['median_delta_pp']:+.3f}",
-           "LP lat-vs-rate margin, official"),
-          ("DedupKddDed", f"{ded['kddcup99_v2']['paired_dedup']['median_delta_pp']:+.3f}",
+          # MEDIAN paired difference. Named as such because the difference of
+          # means is +2.21 and +2.25 on the same five blocks: with values
+          # -1.02, +1.04, +5.46, +6.58, -1.03 the two statistics differ by
+          # more than a factor of two, and a name that does not say which
+          # invites exactly the audit failure it has already caused.
+          ("DedupKddOffMedian",
+           f"{ded['kddcup99_v2']['paired_official']['median_delta_pp']:+.3f}",
+           "LP lat-vs-rate MEDIAN paired margin, official"),
+          ("DedupKddDedMedian",
+           f"{ded['kddcup99_v2']['paired_dedup']['median_delta_pp']:+.3f}",
            "same, deduplicated")]
     # The absolute effect of deduplication on the recommended configuration.
     # Threats quoted -0.79 pp, which is the value for rate; the recommended
@@ -176,7 +183,13 @@ def main() -> int:
            "seed-blocks where latency leads on KDDCup99"),
           ("DedupKddSeedN", int(len(_sd)), "seed-blocks on KDDCup99")]
 
-    L += [("DedupKddLpLat", f"{_dd.loc['LeakyParallel/latency','delta_pp']:+.2f}",
+    L += [("DedupKddOffMean",
+           f"{100 * (_dd.loc['LeakyParallel/latency', 'f1_official'] - _dd.loc['LeakyParallel/rate', 'f1_official']):+.2f}",
+           "the same margin as a difference of means, official"),
+          ("DedupKddDedMean",
+           f"{100 * (_dd.loc['LeakyParallel/latency', 'f1_dedup'] - _dd.loc['LeakyParallel/rate', 'f1_dedup']):+.2f}",
+           "same, deduplicated"),
+          ("DedupKddLpLat", f"{_dd.loc['LeakyParallel/latency','delta_pp']:+.2f}",
            "KDDCup99 dedup effect on LeakyParallel/latency, pp"),
           ("DedupKddLpRat", f"{_dd.loc['LeakyParallel/rate','delta_pp']:+.2f}",
            "same for LeakyParallel/rate, pp")]
@@ -324,12 +337,21 @@ def main() -> int:
             & (_k.encoding.isin(["rate", "delta"]))]
     _p = _k.pivot(index="seed", columns="encoding", values="f1_macro")
     _d = _p["rate"] - _p["delta"]
-    L += [("KddRateDeltaMargin", f"{100*_d.mean():.2f}",
+    L += [("KddRateDeltaMarginScr", f"{100*_d.mean():.2f}",
            "KDDCup99 rate-minus-delta mean margin, pp"),
-          ("KddRateWins", int((_d > 0).sum()), "seed-blocks where rate leads"),
-          ("KddDeltaWins", int((_d < 0).sum()), "seed-blocks where delta leads"),
-          ("KddRateDeltaLo", f"{100*_d.min():+.1f}", "most negative per-seed diff, pp"),
-          ("KddRateDeltaHi", f"{100*_d.max():+.1f}", "most positive per-seed diff, pp")]
+          ("KddRateWinsScr", int((_d > 0).sum()), "seed-blocks where rate leads"),
+          ("KddDeltaWinsScr", int((_d < 0).sum()), "seed-blocks where delta leads"),
+          ("KddRateDeltaLoScr", f"{100*_d.min():+.1f}", "most negative per-seed diff, pp"),
+          ("KddRateDeltaHiScr", f"{100*_d.max():+.1f}", "most positive per-seed diff, pp")]
+    # The same contrast under the CONFIRMATION protocol, so the two can be
+    # told apart by name. They differ by more than a factor of three (0.21
+    # against 0.06) and an audit that assumes one file holds one quantity will
+    # read the mismatch as an error rather than as two populations.
+    _kc = pd.read_csv(A / "dedup/encoding_axis_lp/summary.csv")
+    _kc = _kc[_kc.protocol == "kddcup99_v2"].set_index("variant")
+    L.append(("KddRateDeltaMarginConf",
+              f"{100 * (_kc.loc['LeakyParallel/rate', 'f1_official'] - _kc.loc['LeakyParallel/delta', 'f1_official']):+.2f}",
+              "KDDCup99 rate-minus-delta margin under the confirmation protocol, pp"))
 
     # NSL-KDD headline operating point and the two rare-class recalls, so the
     # summary can say plainly what the recommended configuration achieves.
