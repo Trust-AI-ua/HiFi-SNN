@@ -24,6 +24,7 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -639,6 +640,18 @@ def main() -> int:
            "cells where the arms differ in input spikes"),
           ("TsweepSEmax", f"{max(_ts.se_map_pp.max(), _ts.se_spread_pp.max()):.1f}",
            "largest per-cell standard error, pp"),
+          # Pooled over all 20 cells rather than per protocol: this is the
+          # flatness claim the abstract makes, and it is about the sum, not
+          # about either component (see FNMapMovesN / FNSpreadMovesN).
+          ("TsweepR",
+           f"{np.corrcoef(_ts['T'].astype(float), _ts.d_time_pp)[0, 1]:+.3f}",
+           "pooled Pearson(T, Delta_time) over the sweep"),
+          ("TsweepRMap",
+           f"{np.corrcoef(_ts['T'].astype(float), _ts.d_map_pp)[0, 1]:+.3f}",
+           "same for Delta_map"),
+          ("TsweepRSpread",
+           f"{np.corrcoef(_ts['T'].astype(float), _ts.d_spread_pp)[0, 1]:+.3f}",
+           "same for Delta_spread"),
           ("TsweepRatioMax", f"{2.2:.1f}",
            "largest range-to-SE ratio for Delta_time in E3")]
 
