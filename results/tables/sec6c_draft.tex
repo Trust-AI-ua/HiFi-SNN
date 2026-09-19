@@ -1,0 +1,89 @@
+% ============================================================
+% §VI-C draft — accounting reframing. Written against
+% results/tables_deployment_audit.tex (tab:dep:systems, tab:dep:sensitivity).
+% Forward pointers: §VI-E (envelope sweep), §VI-F (early-exit mechanism).
+% Every number here is traceable to results/deployment/*.csv.
+% ============================================================
+
+\subsection{Operation-Priced Energy Does Not Survive Measurement}
+\label{sec:vi:accounting}
+
+The efficiency claim in Section~\ref{sec:energy}, and the comparable claims that
+are standard in the spiking-IDS literature, rest on an operation-priced proxy:
+synaptic operations are counted and multiplied by a published per-operation
+energy. We adopt that accounting throughout this paper. Having measured the
+deployed systems directly, we now report that the proxy does not support the
+conclusion we drew from it, for three separate reasons. We state them in the
+order of how much of the discrepancy each explains.
+
+\subsubsection{Priced consistently, the tree ensemble is not more expensive}
+The proxy has been applied asymmetrically. A tree comparison is a
+subtract-and-branch and belongs to the same Horowitz cost class as an
+accumulate, yet tree-based baselines are conventionally excluded from
+operation-priced comparison on the grounds that their operations are not
+multiply--accumulates. Pricing every system on the same scale
+(Table~\ref{tab:dep:systems}) removes that asymmetry, and it reverses the
+ordering: the compact ensemble requires $2{,}768$\,pJ of arithmetic per sample
+against $5{,}654$\,pJ for the deployed spiking student, a factor of $0.49$. The
+full teacher, at $6{,}873$\,pJ, is within $1.22\times$ of the student rather than
+orders of magnitude above it. The spiking model's arithmetic advantage is real
+only against the \emph{dense} baselines, where the $4.6$ versus $0.9$\,pJ
+differential between a multiply--accumulate and an accumulate applies.
+
+\subsubsection{Arithmetic is a small fraction of the energy that is actually spent}
+Extending the model to include memory traffic --- weight or node reads, membrane
+state, and input reads, priced by a tier keyed to artifact size --- places
+between $95.7\%$ and $99.9\%$ of total energy in the memory term for every system
+measured. An accounting that prices only arithmetic therefore prices under $5\%$
+of the system. This is the dominant source of error, and it is not specific to
+spiking models: it applies identically to the dense and tree baselines, and it is
+why the ensemble's real disadvantage is its $5.04$\,MB of node arrays rather than
+its operation count.
+
+\subsubsection{The remaining ordering depends on a modelling choice, not on measurement}
+Once memory dominates, the comparison between the spiking student and its
+parameter-identical dense twin is decided by the assumed reuse behaviour rather
+than by either system's operation count. Table~\ref{tab:dep:sensitivity} reports
+the ratio under two assumptions. Charging one cold access per operation, the
+ordering \emph{inverts} above roughly $20$\,pJ per access and the dense twin is
+cheaper. Charging the first touch of a distinct item at the tier price and
+subsequent touches at an L1 cost, the spiking student is cheaper throughout the
+swept range. Both are defensible: the spiking student re-reads a $53$\,KB weight
+set across timesteps and is plausibly resident, whereas the ensemble walks
+$76{,}475$ nodes through a multi-megabyte array with data-dependent branching and
+is plausibly not. We report the band, $0.94$--$2.06\times$, and note explicitly
+that it spans a modelling choice rather than measurement noise. We do not select
+the assumption that favours our system.
+
+\subsubsection{The per-operation constant is an arithmetic-only idealisation}
+The $0.9$\,pJ figure used here and throughout the spiking literature prices
+arithmetic alone. Measured neuromorphic silicon carries routing, spike delivery
+and core-idle overheads roughly $25\times$ larger per synaptic operation. We have
+not measured either system on such a device, and the comparison that would be
+required --- a dense network on the same substrate --- does not exist, so we draw
+no conclusion about relative performance there. The narrower and supportable
+statement is that any deployment claim must be validated against the target's own
+per-operation figure rather than against an analytical floor.
+
+\subsubsection{What we therefore claim}
+We withdraw the claim that Tree-to-Spike is the more energy-efficient choice on
+general-purpose hardware. On a conventional processor with adequate memory the
+gradient-boosted ensemble is both more accurate and lower-latency
+(Table~\ref{tab:dep:systems}), and the dense twin is lower-latency by an order of
+magnitude. What survives measurement is a memory-envelope argument, whose scope
+is established in Section~\ref{sec:vi:envelope}, and it is conditional: it holds
+where the taxonomy is large enough or hard enough that an ensemble cannot
+converge within the envelope. The efficiency claim is thus not merely reduced in
+magnitude but changed in kind, from an operation-count advantage to a footprint
+constraint.
+
+We regard the methodological point as the more durable contribution. An
+analytical proxy can fail in two distinct ways, and they are distinguishable by
+test. It may be \emph{incomplete}, omitting a term that dominates --- detected by
+adding the omitted term and observing the estimate move, as in
+Section~\ref{sec:vi:accounting}\ref{subsec:memory}. Or it may be
+\emph{target-mismatched}, faithfully estimating a different quantity --- detected
+by exhausting the statistic space over the same information and observing that
+nothing moves, as in the early-exit analysis of
+Section~\ref{sec:vi:earlyexit}. The two standard proxies of this literature,
+operation-priced energy and prefix confidence, exemplify one failure mode each.

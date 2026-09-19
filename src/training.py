@@ -63,7 +63,7 @@ DEFAULTS = {
     "val_fraction": 0.1,
     "seed": 42,            # fixed for reproducibility — overridable per-run for multi-seed sweeps
     "device": None,
-    "summary_csv": "results/summary.csv",
+    "summary_csv": "results/tables/summary.csv",
     "force": False,        # if True, re-run and overwrite results.json/checkpoint.pt even if present
 }
 

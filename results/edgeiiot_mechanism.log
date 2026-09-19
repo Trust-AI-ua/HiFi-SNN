@@ -1,0 +1,33 @@
+/home/student3/HiSNN/scripts/edgeiiot_mechanism.py:37: Pandas4Warning: For backward compatibility, 'str' dtypes are included by select_dtypes when 'object' dtype is specified. This behavior is deprecated and will be removed in a future version. Explicitly pass 'str' to `include` to select them, or to `exclude` to remove them and silence this warning.
+See https://pandas.pydata.org/docs/user_guide/migration-3-strings.html#string-migration-select-dtypes for details on how to write code that works with pandas 2 and 3.
+  obj = df.select_dtypes(include="object").columns.tolist()
+==============================================================================
+TEST 1 -- per-class wrong-exit concentration (is 'diffuse' an artifact?)
+==============================================================================
+source class      n_wrong       top target   share   top2  exit step sd
+Backdoor             4743       Ransomware  100.0% 100.0%          0.54
+DDoS_HTTP              77              XSS   83.1% 100.0%          5.59
+DDoS_ICMP           12813       Ransomware  100.0% 100.0%          0.00
+DDoS_TCP            10012    Port_Scanning   58.3% 100.0%          2.92
+DDoS_UDP              543       Ransomware   99.8% 100.0%          0.13
+Fingerprinting        167       Ransomware  100.0% 100.0%          0.37
+Password             6827        Uploading  100.0% 100.0%          0.64
+Port_Scanning        2010       Ransomware  100.0% 100.0%          0.04
+SQL_injection        7339        Uploading  100.0% 100.0%          0.77
+Vulnerability_sc     3894              XSS   99.2% 100.0%          1.08
+
+  mean PER-CLASS top-target share: 94.0%  (dataset-level modal share was 50.5%)
+  -> PAIRWISE ATTRACTORS (same mechanism, distributed)
+
+==============================================================================
+TEST 2 -- is the encoder protocol-blind?
+==============================================================================
+  features total 95 | names recovered 95 | kept 37
+  protocol-related features: 95 present, 37 retained (39%)
+    tcp  :  10/ 15 retained
+    udp  :   2/  2 retained
+    icmp :   2/  3 retained
+    http :  16/ 30 retained
+    arp  :   0/  2 retained
+    mqtt :   4/ 28 retained
+    dns  :   3/ 16 retained

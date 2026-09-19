@@ -1,0 +1,75 @@
+% Two drafts, both from the M3 measurement:
+%   (1) replacement text for Section IV-F (what is actually quantized)
+%   (2) a new Section VI subsection presenting Table~\ref{tab:m3:quant}, to be
+%       placed after the deployment subsection; it is what the Section V audit
+%       forward-link resolves to.
+% Numbers: results/tables/tab_m3_quant.{csv,tex}, m3_quant_per_seed.csv
+% (9 clean datasets; CSE-CIC-IDS2018 and Edge-IIoTset pending the repaired re-runs).
+% Generated 2026-09-18. Labels to verify: sec:deployment, tab:m3:quant, subsec:audit.
+
+% ===================== (1) Section IV-F replacement =========================
+\paragraph{Deployed numerical format.}
+The deployed student carries \emph{int8-grid weights executed in floating point}.
+After training, every \texttt{Linear} weight tensor is projected onto a symmetric
+per-tensor grid, $W_q = s\,\mathrm{clip}(\mathrm{round}(W/s), -127, 127)$ with
+$s = \max|W|/127$, once and post hoc; no quantization-aware training, no
+fine-tuning and no calibration set are used. Biases, activations and the
+accumulator are untouched, and the projected values are stored and executed as
+float32, so the grid constrains the weights without making inference integer
+arithmetic. We therefore do not claim integer-only inference, and the energy
+model of Section~\ref{sec:energy} prices synaptic operations, not int8 kernels.
+What the projection buys is the storage figure quoted in
+Section~\ref{sec:deployment} (one byte per weight when serialised) and the
+guarantee that the reported accuracy is the accuracy of the weights that would be
+shipped. Its cost is measured in Section~\ref{subsec:quantcost}.
+
+% ===================== (2) new Section VI subsection ========================
+\subsection{What Quantization Costs}
+\label{subsec:quantcost}
+
+Reporting a quantized artifact obliges us to say what the projection costs.
+Table~\ref{tab:m3:quant} gives fp32 and int8-grid test macro-$F_1$ for all four
+models on every benchmark, as 5-seed means, together with the mean and
+worst-seed difference. For the two tree-guided models the floating-point side is
+recovered by re-running training with the same seeds and capturing the weights
+immediately before the projection; each such re-run reproduces the published
+int8 number exactly, so the two columns differ only in the projection. Vanilla
+SNN and TASNN are reported in floating point throughout the paper, so their int8
+columns are counterfactual: what deployment would have cost had we quantized
+them. For those two models we also apply the projection to every weight matrix
+rather than to \texttt{Linear} layers alone, because Vanilla SNN keeps 98\% of
+its weights in a recurrent cell that the \texttt{Linear}-only projection never
+touches; for the tree-guided students, whose weights are all linear, the two
+variants coincide.
+
+Across the nine benchmarks unaffected by the dataset repairs of
+Section~\ref{subsec:audit}, the projection is close to free for the models we
+deploy: Tree-to-Spike averages $+0.06$ macro-$F_1$ points (worst dataset
+$-0.42$, worst single seed $-1.82$) and DNN-Tree $-0.12$ (worst dataset $-0.38$,
+worst seed $-2.22$). No dataset loses a full point in the mean for either model,
+and the paired per-dataset difference between them is not significant
+($p = 0.055$, Wilcoxon signed-rank, $N = 9$): on this evidence the spiking
+student is never worse on average, but a claim that it is more robust than its
+dense twin is not supported.
+% PROVISIONAL -- do not freeze. p = 0.055 is over the nine clean datasets only.
+% The repaired CSE-CIC-IDS2018 and Edge-IIoTset cells add two paired
+% observations (N = 11) and can move p in either direction; the pre-repair
+% CSE-CIC-IDS2018 DNN-Tree delta was -11.46, the largest in the table. Re-run
+% the Wilcoxon from results/tables/m3_quant_per_seed.csv once
+% scripts/run_m3_repaired.sh finishes, and reword this sentence to match: keep
+% "no detectable difference" only if it still holds at N = 11.
+
+That the cost is small is a property of these models, not of the method. The same
+projection applied to the Vanilla SNN baseline costs $-0.47$ points on average,
+$-1.82$ on UNSW-NB15 and as much as $-5.10$ on a single KDD Cup 99 seed, with two
+of nine datasets losing more than a point. Per-tensor symmetric quantization is
+safe here because the weight distributions of the distilled students are
+well-conditioned -- their per-layer $\max|W| / p_{99}|W|$ ratios stay between 1.1
+and 3.6 -- and not because post-training quantization is harmless in general. A
+single outlier weight sets the scale for its whole tensor, and where one exists
+the projection destroys the resolution of every other weight in that layer;
+Section~\ref{subsec:audit} traces exactly such a case to a dataset artifact.
+
+[RERUN] CSE-CIC-IDS2018 and Edge-IIoTset are re-run on the repaired corpora; their
+rows in Table~\ref{tab:m3:quant}, and the accompanying statement of whether the
+first-layer outlier survives the repair, are filled from those runs.

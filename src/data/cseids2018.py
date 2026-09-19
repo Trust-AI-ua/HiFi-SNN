@@ -33,7 +33,7 @@ the correct behaviour for cross-dataset comparison.
 
 Disk cache
 ----------
-First load builds ``dataset/cse-cic-ids2018/_preprocessed_cache.npz`` (~1.2 GB
+First load builds ``dataset/cse-cic-ids2018/_preprocessed_cache_v2.npz`` (~1.2 GB
 compressed) in ~15 min. Every subsequent run loads in <10 s. The cache stores
 log1p-applied features so per-run only does subsample + split + scaling.
 
@@ -58,6 +58,7 @@ from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.data.nslkdd import DatasetBundle, CLASS_NAMES, CLASS_TO_IDX
+from src.data.repair import drop_cse_day_only_columns
 
 CSE_FILES = [
     "02-14-2018.csv",
@@ -112,9 +113,12 @@ def _read_one(path: Path) -> pd.DataFrame:
     return df
 
 
+CACHE_NAME = "_preprocessed_cache_v2.npz"   # v2 = 02-20-only columns dropped (leakage audit)
+
+
 def _build_full_arrays(data_dir: Path):
     """Heavy CSV → numpy step. Cached to disk; second call loads in <10 s."""
-    cache_path = data_dir / "_preprocessed_cache.npz"
+    cache_path = data_dir / CACHE_NAME
     if cache_path.exists():
         z = np.load(cache_path)
         return z["X"].astype(np.float32), z["y"].astype(np.int64)
@@ -126,6 +130,12 @@ def _build_full_arrays(data_dir: Path):
             raise FileNotFoundError(f"missing CSE-CIC-IDS2018 file: {path}")
         frames.append(_read_one(path))
     df = pd.concat(frames, ignore_index=True)
+
+    # ---------- drop the 02-20-only identifier columns ----------
+    # Flow ID / Src IP / Src Port / Dst IP exist only in 02-20-2018.csv, so the
+    # concatenation zero-pads them for the other nine days and Src Port becomes a
+    # capture-day indicator that excludes r2l/u2r (see the leakage audit).
+    df = drop_cse_day_only_columns(df)
 
     # ---------- drop rogue duplicated-header rows ----------
     df = df[df["Label"].astype(str).str.strip() != "Label"]

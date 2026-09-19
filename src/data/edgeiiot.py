@@ -39,6 +39,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from src.data.nslkdd import DatasetBundle
 from src.data._label_modes import apply_label_mode
+from src.data.repair import repair_edgeiiot, infer_numeric
 
 BENIGN_FINE = "Normal"
 _INFO_GATHER = {"Port_Scanning", "Fingerprinting", "Vulnerability_scanner"}
@@ -58,6 +59,7 @@ def _category(t: str) -> str:
 
 
 CSV_REL = "Selected dataset for ML and DL/DNN-EdgeIIoT-dataset.csv"
+CACHE_NAME = "_preprocessed_cache_v2.npz"   # v2 = leakage-repaired (src/data/repair.py)
 
 DROP_COLUMNS = [
     "frame.time", "ip.src_host", "ip.dst_host", "arp.src.proto_ipv4",
@@ -69,31 +71,47 @@ LABEL_COLUMNS = ["Attack_label", "Attack_type"]
 
 
 def _build_full_arrays(data_dir: Path):
-    """Parse + preprocess the DNN CSV. Cached as `_preprocessed_cache.npz`.
+    """Parse + preprocess the DNN CSV, with the leakage repair applied.
 
-    Returns (X float32 [N, F], y int64 [N], class_names list). The cache stores the
-    class-name order so labels are stable across runs.
+    The published CSV encodes the label in two ways (see
+    results/diagnostics/leakage_audit/README.md): the zero placeholder is spelled
+    "0" or "0.0" by source capture, and rows whose tshark fields contained commas
+    are column-shifted. ``src.data.repair`` canonicalises the values, decodes the
+    three verified layouts, drops the unrepairable MITM class (15 -> 14) and the
+    payload/identifier columns http.referer and dns.qry.name. Cached as
+    ``_preprocessed_cache_v2.npz`` (v2 = repaired; the pre-repair cache is left
+    untouched on disk).
+
+    Returns (X float32 [N, F], y int64 [N], class_names, provenance str [N]).
     """
-    cache = data_dir / "_preprocessed_cache.npz"
+    cache = data_dir / CACHE_NAME
     if cache.exists():
         z = np.load(cache, allow_pickle=True)
         return (z["X"].astype(np.float32), z["y"].astype(np.int64),
-                [str(c) for c in z["classes"]])
+                [str(c) for c in z["classes"]],
+                np.asarray([str(p) for p in z["provenance"]], dtype=object))
 
     csv = data_dir / CSV_REL
     if not csv.exists():
         raise FileNotFoundError(f"missing Edge-IIoTset DNN CSV: {csv}")
-    df = pd.read_csv(csv, low_memory=False)
+    df = pd.read_csv(csv, dtype=str, low_memory=False)
+
+    # ---- leakage repair (row realignment, value canonicalisation, drops) ----
+    df, prov = repair_edgeiiot(df)
 
     df = df.drop(columns=[c for c in DROP_COLUMNS if c in df.columns])
-    df = df.dropna(axis=0, how="any").drop_duplicates()
+    keep = df.notna().all(axis=1).to_numpy()
+    df, prov = df[keep], prov[keep]
+    keep = ~df.duplicated().to_numpy()
+    df, prov = df[keep], prov[keep]
 
     y_raw = df["Attack_type"].astype(str).str.strip().to_numpy()
     df = df.drop(columns=[c for c in LABEL_COLUMNS if c in df.columns])
 
     # genuinely-categorical (string) columns -> one-hot; everything else -> numeric
-    obj_cols = df.select_dtypes(include="object").columns.tolist()
-    num_cols = [c for c in df.columns if c not in obj_cols]
+    df = infer_numeric(df, list(df.columns))
+    num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    obj_cols = [c for c in df.columns if c not in num_cols]
 
     Xnum = df[num_cols].apply(pd.to_numeric, errors="coerce")
     Xnum = Xnum.replace([np.inf, -np.inf], np.nan).fillna(0.0)
@@ -109,12 +127,15 @@ def _build_full_arrays(data_dir: Path):
     classes = ["Normal"] + sorted(set(y_raw) - {"Normal"})
     idx = {c: i for i, c in enumerate(classes)}
     y = np.array([idx[v] for v in y_raw], dtype=np.int64)
+    prov = np.asarray(prov, dtype=object)
 
-    print(f"  Edge-IIoTset: X={X.shape} ({len(num_cols)} numeric + "
+    counts = pd.Series(prov).value_counts().to_dict()
+    print(f"  Edge-IIoTset (repaired): X={X.shape} ({len(num_cols)} numeric + "
           f"{X.shape[1]-len(num_cols)} one-hot), {len(classes)} classes, "
-          f"{len(y)} rows after dropna/dedup")
-    np.savez_compressed(cache, X=X, y=y, classes=np.array(classes, dtype=object))
-    return X, y, classes
+          f"{len(y)} rows after dropna/dedup; provenance {counts}")
+    np.savez_compressed(cache, X=X, y=y, classes=np.array(classes, dtype=object),
+                        provenance=np.array(prov, dtype=object))
+    return X, y, classes, prov
 
 
 def load_edgeiiot(
@@ -128,18 +149,19 @@ def load_edgeiiot(
     seed: int = 0,
 ) -> DatasetBundle:
     data_dir = Path(data_dir)
-    X, y_fine, fine_names = _build_full_arrays(data_dir)
+    X, y_fine, fine_names, prov = _build_full_arrays(data_dir)
     y, class_names = apply_label_mode(label_mode, y_fine, fine_names, _category, BENIGN_FINE)
 
     if subsample_fraction < 1.0:
         rng = np.random.RandomState(seed)
         keep = rng.choice(len(X), int(len(X) * subsample_fraction), replace=False)
-        X, y = X[keep], y[keep]
+        X, y, prov = X[keep], y[keep], prov[keep]
 
-    X_train_pool, X_test, y_train_pool, y_test = train_test_split(
-        X, y, test_size=test_fraction, random_state=seed, stratify=y)
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_train_pool, y_train_pool, test_size=val_fraction,
+    # prov rides along the same splits (identical partition: sklearn keys off y/seed)
+    X_train_pool, X_test, y_train_pool, y_test, p_train_pool, p_test = train_test_split(
+        X, y, prov, test_size=test_fraction, random_state=seed, stratify=y)
+    X_train, X_val, y_train, y_val, p_train, p_val = train_test_split(
+        X_train_pool, y_train_pool, p_train_pool, test_size=val_fraction,
         random_state=seed, stratify=y_train_pool)
 
     scaler = MinMaxScaler()
@@ -157,6 +179,7 @@ def load_edgeiiot(
     train_counts = {class_names[int(k)]: int(v) for k, v in train_counts.items()}
 
     return DatasetBundle(
+        row_provenance={"train": p_train, "val": p_val, "test": p_test},
         train_loader=_loader(X_train, y_train, True),
         val_loader=_loader(X_val, y_val, False),
         test_loader=_loader(X_test, y_test, False),

@@ -82,7 +82,7 @@ DEFAULTS = {
     "val_fraction": 0.1,
     "seed": 42,
     "device": None,
-    "summary_csv": "results/summary_tasnn.csv",
+    "summary_csv": "results/tables/summary_tasnn.csv",
     "force": False,
 }
 

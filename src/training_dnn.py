@@ -48,7 +48,7 @@ DEFAULTS = {
     "val_fraction": 0.1, "seed": 42,
     "device": "cuda" if torch.cuda.is_available() else "cpu",
     "results_dir": "results/DNN-Tree",
-    "summary_csv": "results/summary_dnn.csv",
+    "summary_csv": "results/tables/summary_dnn.csv",
     "latency_samples": 1000,   # cap for the batch-1 latency probe on large test sets
     "quantize": False,         # int8 fake-quant before eval (matched precision vs the SNN student)
 }
