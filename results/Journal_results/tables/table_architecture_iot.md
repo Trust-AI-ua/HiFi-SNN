@@ -12,10 +12,10 @@ Mean +/- std over 5 seeds. DNN-Tree is the dense iso-architecture twin: it emits
 | CICIoMT2024 | 6 | Tree-to-Spike | 37 - 64 - 64 - 6 (LIF, T=20) | 7.0K | 40.7 / 20.2 (incl. enc.) | 208 +/- 14.6 | 14.5 +/- 0.2 /20 | 4.8 +/- 1.4 /20 | 1.00x |
 | CICIoMT2024 | 6 | DNN-Tree | 37 - 64 - 64 - 6 (ReLU) | 7.0K | 40.7 / 20.2 (incl. enc.) | 33 +/- 3.2 (act.) | -- | -- | 4.20x |
 | CICIoMT2024 | 6 | TASNN | 45 - Tr(d=128x3) - STC64 - 128 - 64 - 6 (T=16) | 490.3K | 1,915.2 / 478.8 | 12 +/- 2.8 | -- | -- | 12kx (analytic) |
-| Edge-IIoTset | 15 | Vanilla SNN | 95 - 128 - 15 (LIF, T=25) | 30.7K | 120.1 / 30.0 | 235 +/- 28.4 | 3.2 +/- 0.0 /25 | 7.8 +/- 0.2 /25 | 1.75x |
-| Edge-IIoTset | 15 | Tree-to-Spike | 39 - 64 - 64 - 15 (LIF, T=20) | 7.8K | 34.0 / 11.1 (incl. enc.) | 227 +/- 18.9 | 14.6 +/- 0.1 /20 | 7.9 +/- 1.2 /20 | 1.00x |
-| Edge-IIoTset | 15 | DNN-Tree | 39 - 64 - 64 - 15 (ReLU) | 7.8K | 34.0 / 11.1 (incl. enc.) | 29 +/- 3.8 (act.) | -- | -- | 4.03x |
-| Edge-IIoTset | 15 | TASNN | 95 - Tr(d=128x3) - STC64 - 128 - 64 - 15 (T=16) | 543.3K | 2,122.2 / 530.6 | 12 +/- 0.4 | -- | -- | 24kx (analytic) |
+| Edge-IIoTset | 14 | Vanilla SNN | 64 - 128 - 14 (LIF, T=25) | 26.6K | 104.1 / 26.0 | 345 +/- 30.4 | -- | 15.4 +/- 1.1 /25 | 1.33x |
+| Edge-IIoTset | 14 | Tree-to-Spike | 38 - 64 - 64 - 14 (LIF, T=20) | 7.5K | 32.9 / 10.9 (incl. enc.) | 269 +/- 6.3 | -- | 9.3 +/- 2.3 /20 | 1.00x |
+| Edge-IIoTset | 14 | DNN-Tree | 38 - 64 - 64 - 14 (ReLU) | 7.5K | 32.9 / 10.9 (incl. enc.) | --- | -- | -- | 3.58x |
+| Edge-IIoTset | 14 | TASNN | 64 - Tr(d=128x3) - STC64 - 128 - 64 - 14 (T=16) | 511.3K | 1,997.4 / 499.3 | 15 +/- 0.5 | -- | -- | 14kx (analytic) |
 | TON-IoT | 10 | Vanilla SNN | 115 - 128 - 10 (LIF, T=25) | 32.6K | 127.5 / 31.9 | 336 +/- 10.8 | 3.6 +/- 0.0 /25 | 14.0 +/- 0.6 /25 | 1.14x |
 | TON-IoT | 10 | Tree-to-Spike | 70 - 64 - 64 - 10 (LIF, T=20) | 9.5K | 42.7 / 14.8 (incl. enc.) | 597 +/- 36.9 | 14.7 +/- 0.2 /20 | 9.0 +/- 1.2 /20 | 1.00x |
 | TON-IoT | 10 | DNN-Tree | 70 - 64 - 64 - 10 (ReLU) | 9.5K | 42.7 / 14.8 (incl. enc.) | 62 +/- 2.6 (act.) | -- | -- | 2.66x |
