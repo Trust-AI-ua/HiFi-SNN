@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Memory-aware, batch-aware total-energy model: the analysis that decides whether
+"""SUPERSEDED by scripts/deployment_energy2.py (per-dataset, deployed configuration,
+measured artifact sizes, IoT subset via --iot). The prose conclusions this script
+writes into results/energy_memory_model.md are HARD-CODED and predate the leakage
+repair, the input-layer accounting and the Vanilla SNN double-count correction; the
+corrected band (DNN-Tree / Tree-to-Spike 0.60x cold to 0.98x reuse-aware at 100 pJ
+SRAM) contradicts them. Do not cite this script's output. Kept for provenance.
+
+Memory-aware, batch-aware total-energy model: the analysis that decides whether
 the SNN energy advantage survives beyond a compute-only SOP count.
 
 Compute-only energy (SOPs x 0.9 vs MACs x 4.6) flatters SNNs. The real question
@@ -64,6 +71,12 @@ def agg(globs, kind):
             d["twin_macs"] = F * H + H * nc; d["twin_params"] = F * H + H * nc; d["twin_neurons"] = H + nc
         else:
             d["T"] = recs[0]["config"]["T"]; d["neurons"] = sum(recs[0]["config"]["hidden"]) + nc
+            # Tree-to-Spike's stored value is hidden layers only; add the input layer
+            # (channels x hidden[0]) like every other reader. Omitting it undercounted
+            # the student's input-layer weight reads, which flattered it in this band.
+            # The Vanilla SNN branch above adds nothing: its value already includes it.
+            h0 = recs[0]["config"]["hidden"][0]
+            d["ops"] = d["ops"] + G(lambda r: r["data"]["encoder_channels"]) * h0
         d["is_snn"] = True
     return d
 
@@ -145,6 +158,9 @@ def main():
           "weight reuse, and spike-routing overhead need a hardware/dataflow simulator or Loihi/Akida "
           "measurement for a final number. Training energy and von-Neumann batch-1 latency remain DNN wins.",
           ]
+    L.insert(0, "> **SUPERSEDED** by scripts/deployment_energy2.py. The conclusions below are "
+                "hard-coded prose that predates the leakage repair and the operation-count "
+                "corrections; do not cite them.\n")
     Path("results/energy_memory_model.md").write_text("\n".join(L) + "\n")
     print("\n".join(L))
     print("\n[wrote results/energy_memory_model.md]")

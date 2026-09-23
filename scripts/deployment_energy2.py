@@ -84,13 +84,18 @@ if __name__ == "__main__":
         print(f"IoT subset: {sorted(d.dataset.unique())}")
     # t2s_full / t2s_exit are folded into t2s_deployed by deployed(); listing them
     # here only produced NaN rows.
-    order = ["full_gbdt","compact_gbdt","tasnn","vanilla_snn","dnn_tree","t2s_deployed"]
+    # The band against the tree ensembles is DROPPED (decision 2026-09-23): no claim
+    # against the tree remains, and the tree's memory term is the most
+    # assumption-laden number in this model. The tree is compared on arithmetic
+    # only, in the teacher table.
+    order = ["tasnn","vanilla_snn","dnn_tree","t2s_deployed"]
     print("="*74); print("Per-dataset total energy (nJ), two reuse assumptions"); print("="*74)
     for reuse in (False, True):
         t = table(d, reuse=reuse).reindex(order)/1000
         print(f"\n-- {'REUSE-AWARE' if reuse else 'COLD (one access per op)'} @ SRAM 100 / DRAM 1300 pJ")
         print(t.round(1).to_string())
-        print(f"   dnn_tree / t2s_deployed = {t['dnn_tree']/t['t2s_deployed']:.2f}x")
+        print(f"   dnn_tree / t2s_deployed = {t['dnn_tree']/t['t2s_deployed']:.2f}x   "
+              f"vanilla_snn / t2s_deployed = {t['vanilla_snn']/t['t2s_deployed']:.2f}x")
 
     print("\n" + "="*74)
     print("Crossover sweep: dnn_tree / t2s_deployed ratio (>1 = SNN wins)")
@@ -101,11 +106,10 @@ if __name__ == "__main__":
             t = table(d, sram=s, reuse=reuse)
             rec.append(dict(model="reuse" if reuse else "cold", sram_pJ=s,
                             ratio=round(t["dnn_tree"]/t["t2s_deployed"], 2),
-                            vs_compact_gbdt=round(t["compact_gbdt"]/t["t2s_deployed"], 1),
                             vs_vanilla_snn=round(t["vanilla_snn"]/t["t2s_deployed"], 2)))
     s = pd.DataFrame(rec)
     print(s.pivot(index="sram_pJ", columns="model", values="ratio").to_string())
-    print("\nvs compact_gbdt:")
-    print(s.pivot(index="sram_pJ", columns="model", values="vs_compact_gbdt").to_string())
+    print("\nvanilla_snn / t2s_deployed (<1 = the conventional SNN is cheaper):")
+    print(s.pivot(index="sram_pJ", columns="model", values="vs_vanilla_snn").to_string())
     s.to_csv(OUT/("energy_crossover_iot.csv" if a.iot else "energy_crossover.csv"), index=False)
     print(f"\n[wrote] {OUT/('energy_crossover_iot.csv' if a.iot else 'energy_crossover.csv')}")

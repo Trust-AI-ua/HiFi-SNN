@@ -100,6 +100,17 @@ def main():
           "|" + "|".join(["---"] * len(cols)) + "|"]
     md += ["| " + " | ".join(str(v) for v in row) + " |" for row in t.values]
     (out / "tab_m8_decomposition.md").write_text("\n".join(md) + "\n")
+    # Per-seed spread of each step. Arms share each seed's split, so the step is a
+    # paired per-seed difference; its SD shows whether a step exceeds seed noise.
+    print("\nper-seed SD of each step (paired by seed), and mean / SD")
+    sd_rows = []
+    for name, a, b in STEPS:
+        dd = (r[b] - r[a]).groupby(r.dataset)
+        m_, s_ = dd.mean(), dd.std()
+        sd_rows.append({"step": name, **{ds: f"{m_[ds]:+.2f} ± {s_[ds]:.2f} "
+                                         f"({abs(m_[ds]) / s_[ds]:.1f} SD)" for ds in IOT}})
+        print(f"  {name:45s} " + "  ".join(f"{ds}={m_[ds]:+.2f}±{s_[ds]:.2f}" for ds in IOT))
+    pd.DataFrame(sd_rows).to_csv(out / "tab_m8_decomposition_step_sd.csv", index=False)
     tot = per["t2s"] - per["vanilla"]
     print("\ntotal Vanilla SNN -> Tree-to-Spike:")
     print(tot.round(2).to_string())
