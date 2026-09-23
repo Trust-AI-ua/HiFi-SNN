@@ -1,0 +1,37 @@
+% Requires: \usepackage{multirow,booktabs}
+\begin{table*}[!ht]
+\centering
+\renewcommand{\arraystretch}{1.05}
+\caption{4-way model anatomy per dataset over the IoT, IIoT, and IoMT intrusion detection datasets: class count, network architecture (layer widths), total parameters, and hidden-layer spikes generated per sample (mean$_{\pm\text{std}}$ over 5 seeds). DNN-Tree is the dense iso-architecture twin of Tree-to-Spike (identical widths and parameters, ReLU instead of LIF), so it emits no spikes. Architecture strings use the seed-42 tree-guided encoder width; the encoder (and hence Tree-to-Spike/DNN-Tree input width and parameter count) varies slightly across seeds with the teacher refit, so parameters are the across-seed mean. TASNN: Tr = transformer encoder (d\_model$\times$layers), STC = spatio-temporal conv channels, then the LIF core. $^\ddagger$For the dense DNN-Tree the cell reports \emph{activated neurons} per sample (nonzero hidden ReLU outputs, measured on the test set of the int8-quantised model): a ReLU neuron does work once per input, whereas a spiking neuron does work once per emitted spike, so the two counts are the per-paradigm analogs but not interchangeable (spikes accumulate over $T$ timesteps). \textbf{TTFS} = mean encoder time-to-first-spike over spiking channels $\times$ test samples, shown as steps$/T$ (Vanilla SNN: latency code over raw features, sub-threshold inputs never fire; Tree-to-Spike: tree-guided code; DNN-Tree and TASNN have no TTFS input code). Note TTFS is the \emph{mean arrival time of all emitted spikes} (the code's centre of mass), not the first-arrival time: under latency coding the most informative (highest-level) channels fire first, and the first spike arrives at $t \approx 0$ for virtually every sample, which is why the early-exit step can be far smaller than the mean TTFS. \textbf{Exit} = mean confidence-triggered early-exit timestep$/T$ (DNN-Tree is one-shot; TASNN has no early exit). \textbf{Rel.\,E} = compute energy relative to Tree-to-Spike on the same dataset ($n\times$ = $n$ times our energy; $^\dagger$TASNN analytic). \textbf{Storage} = projected deployment footprint at FP32\,/\,int8, in KB: model weights (4 / 1 bytes per parameter) plus, for the models that use the tree-guided encoder, the frozen encoder tables it must ship with ($^{\S}$Tree-to-Spike and its DNN-Tree twin: split thresholds at 4 B plus a 3 B channel-map entry each; the Vanilla SNN latency code and TASNN store no tables). These are analytical projections from parameter and table counts, not measured serialized artifacts: our int8 stage is a per-tensor fake-quant stand-in that quantizes Linear weights while retaining fp32 tensors, so the int8 column is a lower bound (biases and encoder thresholds remain fp32).}
+\label{tab:architecture_iot}
+{\scriptsize
+\begin{tabular}{l c l l r r r r r r}
+\toprule
+\textbf{Dataset} & \textbf{Classes} & \textbf{Model} & \textbf{Architecture (in - hidden - out)} & \textbf{Params} & \textbf{Storage (KB)} & \textbf{Spikes/sample} & \textbf{TTFS} & \textbf{Exit} & \textbf{Rel.\,E} \\
+\midrule
+\multirow{4}{*}{CICIoT2023} & \multirow{4}{*}{8}
+  & Vanilla SNN   & 46 - 128 - 8 (LIF, T=25) & 23.6K & 92.0 / 23.0 & 217$_{\pm16.4}$ & 11.2$_{\pm0.0}$/25 & 15.6$_{\pm0.5}$/25 & 0.30$\times$ \\
+& & Tree-to-Spike & 37 - 64 - 64 - 8 (LIF, T=20) & 7.2K & 42.0 / 20.9$^{\S}$ & 352$_{\pm51.7}$ & 14.8$_{\pm0.2}$/20 & 4.7$_{\pm1.8}$/20 & 1.00$\times$ \\
+& & DNN-Tree      & 37 - 64 - 64 - 8 (ReLU) & 7.2K & 42.0 / 20.9$^{\S}$ & 31$_{\pm3.5}$$^\ddagger$ & --- & --- & 2.82$\times$ \\
+& & TASNN         & 46 - Tr(d=128$\times$3) - STC64 - 128 - 64 - 8 (T=16) & 491.7K & 1,920.7 / 480.2 & 13$_{\pm1.1}$ & --- & --- & 8k$\times$$^\dagger$ \\
+\midrule
+\multirow{4}{*}{CICIoMT2024} & \multirow{4}{*}{6}
+  & Vanilla SNN   & 45 - 128 - 6 (LIF, T=25) & 23.2K & 90.5 / 22.6 & 171$_{\pm15.4}$ & 10.2$_{\pm0.0}$/25 & 21.3$_{\pm2.7}$/25 & 0.37$\times$ \\
+& & Tree-to-Spike & 37 - 64 - 64 - 6 (LIF, T=20) & 7.0K & 40.7 / 20.2$^{\S}$ & 208$_{\pm16.3}$ & 14.5$_{\pm0.3}$/20 & 4.8$_{\pm1.6}$/20 & 1.00$\times$ \\
+& & DNN-Tree      & 37 - 64 - 64 - 6 (ReLU) & 7.0K & 40.7 / 20.2$^{\S}$ & 33$_{\pm3.5}$$^\ddagger$ & --- & --- & 4.20$\times$ \\
+& & TASNN         & 45 - Tr(d=128$\times$3) - STC64 - 128 - 64 - 6 (T=16) & 490.3K & 1,915.2 / 478.8 & 12$_{\pm3.1}$ & --- & --- & 12k$\times$$^\dagger$ \\
+\midrule
+\multirow{4}{*}{Edge-IIoTset} & \multirow{4}{*}{14}
+  & Vanilla SNN   & 64 - 128 - 14 (LIF, T=25) & 26.6K & 104.1 / 26.0 & 345$_{\pm33.9}$ & --- & 15.4$_{\pm1.2}$/25 & 0.55$\times$ \\
+& & Tree-to-Spike & 38 - 64 - 64 - 14 (LIF, T=20) & 7.5K & 32.9 / 10.9$^{\S}$ & 269$_{\pm7.1}$ & --- & 9.3$_{\pm2.6}$/20 & 1.00$\times$ \\
+& & DNN-Tree      & 38 - 64 - 64 - 14 (ReLU) & 7.5K & 32.9 / 10.9$^{\S}$ & --- & --- & --- & 3.58$\times$ \\
+& & TASNN         & 64 - Tr(d=128$\times$3) - STC64 - 128 - 64 - 14 (T=16) & 511.3K & 1,997.4 / 499.3 & 15$_{\pm0.5}$ & --- & --- & 14k$\times$$^\dagger$ \\
+\midrule
+\multirow{4}{*}{TON-IoT} & \multirow{4}{*}{10}
+  & Vanilla SNN   & 115 - 128 - 10 (LIF, T=25) & 32.6K & 127.5 / 31.9 & 336$_{\pm12.0}$ & 3.6$_{\pm0.0}$/25 & 14.0$_{\pm0.7}$/25 & 0.33$\times$ \\
+& & Tree-to-Spike & 70 - 64 - 64 - 10 (LIF, T=20) & 9.5K & 42.7 / 14.8$^{\S}$ & 597$_{\pm41.2}$ & 14.7$_{\pm0.3}$/20 & 9.0$_{\pm1.3}$/20 & 1.00$\times$ \\
+& & DNN-Tree      & 70 - 64 - 64 - 10 (ReLU) & 9.5K & 42.7 / 14.8$^{\S}$ & 62$_{\pm3.0}$$^\ddagger$ & --- & --- & 2.66$\times$ \\
+& & TASNN         & 115 - Tr(d=128$\times$3) - STC64 - 128 - 64 - 10 (T=16) & 562.8K & 2,198.5 / 549.6 & 38$_{\pm2.4}$ & --- & --- & 16k$\times$$^\dagger$ \\
+\bottomrule
+\end{tabular}}
+\end{table*}

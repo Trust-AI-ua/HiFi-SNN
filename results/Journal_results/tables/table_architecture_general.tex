@@ -1,0 +1,55 @@
+% Requires: \usepackage{multirow,booktabs}
+\begin{table*}[!ht]
+\centering
+\renewcommand{\arraystretch}{1.05}
+\caption{4-way model anatomy per dataset over the general-purpose network intrusion detection datasets: class count, network architecture (layer widths), total parameters, and hidden-layer spikes generated per sample (mean$_{\pm\text{std}}$ over 5 seeds). DNN-Tree is the dense iso-architecture twin of Tree-to-Spike (identical widths and parameters, ReLU instead of LIF), so it emits no spikes. Architecture strings use the seed-42 tree-guided encoder width; the encoder (and hence Tree-to-Spike/DNN-Tree input width and parameter count) varies slightly across seeds with the teacher refit, so parameters are the across-seed mean. TASNN: Tr = transformer encoder (d\_model$\times$layers), STC = spatio-temporal conv channels, then the LIF core. $^\ddagger$For the dense DNN-Tree the cell reports \emph{activated neurons} per sample (nonzero hidden ReLU outputs, measured on the test set of the int8-quantised model): a ReLU neuron does work once per input, whereas a spiking neuron does work once per emitted spike, so the two counts are the per-paradigm analogs but not interchangeable (spikes accumulate over $T$ timesteps). \textbf{TTFS} = mean encoder time-to-first-spike over spiking channels $\times$ test samples, shown as steps$/T$ (Vanilla SNN: latency code over raw features, sub-threshold inputs never fire; Tree-to-Spike: tree-guided code; DNN-Tree and TASNN have no TTFS input code). Note TTFS is the \emph{mean arrival time of all emitted spikes} (the code's centre of mass), not the first-arrival time: under latency coding the most informative (highest-level) channels fire first, and the first spike arrives at $t \approx 0$ for virtually every sample, which is why the early-exit step can be far smaller than the mean TTFS. \textbf{Exit} = mean confidence-triggered early-exit timestep$/T$ (DNN-Tree is one-shot; TASNN has no early exit). \textbf{Rel.\,E} = compute energy relative to Tree-to-Spike on the same dataset ($n\times$ = $n$ times our energy; $^\dagger$TASNN analytic). \textbf{Storage} = projected deployment footprint at FP32\,/\,int8, in KB: model weights (4 / 1 bytes per parameter) plus, for the models that use the tree-guided encoder, the frozen encoder tables it must ship with ($^{\S}$Tree-to-Spike and its DNN-Tree twin: split thresholds at 4 B plus a 3 B channel-map entry each; the Vanilla SNN latency code and TASNN store no tables). These are analytical projections from parameter and table counts, not measured serialized artifacts: our int8 stage is a per-tensor fake-quant stand-in that quantizes Linear weights while retaining fp32 tensors, so the int8 column is a lower bound (biases and encoder thresholds remain fp32).}
+\label{tab:architecture_general}
+{\scriptsize
+\begin{tabular}{l c l l r r r r r r}
+\toprule
+\textbf{Dataset} & \textbf{Classes} & \textbf{Model} & \textbf{Architecture (in - hidden - out)} & \textbf{Params} & \textbf{Storage (KB)} & \textbf{Spikes/sample} & \textbf{TTFS} & \textbf{Exit} & \textbf{Rel.\,E} \\
+\midrule
+\multirow{4}{*}{KDDCup99} & \multirow{4}{*}{5}
+  & Vanilla SNN   & 119 - 128 - 5 (LIF, T=25) & 32.5K & 127.0 / 31.8 & 237$_{\pm51.9}$ & 4.7$_{\pm0.0}$/25 & 4.9$_{\pm0.3}$/25 & 0.31$\times$ \\
+& & Tree-to-Spike & 64 - 64 - 64 - 5 (LIF, T=20) & 9.0K & 40.4 / 13.9$^{\S}$ & 169$_{\pm14.8}$ & 16.1$_{\pm0.1}$/20 & 1.3$_{\pm0.1}$/20 & 1.00$\times$ \\
+& & DNN-Tree      & 64 - 64 - 64 - 5 (ReLU) & 9.0K & 40.4 / 13.9$^{\S}$ & 36$_{\pm3.8}$$^\ddagger$ & --- & --- & 5.42$\times$ \\
+& & TASNN         & 119 - Tr(d=128$\times$3) - STC64 - 128 - 64 - 5 (T=16) & 566.0K & 2,210.8 / 552.7 & 9$_{\pm1.1}$ & --- & --- & 36k$\times$$^\dagger$ \\
+\midrule
+\multirow{4}{*}{NSL-KDD} & \multirow{4}{*}{5}
+  & Vanilla SNN   & 122 - 128 - 5 (LIF, T=25) & 32.9K & 128.5 / 32.1 & 359$_{\pm11.1}$ & 7.7$_{\pm0.0}$/25 & 8.3$_{\pm0.6}$/25 & 0.32$\times$ \\
+& & Tree-to-Spike & 65 - 64 - 64 - 5 (LIF, T=20) & 8.9K & 40.8 / 14.6$^{\S}$ & 296$_{\pm28.1}$ & 16.4$_{\pm0.1}$/20 & 2.5$_{\pm0.4}$/20 & 1.00$\times$ \\
+& & DNN-Tree      & 65 - 64 - 64 - 5 (ReLU) & 8.9K & 40.8 / 14.6$^{\S}$ & 58$_{\pm3.6}$$^\ddagger$ & --- & --- & 4.20$\times$ \\
+& & TASNN         & 122 - Tr(d=128$\times$3) - STC64 - 128 - 64 - 5 (T=16) & 569.0K & 2,222.8 / 555.7 & 19$_{\pm1.6}$ & --- & --- & 29k$\times$$^\dagger$ \\
+\midrule
+\multirow{4}{*}{CTU-13} & \multirow{4}{*}{2}
+  & Vanilla SNN   & 37 - 128 - 2 (LIF, T=25) & 21.6K & 84.5 / 21.1 & 368$_{\pm72.6}$ & 10.2$_{\pm0.0}$/25 & 4.8$_{\pm0.2}$/25 & 1.27$\times$ \\
+& & Tree-to-Spike & 24 - 64 - 64 - 2 (LIF, T=20) & 5.9K & 24.2 / 7.0$^{\S}$ & 72$_{\pm13.8}$ & 8.5$_{\pm0.3}$/20 & 1.1$_{\pm0.1}$/20 & 1.00$\times$ \\
+& & DNN-Tree      & 24 - 64 - 64 - 2 (ReLU) & 5.9K & 24.2 / 7.0$^{\S}$ & 40$_{\pm4.2}$$^\ddagger$ & --- & --- & 10.1$\times$ \\
+& & TASNN         & 37 - Tr(d=128$\times$3) - STC64 - 128 - 64 - 2 (T=16) & 481.3K & 1,880.2 / 470.0 & 11$_{\pm1.8}$ & --- & --- & 29k$\times$$^\dagger$ \\
+\midrule
+\multirow{4}{*}{ISCX2012} & \multirow{4}{*}{2}
+  & Vanilla SNN   & 175 - 128 - 2 (LIF, T=25) & 39.3K & 153.5 / 38.4 & 107$_{\pm34.6}$ & 7.8$_{\pm0.1}$/25 & 3.7$_{\pm0.6}$/25 & 0.20$\times$ \\
+& & Tree-to-Spike & 51 - 64 - 64 - 2 (LIF, T=20) & 7.7K & 32.7 / 10.1$^{\S}$ & 127$_{\pm21.0}$ & 16.0$_{\pm0.1}$/20 & 1.8$_{\pm0.2}$/20 & 1.00$\times$ \\
+& & DNN-Tree      & 51 - 64 - 64 - 2 (ReLU) & 7.7K & 32.7 / 10.1$^{\S}$ & 19$_{\pm1.6}$$^\ddagger$ & --- & --- & 4.96$\times$ \\
+& & TASNN         & 175 - Tr(d=128$\times$3) - STC64 - 128 - 64 - 2 (T=16) & 622.8K & 2,432.7 / 608.2 & 2$_{\pm0.3}$ & --- & --- & 61k$\times$$^\dagger$ \\
+\midrule
+\multirow{4}{*}{CIC-IDS2017} & \multirow{4}{*}{5}
+  & Vanilla SNN   & 78 - 128 - 5 (LIF, T=25) & 27.3K & 106.5 / 26.6 & 353$_{\pm16.9}$ & 13.4$_{\pm0.0}$/25 & 10.6$_{\pm0.5}$/25 & 0.57$\times$ \\
+& & Tree-to-Spike & 68 - 64 - 64 - 5 (LIF, T=20) & 8.5K & 43.4 / 18.5$^{\S}$ & 301$_{\pm42.8}$ & 14.4$_{\pm0.2}$/20 & 7.5$_{\pm0.9}$/20 & 1.00$\times$ \\
+& & DNN-Tree      & 68 - 64 - 64 - 5 (ReLU) & 8.5K & 43.4 / 18.5$^{\S}$ & 26$_{\pm1.1}$$^\ddagger$ & --- & --- & 3.56$\times$ \\
+& & TASNN         & 78 - Tr(d=128$\times$3) - STC64 - 128 - 64 - 5 (T=16) & 523.9K & 2,046.6 / 511.6 & 7$_{\pm1.1}$ & --- & --- & 15k$\times$$^\dagger$ \\
+\midrule
+\multirow{4}{*}{CSE-CIC-2018} & \multirow{4}{*}{5}
+  & Vanilla SNN   & 78 - 128 - 5 (LIF, T=25) & 27.3K & 106.5 / 26.6 & 147$_{\pm22.0}$ & --- & 12.6$_{\pm1.1}$/25 & 0.38$\times$ \\
+& & Tree-to-Spike & 63 - 64 - 64 - 5 (LIF, T=20) & 8.6K & 50.0 / 24.8$^{\S}$ & 319$_{\pm51.6}$ & --- & 16.0$_{\pm1.1}$/20 & 1.00$\times$ \\
+& & DNN-Tree      & 63 - 64 - 64 - 5 (ReLU) & 8.6K & 50.0 / 24.8$^{\S}$ & --- & --- & --- & 3.16$\times$ \\
+& & TASNN         & 78 - Tr(d=128$\times$3) - STC64 - 128 - 64 - 5 (T=16) & 523.9K & 2,046.6 / 511.6 & 9$_{\pm1.1}$ & --- & --- & 14k$\times$$^\dagger$ \\
+\midrule
+\multirow{4}{*}{UNSW-NB15} & \multirow{4}{*}{10}
+  & Vanilla SNN   & 196 - 128 - 10 (LIF, T=25) & 43.0K & 168.0 / 42.0 & 197$_{\pm20.8}$ & 11.0$_{\pm0.0}$/25 & 16.5$_{\pm0.9}$/25 & 0.19$\times$ \\
+& & Tree-to-Spike & 157 - 64 - 64 - 10 (LIF, T=20) & 14.9K & 73.5 / 30.0$^{\S}$ & 538$_{\pm44.3}$ & 17.4$_{\pm0.1}$/20 & 9.1$_{\pm1.7}$/20 & 1.00$\times$ \\
+& & DNN-Tree      & 157 - 64 - 64 - 10 (ReLU) & 14.9K & 73.5 / 30.0$^{\S}$ & 51$_{\pm2.6}$$^\ddagger$ & --- & --- & 3.07$\times$ \\
+& & TASNN         & 196 - Tr(d=128$\times$3) - STC64 - 128 - 64 - 10 (T=16) & 645.8K & 2,522.8 / 630.7 & 37$_{\pm2.9}$ & --- & --- & 23k$\times$$^\dagger$ \\
+\bottomrule
+\end{tabular}}
+\end{table*}

@@ -108,8 +108,28 @@ if __name__ == "__main__":
                             ratio=round(t["dnn_tree"]/t["t2s_deployed"], 2),
                             vs_vanilla_snn=round(t["vanilla_snn"]/t["t2s_deployed"], 2)))
     s = pd.DataFrame(rec)
-    print(s.pivot(index="sram_pJ", columns="model", values="ratio").to_string())
+    s.insert(0, "config", "deployed")
+    # The same sweep with the student at FULL WINDOW (no early exit), the
+    # configuration of the headline quality tables. Both rows are reported
+    # (decision 2026-09-23): early exit is what moves the student from winning in
+    # one memory regime to winning in two, so neither row may be quoted unlabelled.
+    raw = pd.read_csv(OUT/"deployment_measurements.csv", comment="#")
+    if a.iot:
+        raw = raw[raw.dataset.isin(IOT)]
+    fw = raw[raw.system.isin(["dnn_tree", "vanilla_snn", "t2s_full"])].copy()
+    fw.loc[fw.system == "t2s_full", "system"] = "t2s_deployed"   # reuse the ratio code
+    rec_fw = []
+    for reuse in (False, True):
+        for sp in (5, 10, 20, 50, 100):
+            t = table(fw, sram=sp, reuse=reuse)
+            rec_fw.append(dict(config="full_window", model="reuse" if reuse else "cold", sram_pJ=sp,
+                               ratio=round(t["dnn_tree"]/t["t2s_deployed"], 2),
+                               vs_vanilla_snn=round(t["vanilla_snn"]/t["t2s_deployed"], 2)))
+    s = pd.concat([s, pd.DataFrame(rec_fw)], ignore_index=True)
+    for cfg_name in ("deployed", "full_window"):
+        print(f"\n[{cfg_name}] dnn_tree / t2s")
+        print(s[s.config == cfg_name].pivot(index="sram_pJ", columns="model", values="ratio").to_string())
     print("\nvanilla_snn / t2s_deployed (<1 = the conventional SNN is cheaper):")
-    print(s.pivot(index="sram_pJ", columns="model", values="vs_vanilla_snn").to_string())
+    print(s[s.config == "deployed"].pivot(index="sram_pJ", columns="model", values="vs_vanilla_snn").to_string())
     s.to_csv(OUT/("energy_crossover_iot.csv" if a.iot else "energy_crossover.csv"), index=False)
     print(f"\n[wrote] {OUT/('energy_crossover_iot.csv' if a.iot else 'energy_crossover.csv')}")

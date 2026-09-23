@@ -1,0 +1,30 @@
+% Observation paragraph for the encoder-ablation results (Table \ref{tab:encoder_ablation}).
+% No em dashes. Numbers are means over 5 seeds from the completed 5-arm sweep.
+The ablation in Table~\ref{tab:encoder_ablation} decomposes the teacher's
+contribution into its two possible channels: the placement of the encoding
+thresholds (its ruler) and the soft labels used for distillation (its
+posterior). The ruler is the load-bearing component. The \texttt{quantile}
+arm, which keeps channels, pruning, budget, and per-feature edge counts
+identical to \texttt{tree} and changes only the edge placement from XGBoost
+split points to equal-frequency quantiles, degrades macro-F1 on 9 of the 11
+datasets, by up to $10.8$ points (CICIoT2023: $72.2 \rightarrow 61.4$;
+KDDCup99: $61.8 \rightarrow 52.7$; NSL-KDD: $58.5 \rightarrow 50.8$), and
+simultaneously raises the SOP count by $8$--$79\%$ at the same channel width,
+because poorly placed thresholds produce spike codes that drive more hidden
+activity. The teacher's split points therefore carry class-boundary
+information that a purely data-driven binning of the same resolution does not.
+The posterior contributes a smaller but consistent gain: removing the
+distillation terms (\texttt{no-KD}, $\alpha_{\mathrm{kd}} =
+\alpha_{\mathrm{rank}} = 0$) lowers macro-F1 on 9 of 11 datasets, typically by
+$0.3$--$1.9$ points and by $6.9$ points on the hardest, most imbalanced split
+(CSE-CIC-IDS2018: $75.9 \rightarrow 69.0$). The remaining arms bound the
+channel budget rather than the teacher: \texttt{uniform} performs comparably
+to \texttt{tree}, indicating that importance-proportional weighting by itself
+contributes little once the thresholds are tree-derived, while \texttt{all}
+roughly doubles the SOPs for at most $+2.5$ macro-F1, so the pruned budget is
+a favourable operating point on the channels-versus-accuracy curve rather
+than a quality optimum. Finally, the distilled student tracks its GBDT
+teacher's ceiling to within $1$--$2$ macro-F1 on most datasets (NSL-KDD:
+$58.5$ versus $59.9$) while replacing the ensemble's dense inference with a
+$\sim$9K-parameter spiking network, which is the premise of building the
+student in the first place.

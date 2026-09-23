@@ -17,7 +17,8 @@ Status: ⬜ not started · 🟡 in progress.
 >   regenerated table, do not restate the old claim.
 > - **DNN-Tree int8 (matched-precision accuracy)** — Tree-to-Spike 79.8 ≈ DNN-Tree 79.9 (tied).
 > - **Matched-precision energy (32b + int8) + input→layer-1 SOP correction** — honest ratio:
->   Tree-to-Spike uses **3.7× (32b) / 5.6× (int8)** less compute energy than the matched DNN-Tree.
+>   Tree-to-Spike uses **3.16× (32b) / 4.74× (int8)** less compute energy than the matched
+>   DNN-Tree on the IoT four (pooled over all eleven: 3.67× / 5.51×). [updated 2026-09-23]
 >   (Together with the memory-aware total-energy model, this addresses the CVPR-2024
 >   "are SNNs really efficient?" critique.)
 > - **Statistical significance** — Friedman–Nemenyi CD diagrams (Tree-to-Spike tied with DNN-Tree,

@@ -105,7 +105,7 @@ def _stat(patt, getter):
             vals.append(getter(json.load(open(f))))
         except Exception:
             pass
-    return (float(np.mean(vals)), float(np.std(vals))) if vals else (None, None)
+    return (float(np.mean(vals)), float(np.std(vals, ddof=1))) if vals else (None, None)   # sample SD
 
 
 PATHS = {

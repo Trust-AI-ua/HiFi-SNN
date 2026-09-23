@@ -1,8 +1,21 @@
 % ============================================================
-% §VI-C draft — accounting reframing. Written against
-% results/tables_deployment_audit.tex (tab:dep:systems, tab:dep:sensitivity).
-% Forward pointers: §VI-E (envelope sweep), §VI-F (early-exit mechanism).
-% Every number here is traceable to results/deployment/*.csv.
+% §VI-C draft — accounting reframing.
+% STALE DRAFT (flagged 2026-09-23). Written against the pre-repair deployment
+% audit, now at results/superseded/tables_deployment_audit.tex. Only the
+% band paragraph ("The remaining ordering depends on...") has been rewritten to
+% the frozen numbers (tag tnnls-submission), and it reads them as macros from
+% results/tables/numbers.tex. Every other number below is stale:
+%   compact ensemble 2,768 pJ vs student 5,654 pJ (0.49x), full teacher 6,873 pJ
+%       -> per-dataset arithmetic in results/tables/tab_teacher_per_dataset.tex
+%          (Rel. E column; student priced input-inclusive, deployed row)
+%   memory share 95.7%-99.9%  -> 95.6%-99.4% (IoT four, 100 pJ SRAM, both models)
+%   5.04 MB node arrays        -> full GBDT IoT mean 748 KB (packed, one value/leaf)
+%   76,475 nodes, 53 KB        -> 128,904 nodes; student 21.4 KB at int8
+%   "memory-envelope argument" / Section vi:envelope -> DROPPED by decision
+%   (no claim against the tree remains; do not reinstate residency).
+% Sources: results/tables/tab_dep_systems.tex,
+%          results/deployment/energy_crossover_iot.csv (deployed),
+%          scripts/deployment_energy2.py (full-window row, see below).
 % ============================================================
 
 \subsection{Operation-Priced Energy Does Not Survive Measurement}
@@ -44,16 +57,21 @@ its operation count.
 Once memory dominates, the comparison between the spiking student and its
 parameter-identical dense twin is decided by the assumed reuse behaviour rather
 than by either system's operation count. Table~\ref{tab:dep:sensitivity} reports
-the ratio under two assumptions. Charging one cold access per operation, the
-ordering \emph{inverts} above roughly $20$\,pJ per access and the dense twin is
-cheaper. Charging the first touch of a distinct item at the tier price and
-subsequent touches at an L1 cost, the spiking student is cheaper throughout the
-swept range. Both are defensible: the spiking student re-reads a $53$\,KB weight
-set across timesteps and is plausibly resident, whereas the ensemble walks
-$76{,}475$ nodes through a multi-megabyte array with data-dependent branching and
-is plausibly not. We report the band, $0.94$--$2.06\times$, and note explicitly
-that it spans a modelling choice rather than measurement noise. We do not select
-the assumption that favours our system.
+the ratio of the dense twin's total energy to the student's on the four IoT
+benchmarks, under two memory models and for two configurations of the student,
+the full window and the deployed one with validation-selected early exit (a
+single seed-42 measurement; artifacts of $\JNKbTts$ and $\JNKbDnn$\,KB at 8 bits).
+Charging one cold access per operation, the dense twin is cheaper at every swept
+SRAM price: the ratio is $\JNBandFullColdHundred$ to $\JNBandFullColdFive$ at full window and
+$\JNBandDepColdHundred$ to $\JNBandDepColdFive$ deployed. Charging the first touch of a distinct item at the tier price and later
+touches at an L1 cost, the student is cheaper only when SRAM is cheap: $\JNBandFullReuseFive$ at
+$5$\,pJ per access at full window, and $\JNBandDepReuseTwenty$ to $\JNBandDepReuseFive$ at $5$ to $20$\,pJ
+deployed, falling to $\JNBandFullReuseHundred$ and $\JNBandDepReuseHundred$ at $100$\,pJ. Early exit is therefore what
+moves the student from winning in one memory regime to winning in two. Both memory
+models are defensible, and the band spans that modelling choice rather than
+measurement noise. We do not select the assumption that favours our system: on a
+conventional memory hierarchy the student's total energy is at best comparable
+to the dense twin's, and its advantage is confined to arithmetic.
 
 \subsubsection{The per-operation constant is an arithmetic-only idealisation}
 The $0.9$\,pJ figure used here and throughout the spiking literature prices

@@ -92,7 +92,7 @@ def _agg(recs, getter):
     vals = [v for v in vals if isinstance(v, (int, float))]
     if not vals:
         return None, None
-    return float(np.mean(vals)), float(np.std(vals))
+    return float(np.mean(vals)), float(np.std(vals, ddof=1))   # sample SD, 5 seeds
 
 
 def _sops_total(r, key):
