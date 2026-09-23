@@ -319,7 +319,11 @@ def main():
     for fn in (quality, precision, statistics, energy, deployment, others, perchannel):
         fn()
     sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip()
-    dirty = subprocess.run(["git", "diff", "--quiet"], cwd=REPO).returncode != 0
+    # The generator's own two outputs are excluded: once tracked, the previous
+    # generation is always "modified" at this point and would mark every run dirty.
+    dirty = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", ".",
+                            ":!results/tables/numbers.tex",
+                            ":!results/tables/numbers_provenance.json"], cwd=REPO).returncode != 0
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     head = [
         "% " + "=" * 70,
