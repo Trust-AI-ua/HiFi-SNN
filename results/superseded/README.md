@@ -10,6 +10,8 @@ Kept for provenance. Do not cite any number in this directory.
 | `student_vs_teacher_observation.tex` | Pre-repair student-versus-teacher observation | `results/tables/tab_teacher_vs_student.{csv,md}` (five seeds, paired, IoT) |
 | `limitations_footprint.tex` | Footprint limitation written against fp32 artifact sizes (2026-07-28) | `results/tables/tab_dep_systems.tex`, `results/tables/tab_artifact_breakdown.md` |
 | `table_architecture.tex` | Unsplit pre-repair anatomy table (2026-07-28) | `results/Journal_results/tables/table_architecture_{full,general,iot}.tex` |
+| `ladder_edgeiiot_pre_repair/` | The Edge-IIoTset quarter of the 35-configuration ladder (2026-07-30 to 08-12), run on the contaminated corpus. Not rerun, by decision: none of the paper's claims rest on it | the other three IoT datasets' ladder arms remain in `results/ladder/` and are valid |
+| `new_run_results_2026-08-12/` | The 12 August reporting snapshot: sensitivity analysis, crossed 2x2, loss ablations and a non-inferiority bootstrap (each with a pre-repair Edge-IIoTset quarter; the bootstrap shows Edge-IIoTset at -1.09 where the repaired runs give +3.34), plus pre-repair deployment, early-exit and summary tables and figures. Nothing in the current pipeline reads it | `results/tables/numbers.tex` and the current generators |
 | `energy_memory_model.md` | Output of `scripts/energy_memory_model.py`, whose prose conclusions are hard-coded and predate the leakage repair, the input-layer accounting and the Vanilla SNN double-count correction | `scripts/deployment_energy2.py --iot` |
 
 Moved here 2026-09-23 at the submission-number freeze (tag `tnnls-submission`). The five

@@ -102,12 +102,115 @@ def tree_stats(teacher, n_rounds):
                 full_model_bytes=full_bytes, prefix_bytes_estimate=approx)
 
 
+def select_rounds(teacher, present, Xva, yva, N):
+    """Smallest boosting-round prefix within MARGIN macro-F1 of the full teacher.
+
+    Takes VALIDATION arrays only; test data cannot reach the selection. Doubling
+    grid (1, 2, 4, ..., N), then bisection between the last failing and first
+    passing prefix. Returns (rounds, qualified, full-teacher validation macro-F1);
+    if no prefix qualifies, the full teacher is kept (qualified = False).
+    """
+    f_full_val = f1_at(teacher, present, Xva, yva, N)
+    need = f_full_val - MARGIN
+    grid, n = [], 1
+    while n < N:
+        grid.append(n); n *= 2
+    grid.append(N)
+    first_ok, last_bad = None, 0
+    for n in grid:
+        if f1_at(teacher, present, Xva, yva, n) >= need:
+            first_ok = n; break
+        last_bad = n
+    if first_ok is None:
+        return N, False, f_full_val
+    lo, hi = last_bad + 1, first_ok
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if f1_at(teacher, present, Xva, yva, mid) >= need:
+            hi = mid
+        else:
+            lo = mid + 1
+    return lo, True, f_full_val
+
+
+def write_merged(df):
+    """Merge on (dataset, seed): a run for some datasets must not delete the rest.
+
+    The previous version overwrote the file, so rerunning two datasets would have
+    erased the other nine. Rows carry a run ID and the newest row per key wins.
+    """
+    import datetime, subprocess
+    sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip()
+    df = df.copy()
+    df["run_id"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + sha
+    f = OUT / "compact_gbdt.csv"
+    if f.exists():
+        df = pd.concat([pd.read_csv(f), df], ignore_index=True)
+    df = df.drop_duplicates(subset=["dataset", "seed"], keep="last")
+    df.to_csv(f, index=False)
+    return df
+
+
+def guards(ds, seed, teacher, present, b, arrays):
+    """Three guards, each fatal: same splits as the stored runs, validation-only
+    selection, and the same teacher. Returns a record of what was checked."""
+    import hashlib, inspect as _insp
+    from src.metrics import compute_metrics
+    from src.training_treespike import _arrays_from_bundle
+    Xva, yva, Xte, yte = arrays
+    Xtr, ytr = _arrays_from_bundle(b)[:2]
+    fail, rec = [], {}
+    # 1. splits: sizes and per-class train counts against BOTH stored student runs,
+    #    exact label sequences against the prefix artifacts regenerated from them
+    for model in ("Tree-to-Spike", "DNN-Tree"):
+        r = json.loads((REPO / f"results/{model}/{ds}/seed_{seed}/results.json").read_text())
+        # Tree-to-Spike records all three split sizes; DNN-Tree records only the test
+        # size (test_plus.n_samples) and, below, the per-class training counts.
+        sp = r["data"].get("splits") or {"test_plus": r["test_plus"].get("n_samples")}
+        mine = dict(train=len(ytr), val=len(yva), test_plus=len(yte))
+        if any(k in mine and v is not None and mine[k] != v for k, v in sp.items()):
+            fail.append(f"split sizes differ from stored {model}: {mine} vs {sp}")
+        names = list(b.class_names)
+        cnt = {names[c]: int((ytr == c).sum()) for c in range(len(names)) if (ytr == c).any()}
+        if cnt != {k: int(v) for k, v in r["data"]["class_counts_train"].items() if int(v) > 0}:
+            fail.append(f"per-class train counts differ from stored {model}")
+    for split, y in (("test", yte), ("val", yva)):
+        z = np.load(REPO / f"results/prefix_outputs/{ds}/treespike/seed_{seed}/{split}_prefix.npz",
+                    allow_pickle=True)
+        if not np.array_equal(z["labels"], y):
+            fail.append(f"{split} label sequence differs from the prefix artifact")
+    rec["test_sha256"] = hashlib.sha256(np.ascontiguousarray(Xte).tobytes()).hexdigest()[:16]
+    rec["val_sha256"] = hashlib.sha256(np.ascontiguousarray(Xva).tobytes()).hexdigest()[:16]
+    # 2. validation only: the selector cannot receive test arrays
+    sig = list(_insp.signature(select_rounds).parameters)
+    if sig != ["teacher", "present", "Xva", "yva", "N"]:
+        fail.append(f"select_rounds signature changed: {sig}")
+    # 3. same teacher: its test macro-F1 must equal the stored run's teacher_upper_bound,
+    #    which the five-seed teacher refit also reproduces
+    df = pd.DataFrame(Xte, columns=[f"f{i}" for i in range(Xte.shape[1])])
+    got = 100 * compute_metrics(yte, present[teacher.predict(df)], y_score=None,
+                                class_names=b.class_names)["f1_macro"]
+    want = 100 * json.loads((REPO / f"results/Tree-to-Spike/{ds}/seed_{seed}/results.json")
+                            .read_text())["test_plus"]["teacher_upper_bound"]["f1_macro"]
+    rec["teacher_test_f1"], rec["stored_teacher_f1"] = got, want
+    if abs(got - want) > 1e-9:
+        fail.append(f"teacher differs: test macro-F1 {got:.6f} vs stored {want:.6f}")
+    return fail, rec
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--datasets", nargs="+", default=DATASETS)
     ap.add_argument("--seeds", nargs="+", type=int, default=SEEDS)
+    ap.add_argument("--guard", action="store_true",
+                    help="run the three guards on every cell and require --reproduce datasets to "
+                         "match their stored round counts; write NOTHING unless every cell passes")
+    ap.add_argument("--reproduce", nargs="*", default=[],
+                    help="datasets whose stored selected_rounds must be reproduced exactly")
     args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
+    stored = pd.read_csv(OUT / "compact_gbdt.csv") if (OUT / "compact_gbdt.csv").exists() else None
+    guard_fail, guard_log = [], []
 
     rows, t0 = [], time.time()
     for ds in args.datasets:
@@ -118,31 +221,17 @@ if __name__ == "__main__":
                 print(f"[FAIL] {ds}/{seed}: {type(e).__name__}: {e}", flush=True)
                 continue
             N = int(teacher.get_params().get("n_estimators", 200))
-            f_full_val = f1_at(teacher, present, Xva, yva, N)
-            need = f_full_val - MARGIN
-
-            # doubling grid, then binary search for the true smallest qualifying prefix
-            grid, n = [], 1
-            while n < N:
-                grid.append(n); n *= 2
-            grid.append(N)
-            first_ok, last_bad = None, 0
-            for n in grid:
-                if f1_at(teacher, present, Xva, yva, n) >= need:
-                    first_ok = n; break
-                last_bad = n
-            if first_ok is None:
-                sel, qualified = N, False
-            else:
-                lo, hi = last_bad + 1, first_ok
-                while lo < hi:
-                    mid = (lo + hi) // 2
-                    if f1_at(teacher, present, Xva, yva, mid) >= need:
-                        hi = mid
-                    else:
-                        lo = mid + 1
-                sel, qualified = lo, True
-
+            sel, qualified, f_full_val = select_rounds(teacher, present, Xva, yva, N)
+            if args.guard:
+                fl, rec = guards(ds, seed, teacher, present, b, (Xva, yva, Xte, yte))
+                if ds in args.reproduce:
+                    want = int(stored[(stored.dataset == ds) & (stored.seed == seed)].selected_rounds.iloc[0])
+                    rec["stored_rounds"], rec["reselected_rounds"] = want, sel
+                    if sel != want:
+                        fl.append(f"reproduction failed: selected {sel} rounds, stored {want}")
+                guard_log.append(dict(dataset=ds, seed=seed, passed=not fl, failures="; ".join(fl), **rec))
+                print(f"  [guard] {ds}/s{seed}: {'PASS' if not fl else 'FAIL: ' + '; '.join(fl)}", flush=True)
+                guard_fail += [f"{ds}/s{seed}: {x}" for x in fl]
             f_sel_val = f1_at(teacher, present, Xva, yva, sel)
             t_full = full_metrics(teacher, present, Xte, yte, b.class_names, N)
             t_sel = full_metrics(teacher, present, Xte, yte, b.class_names, sel)
@@ -170,7 +259,17 @@ if __name__ == "__main__":
                   f"| {(time.time()-t0)/60:.1f}m", flush=True)
 
     df = pd.DataFrame(rows)
-    df.to_csv(OUT / "compact_gbdt.csv", index=False)
+    if args.guard:
+        pd.DataFrame(guard_log).to_csv(OUT / "compact_gbdt_guards.csv", index=False)
+        if guard_fail:
+            print(f"\nGUARDS FAILED on {len(guard_fail)} check(s); NOTHING WRITTEN:")
+            for x in guard_fail:
+                print("  " + x)
+            sys.exit(1)
+        print(f"\nall guards passed on {len(guard_log)} cells")
+        df = df[~df.dataset.isin(args.reproduce)]      # reproduction cells only verify
+    if len(df):
+        write_merged(df)
     if len(df):
         print("\n=== per dataset (mean over seeds) ===")
         print(df.groupby("dataset")[["full_rounds", "selected_rounds", "compression",

@@ -47,6 +47,8 @@ STALE = {  # value: what it was
     "81.32": "old teacher figure", "15.60": "old Friedman chi-square", "0.022": "asymptotic Friedman p",
     "2768": "old compact-ensemble pJ", "5654": "old student pJ", "76475": "old node count",
     "0.94": "old memory band (lower)", "2.06": "old memory band (upper)",
+    "1.09": "pre-repair Edge-IIoTset non-inferiority value (ladder bootstrap); repaired: +3.34",
+    "1.0855": "pre-repair Edge-IIoTset non-inferiority value (ladder bootstrap)",
 }
 
 

@@ -179,7 +179,10 @@ def time_fn(fn, X, n_warm=N_WARMUP, n_timed=N_TIMED) -> dict:
             "n_timed": int(n)}
 
 
-def measure(dataset: str, seed: int) -> list:
+GBDT_SYSTEMS = ("full_gbdt", "compact_gbdt")
+
+
+def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
     from src.data import get_dataset, DATASET_LOADERS
     from src.models import (TreeGuidedSpikeEncoder, SNNStudent, DNNStudent,
                             quantize_int8_)
@@ -211,6 +214,11 @@ def measure(dataset: str, seed: int) -> list:
     Xsub = Xte[:max(N_WARMUP, N_TIMED)]
 
     teacher, _, present = _fit_teacher(Xtr, ytr, K, cfg)
+    # ONE prediction thread, like every neural system (torch.set_num_threads(1) above).
+    # The teacher is fitted with n_jobs=4, and XGBoost predicts with the model's own
+    # thread count, so without this the GBDT rows were timed on four threads.
+    teacher.set_params(n_jobs=1)
+    teacher.get_booster().set_param({"nthread": 1})
     scaler_bytes = nbytes_of({"note": "MinMax/vocab artifacts are fitted inside the "
                                       "loader; measured as the fitted parameter block",
                               "n_features": F})
@@ -285,6 +293,9 @@ def measure(dataset: str, seed: int) -> list:
     ).fit(teacher, F, X=Xtr)
     eb = encoder_bytes(enc)
     ecmp = encoder_comparisons(enc)
+
+    if only_gbdt:
+        return rows
 
     # ---------------- Vanilla SNN and TASNN (float32, as reported) ----------------
     import json as _json
@@ -484,6 +495,9 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--datasets", nargs="+", default=DATASETS)
     ap.add_argument("--seeds", nargs="+", type=int, default=[42])
+    ap.add_argument("--systems", choices=["all", "gbdt"], default="all",
+                    help="gbdt: re-measure only the GBDT rows and MERGE them into the existing "
+                         "CSV, keeping every other row as measured")
     args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
 
@@ -492,7 +506,7 @@ if __name__ == "__main__":
     for ds in args.datasets:
         for seed in args.seeds:
             try:
-                r = measure(ds, seed)
+                r = measure(ds, seed, only_gbdt=args.systems == "gbdt")
                 allrows += r
                 print(f"[{ds}/s{seed}] {len(r)} systems | {(time.time()-t0)/60:.1f} min",
                       flush=True)
@@ -514,9 +528,21 @@ if __name__ == "__main__":
     df["serialization_format"] = df.get("serialization_format", SER.SERIALIZATION_FORMAT)
     df["serialization_format"] = df["serialization_format"].fillna(SER.SERIALIZATION_FORMAT)
     df["source_script"] = "scripts/deployment_measure.py"
-    with open(OUT / "deployment_measurements.csv", "w") as fh:
-        fh.write(f"# run_id={run_id} serialization={SER.SERIALIZATION_FORMAT} "
-                 f"source=scripts/deployment_measure.py "
-                 f"load1_at_start={load_at_start:.2f}\n")
+    csv = OUT / "deployment_measurements.csv"
+    header = []
+    if args.systems == "gbdt":
+        # merge: replace only the re-measured GBDT rows, keep the rest and their run IDs
+        header = [l for l in csv.read_text().splitlines() if l.startswith("#")]
+        old = pd.read_csv(csv, comment="#")
+        key = old.set_index(["dataset", "seed", "system"]).index
+        new_key = df.set_index(["dataset", "seed", "system"]).index
+        df = pd.concat([old[~key.isin(new_key)], df], ignore_index=True)
+        header.append(f"# gbdt_remeasure run_id={run_id} rows={len(new_key)} nthread=1 "
+                      f"load1_at_start={load_at_start:.2f}")
+    else:
+        header = [f"# run_id={run_id} serialization={SER.SERIALIZATION_FORMAT} "
+                  f"source=scripts/deployment_measure.py load1_at_start={load_at_start:.2f}"]
+    with open(csv, "w") as fh:
+        fh.write("\n".join(header) + "\n")
         df.to_csv(fh, index=False)
     print(f"\nwrote {OUT}/deployment_measurements.csv ({len(df)} rows)")

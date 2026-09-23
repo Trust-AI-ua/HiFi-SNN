@@ -64,14 +64,18 @@ if __name__ == "__main__":
     _a = _ap.parse_args()
     meas = pd.read_csv(REPO/"results/deployment/deployment_measurements.csv", comment="#")
     meas = meas[meas.seed == SEED]
-    comp = pd.read_csv(REPO/"results/deployment/compact_gbdt.csv")
-    comp = comp[comp.seed == SEED].set_index("dataset")
+    comp_all = pd.read_csv(REPO/"results/deployment/compact_gbdt.csv")
+    # Each seed's compact arm uses THAT seed's validation-selected round count. An
+    # earlier version indexed only the seed-42 rows, so seeds 43-46 were truncated
+    # at seed 42's count.
+    sel_of = lambda ds, sd: int(comp_all[(comp_all.dataset == ds) & (comp_all.seed == sd)]
+                                .selected_rounds.iloc[0])
     rows = []
     for ds in NAME:
         per_seed = {}
         for _s in _a.seeds:
             try:
-                per_seed[_s] = evaluate(ds, comp.loc[ds, "selected_rounds"], seed=_s)
+                per_seed[_s] = evaluate(ds, sel_of(ds, _s), seed=_s)
             except Exception as e:
                 print(f"[fail] {ds} seed {_s}: {e}", flush=True)
         if not per_seed:

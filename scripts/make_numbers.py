@@ -277,6 +277,39 @@ def others():
     add("JNEdgeTeacherFull", f(full), rel(src), "seed 42", "full teacher macro-F1 in the sweep")
 
 
+def tsweep():
+    """Window sweep from the ladder: T = 10, 40, 80 against production T = 20.
+
+    Three IoT datasets only: the Edge-IIoTset arms were run on the pre-repair corpus
+    and are retired to results/superseded/. The arms differ from production only
+    in T (checked: encoder_mode and class_weighted resolve to the same defaults).
+    Pre-committed criterion, not met: every T within 1.0 point of T = 20.
+    """
+    word = {10: "Ten", 40: "Forty", 80: "Eighty"}
+    def f1s(paths):
+        return np.array([100 * json.loads(Path(x).read_text())["test_plus"]["metrics"]["f1_macro"] for x in paths])
+    for ds in ["ciciot2023", "ciciomt2024", "toniot"]:
+        base = f1s([REPO / f"results/Tree-to-Spike/{ds}/seed_{s}/results.json" for s in range(42, 47)]).mean()
+        for T, w in word.items():
+            v = f1s([REPO / f"results/ladder/{ds}/T{T}/seed_{s}/results.json" for s in range(42, 47)])
+            add(f"JNTsweep{DS[ds]}{w}", sgn(v.mean() - base), f"results/ladder/{ds}/T{T}",
+                "five-seed mean difference vs production T = 20", f"macro-F1 at T = {T} minus T = 20, {ds}")
+
+
+def compact():
+    src = REPO / "results/deployment/compact_gbdt.csv"
+    c = pd.read_csv(src)
+    e = c[c.dataset == "edgeiiot"].selected_rounds
+    add("JNCompactRoundsEdgeIIoTMin", str(int(e.min())), rel(src), "five seeds", "fewest rounds kept, Edge-IIoTset")
+    add("JNCompactRoundsEdgeIIoTMax", str(int(e.max())), rel(src), "five seeds", "most rounds kept, Edge-IIoTset")
+    d = pd.read_csv(REPO / "results/deployment/deployment_measurements.csv", comment="#")
+    r = d[(d.dataset == "edgeiiot") & (d.system == "compact_gbdt")].iloc[0]
+    add("JNKbGbdtCompactEdgeIIoT", f(r.total_bytes / 1024, 1), "results/deployment/deployment_measurements.csv",
+        "single seed-42 run", "compact GBDT artifact, Edge-IIoTset, KB")
+    add("JNTimingWarmup", "500", "scripts/deployment_measure.py (N_WARMUP)", "protocol constant", "warm-up calls")
+    add("JNTimingN", "2{,}000", "scripts/deployment_measure.py (N_TIMED)", "protocol constant", "timed samples")
+
+
 def perchannel():
     src = REPO / "results/tables/tab_perchannel.csv"
     if not src.exists():
@@ -316,7 +349,7 @@ def perchannel():
 
 
 def main():
-    for fn in (quality, precision, statistics, energy, deployment, others, perchannel):
+    for fn in (quality, precision, statistics, energy, deployment, others, tsweep, compact, perchannel):
         fn()
     sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip()
     # The generator's own two outputs are excluded: once tracked, the previous
