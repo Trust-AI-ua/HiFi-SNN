@@ -7,8 +7,8 @@
 % Generated 2026-09-17.
 % LABELS TO VERIFY against the manuscript: tab:datasets (Table II; may be
 % tab:datasets_overview), subsec:preprocessing (Sec. V-B has no visible label in
-% the copy available here), and sec:results (the Section VI quantization
-% analysis). tab:architecture_iot is confirmed correct.
+% the copy available here). subsec:quantcost is defined in
+% sec6_quantization_draft.tex; tab:architecture_iot is confirmed correct.
 % The ISCX-IDS2012 paragraph is repeated as a threat to validity at the end of
 % this file, for Section VII.
 
@@ -31,7 +31,7 @@ all-zero; \texttt{Src~Port} is non-zero on exactly the rows of that capture day,
 occur on that day. A single feature therefore rules both of them out on every row
 where it fires. The GBDT teacher ranks it the most important
 feature of the dataset, and it is the same feature that carries the first-layer
-weight outlier analysed in Section~\ref{sec:results}: under per-tensor
+weight outlier analysed in Section~\ref{subsec:quantcost}: under per-tensor
 quantization that outlier sets the scale for its whole layer, which is what made
 the dense twin unstable on this corpus. The leak is therefore not merely
 theoretical -- it is visible in both the teacher's attributions and the
@@ -86,9 +86,10 @@ canonicalise the zero spellings and hex renderings before encoding, drop
 \texttt{http.referer} (payload text, including a Shellshock string on 185 rows)
 and \texttt{dns.qry.name} (a hostname once the rows are aligned), and decode, by
 counting the commas each field contributes, the three misaligned layouts we can
-repair (\emph{MITM} being removed rather than decoded): attacker flood packets,
-the victim's ICMP port-unreachable replies, and benign UDP. \emph{MITM} is garbled beyond a verifiable decode and is removed, leaving
-fourteen classes. Benign UDP rows are decoded rather than dropped: removing them
+repair: attacker flood packets, the victim's ICMP port-unreachable replies, and
+benign UDP. \emph{MITM} is garbled beyond a verifiable decode and is removed
+rather than repaired, leaving fourteen classes. Benign UDP rows are decoded
+rather than dropped: removing them
 would leave the repaired flood as the only UDP traffic in the corpus and create a
 fresh shortcut. Each row carries a provenance flag (\emph{original} or which
 decode was applied), released with the processed data so any result can be
@@ -137,6 +138,27 @@ CSE-CIC-IDS2018 and Y.Y on Edge-IIoTset, for every model''; do not assert a
 direction before the runs report it.] The repaired figures are the ones reported
 throughout this paper; the pre-repair figures are recoverable from the released
 provenance flags.
+
+% ---------------------------------------------------------------------------
+% For Section V-B (preprocessing), two disclosures the repair does not remove.
+\paragraph{Address-derived locality on ISCX-IDS2012.}
+We remove addresses, ports being the exception noted above, but ISCX-IDS2012
+retains \texttt{direction}, a categorical attribute recording whether each end of
+a flow is local or remote. It is derived from the addresses and it is
+informative: local-to-remote flows are 99.98\% benign, and roughly 99\% of
+attacks are local-to-local or remote-to-local, because of how the testbed staged
+them. We keep it, since removing a documented field of the corpus would make our
+numbers incomparable with published work on it, and we report the consequence in
+Section~\ref{sec:threats}.
+
+\paragraph{An unrecoverable field on Edge-IIoTset.}
+The published Edge-IIoTset CSV lost part of every packet timestamp when it was
+split on commas, and for the DDoS\_UDP rows it lost the field entirely; the
+realignment of Section~\ref{subsec:repair} cannot restore it. \texttt{frame.time}
+is not a model input -- it is dropped with the other identifier columns -- so no
+reported number depends on it, but the corpus we release is repaired in its
+features and not in its timestamps, and chronological splitting is therefore
+impossible on this dataset.
 
 % ---------------------------------------------------------------------------
 % For Section VII (threats to validity): the one audit finding we disclose

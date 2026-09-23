@@ -80,6 +80,15 @@ def main():
 
     out = REPO / "results/diagnostics/val_curves" / a.model / a.dataset
     out.mkdir(parents=True, exist_ok=True)
+    if (out / "runs" / f"seed_{a.seed}" / "test_fp32_int8.json").exists():
+        print(f"[skip] {a.model}/{a.dataset}/seed_{a.seed} already captured")
+        return
+    from src.joblock import claim
+    lock = REPO / f"results/diagnostics/val_curves/.locks/{a.model}_{a.dataset}_{a.seed}.lock"
+    _claim = claim(lock)
+    if not _claim.__enter__():
+        print(f"[busy] {a.model}/{a.dataset}/seed_{a.seed} claimed by another worker")
+        return
     cfg = yaml.safe_load(open(REPO / f"experiments/{a.model}/{a.dataset}/config.yaml"))
     cfg.update(seed=a.seed, force=True, results_dir=str(out / "runs"),
                summary_csv=str(out / "runs" / "summary_scratch.csv"))
@@ -175,6 +184,7 @@ def main():
     json.dump(res, open(out / "runs" / f"seed_{a.seed}" / "test_fp32_int8.json", "w"), indent=2)
     _dump_encoder(captured, out / "runs" / f"seed_{a.seed}" / "encoder_channels.json")
     print(f"[m3] seed={a.seed} fp32={res['fp_macro_f1']:.2f} int8={new:.2f}")
+    _claim.__exit__(None, None, None)
 
 
 if __name__ == "__main__":

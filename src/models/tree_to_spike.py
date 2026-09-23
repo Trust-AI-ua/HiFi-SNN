@@ -66,6 +66,15 @@ class TreeGuidedSpikeEncoder:
         self.out_dim = 0
 
     def fit(self, teacher, n_features: int, X=None):
+        if self.encoder_mode == "raw_vanilla":
+            # M8 control arm: the conventional SNN's own latency code (floor, with
+            # the epsilon suppression of Eq. 3) on raw features, one channel each,
+            # feeding the Tree-to-Spike student unchanged. Differs from "raw" only
+            # in matching the baseline encoder exactly rather than approximately.
+            self.edges_ = {}
+            self.channels_ = [(j, 0.0) for j in range(n_features)]
+            self.out_dim = len(self.channels_)
+            return self
         if self.encoder_mode == "raw":
             # Attribution control (no tree involvement anywhere): one channel per
             # feature, TTFS applied directly to the already-MinMax'd raw value.
@@ -134,7 +143,7 @@ class TreeGuidedSpikeEncoder:
     def _levels(self, X: np.ndarray):
         """Map each kept feature value to a bin level in [0,1] via tree thresholds."""
         feats = sorted({j for j, _ in self.channels_})
-        if self.encoder_mode == "raw":
+        if self.encoder_mode in ("raw", "raw_vanilla"):
             # raw control: the loader already MinMax-scales to [0,1], so the value
             # *is* the level (no binning, no thresholds).
             return {j: np.clip(X[:, j], 0.0, 1.0) for j in feats}
@@ -165,9 +174,19 @@ class TreeGuidedSpikeEncoder:
         but processed in a single forward pass instead of as a T-step spike train)."""
         return torch.from_numpy(self._level_channels(X))
 
+    VANILLA_EPS = 0.01          # Eq. 3 threshold of the conventional baseline
+
     def encode(self, X) -> torch.Tensor:
         """X: np.ndarray [B, F]  ->  spikes torch.FloatTensor [T, B, out_dim]."""
         level_ch = self._level_channels(X)
+        if self.encoder_mode == "raw_vanilla":
+            # floor, and no spike at or below the epsilon, exactly as
+            # src/encoding/latency.py does for the conventional SNN
+            st = torch.from_numpy(
+                np.clip(np.floor((1.0 - level_ch) * (self.T - 1)), 0, self.T - 1).astype(np.int64))
+            grid = torch.arange(self.T).view(self.T, 1, 1)
+            fires = torch.from_numpy(level_ch > self.VANILLA_EPS).unsqueeze(0)
+            return ((grid == st.unsqueeze(0)) & fires).float()
         spike_time = np.round((1.0 - level_ch) * (self.T - 1)).astype(np.int64)  # [B, C]
         st = torch.from_numpy(spike_time)
         grid = torch.arange(self.T).view(self.T, 1, 1)
@@ -217,6 +236,13 @@ class SNNStudent(nn.Module):
         logits = mem_sum / T                                   # mean output membrane
         total_spikes = n_spk1 + n_spk2                         # hidden-layer spikes
         spike_sites = T * B * (self.hidden[0] + self.hidden[1])
+        # HIDDEN LAYERS ONLY, and deliberately so. This value is stored as
+        # results.json spike_stats.synops_per_sample, and the table generators
+        # (scripts/make_results_table.py, scripts/benchmark_4way.py) add the
+        # input -> hidden1 term themselves as channels * hidden[0]. Adding it here
+        # too would double-count it in every published table. The paper's reported
+        # SOPs are input-inclusive; the split is between this function and its
+        # readers. forward_prefix below is the exception, and says why.
         synops = (n_spk1 * self.fanouts[1] + n_spk2 * self.fanouts[2]) / B   # per sample
         return logits, total_spikes, spike_sites, synops
 
@@ -258,14 +284,33 @@ class SNNStudent(nn.Module):
             cin = cin + spikes[t].sum(dim=1)
             k1[:, t] = c1; k2[:, t] = c2; kin[:, t] = cin
         return {"prefix_logits": pl.cpu(), "cum_spk1": k1.cpu(), "cum_spk2": k2.cpu(),
-                "cum_sops": (k1 * self.fanouts[1] + k2 * self.fanouts[2]).cpu(),
+                # INPUT-INCLUSIVE, unlike forward(), and necessarily so: these are
+                # per-timestep prefixes for early-exit analysis, where the input
+                # term cannot be added afterwards as channels * hidden[0]. That
+                # constant is the FULL-window count; a sample exiting at step 2 has
+                # received only the channels that fired by step 2. kin is the
+                # cumulative input-spike count, so kin[:, t] * hidden[0] is the
+                # input-layer cost actually paid by step t.
+                "cum_sops": (kin * self.fanouts[0] + k1 * self.fanouts[1]
+                             + k2 * self.fanouts[2]).cpu(),
                 "cum_in_spikes": kin.cpu()}
 
     @torch.no_grad()
     def predict_early_exit(self, spikes: torch.Tensor, theta_exit: float = 0.9,
-                           theta_uncertain: float = 0.5):
+                           theta_uncertain: float = 0.5, stop_when_done: bool = False):
         """SNN-only inference with confidence-triggered early exit. Returns
-        (preds [B], exit_step [B], uncertain [B], total_spikes, spike_sites, synops)."""
+        (preds [B], exit_step [B], uncertain [B], total_spikes, spike_sites, synops).
+
+        ``stop_when_done`` leaves the loop once every sample in the batch has
+        exited. Predictions, exit steps and the uncertainty flag are unchanged by
+        it, but the spike counters stop accumulating, so it is off by default:
+        callers that report spike counts over the full window (scripts/fast_synops.py,
+        scripts/backfill_snn_metrics.py) must keep counting to T. A latency
+        measurement is the opposite case. Without it this method computes all T
+        steps and adds a per-step softmax, so the "early exit" path was strictly
+        slower than the full-window path, by 0.55 ms at batch 1 even on CTU-13,
+        where the mean exit step is 1 of 20.
+        """
         T, B, _ = spikes.shape
         m1, m2, m3 = self.lif1.init_leaky(), self.lif2.init_leaky(), self.lif3.init_leaky()
         mem_sum = torch.zeros(B, self.fc3.out_features, device=spikes.device)
@@ -286,6 +331,8 @@ class SNNStudent(nn.Module):
             preds[fire] = pred[fire]
             exit_step[fire] = t + 1
             done = done | fire
+            if stop_when_done and bool(done.all()):
+                break
         # samples that never crossed theta_exit: final argmax, flag low-confidence
         prob = F.softmax(mem_sum / T, dim=-1)
         conf, pred = prob.max(dim=-1)
@@ -293,6 +340,7 @@ class SNNStudent(nn.Module):
         uncertain = (~done) & (conf < theta_uncertain)
         total_spikes = n_spk1 + n_spk2
         spike_sites = T * B * (self.hidden[0] + self.hidden[1])
+        # hidden layers only, the same convention as forward(); see the note there
         synops = (n_spk1 * self.fanouts[1] + n_spk2 * self.fanouts[2]) / B
         return preds, exit_step, uncertain, total_spikes, spike_sites, synops
 

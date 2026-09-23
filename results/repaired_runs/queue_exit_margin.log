@@ -1,0 +1,23 @@
+ciciot2023: full acc 98.85 | theta=0.9 exit 99.1% | wrong exits 209302 (44.8% of all)
+
+--- D1: does the prediction recover if the window runs? ---
+  wrong-exit samples whose argmax reaches the true class later: 99.3%
+  ...and does so AFTER the exit step:                          74.6%
+  mean exit step t*        : 2.25
+  mean recovery step t'    : 11.16
+  -> usable exit lower bound for this dataset: ~11.2/20
+
+--- D2: margin (top1-top2) at exit, right vs wrong ---
+  right exits: margin mean 0.8730  median 0.8663
+  wrong exits: margin mean 0.8791  median 0.8727
+  separation (right-wrong): -0.0061
+
+--- remedy: margin gate (exit when top1-top2 >= m) ---
+       m   exit%  mean_exit      acc      gap  saving_kept
+    0.10  100.0%       1.07    56.21   -42.64       134.1%
+    0.25  100.0%       1.26    56.11   -42.74       132.8%
+    0.50   99.8%       2.12    58.88   -39.97       126.7%
+    0.75   99.4%       5.33    52.94   -45.91       104.0%
+    0.90   98.7%       7.20    62.25   -36.60        90.7%
+    0.95   98.1%       8.36    65.33   -33.51        82.5%
+    0.99   95.5%      11.21    74.31   -24.53        62.3%

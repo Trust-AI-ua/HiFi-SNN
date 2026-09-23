@@ -1,0 +1,32 @@
+
+five-seed mean macro-F1 per arm
+             vanilla  arm_fp32  arm_int8   nokd    t2s
+dataset                                               
+ciciomt2024    72.61     75.79     76.03  88.03  89.42
+ciciot2023     62.82     59.93     59.75  72.82  72.22
+edgeiiot       75.39     76.45     75.02  83.40  83.94
+toniot         92.04     89.83     89.60  92.71  92.98
+
+(SD)
+             vanilla  arm_fp32  arm_int8  nokd   t2s
+dataset                                             
+ciciomt2024     1.03      2.70      2.58  1.99  3.24
+ciciot2023      0.84      0.86      0.93  2.29  1.81
+edgeiiot        2.06      1.56      1.77  0.52  0.17
+toniot          1.00      1.20      0.95  0.69  0.23
+
+four-step decomposition, macro-F1 points (N = 4 datasets, sign consistency)
+                                       step  ciciot2023  ciciomt2024  edgeiiot  toniot  IoT mean sign consistent
+     1 architecture+training (and T 25->20)       -2.89         3.18      1.07   -2.21     -0.21              no
+          2 weight precision (fp32 -> int8)       -0.19         0.25     -1.44   -0.22     -0.40              no
+3 encoder (raw latency -> tree-guided TTFS)       13.07        12.00      8.39    3.11      9.14      yes, all +
+            4 teacher-posterior supervision       -0.60         1.39      0.54    0.27      0.40              no
+
+total Vanilla SNN -> Tree-to-Spike:
+dataset
+ciciomt2024    16.82
+ciciot2023      9.39
+edgeiiot        8.56
+toniot          0.95
+
+[wrote] /home/student3/HiSNN/results/tables/tab_m8_decomposition.csv and .md

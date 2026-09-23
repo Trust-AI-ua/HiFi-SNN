@@ -68,7 +68,7 @@ def predictive() -> pd.DataFrame:
 
 def main():
     pred = predictive()
-    dep = pd.read_csv(DEP / "deployment_measurements.csv")
+    dep = pd.read_csv(DEP / "deployment_measurements.csv", comment="#")
     cost = dep.groupby("system").agg(
         total_bytes=("total_bytes", "mean"), model_bytes=("model_bytes", "mean"),
         encoder_bytes=("encoder_bytes", "mean"),

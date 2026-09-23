@@ -1,0 +1,68 @@
+% Standalone Section VI subsection on the cost of quantization (M3 + M6).
+% Supersedes the Section VI half of sec4f_sec6_quant_draft.tex; that file's
+% Section IV-F paragraph (what is actually quantized) still stands.
+% Sources: results/tables/tab_m3_quant.{csv,tex}, m3_quant_per_seed.csv,
+%   results/diagnostics/fc1_ratio_repair.csv,
+%   results/diagnostics/leakage_audit/README.md
+% All eleven datasets are on repaired corpora. Generated 2026-09-21.
+% Labels to verify: sec:results, subsec:audit, tab:m3:quant, subsec:iot (VI-A).
+
+\subsection{What Quantization Costs, and Why It Is Not Uniform}
+\label{subsec:quantcost}
+
+Reporting a quantized artifact obliges us to say what the projection costs.
+Table~\ref{tab:m3:quant} gives fp32 and int8-grid test macro-$F_1$ for all four
+models on every benchmark as 5-seed means, with the mean and worst-seed
+difference. For the two tree-guided models the floating-point side comes from
+re-running training with the same seeds and capturing the weights immediately
+before the projection; every such re-run reproduces its int8 number exactly, so
+the two columns differ only in the projection. Vanilla SNN and TASNN are
+reported in floating point throughout the paper, so their int8 columns are
+counterfactual. For those two we also project every weight matrix rather than
+\texttt{Linear} layers alone, because Vanilla SNN keeps 98\% of its weights in a
+recurrent cell that a \texttt{Linear}-only projection never touches; for the
+tree-guided students, whose weights are all linear, the two variants coincide.
+
+\textbf{The projection is close to free for the spiking student and not for the
+others.} Tree-to-Spike loses $0.51$ macro-$F_1$ points on Edge-IIoTset and
+$1.58$ on CSE-CIC-IDS2018, and averages $+0.06$ across the nine remaining
+benchmarks; its worst single seed anywhere is $-4.38$. Its dense twin loses
+$5.97$ on Edge-IIoTset, with one seed at $-13.20$. The counterfactual for
+Vanilla SNN is larger still: $-14.91$ on Edge-IIoTset and $-20.18$ at its worst
+seed, so the baseline we did \emph{not} deploy at int8 is the model the
+projection would have hurt most. Post-training per-tensor quantization is
+therefore not automatically safe, and reporting a quantized artifact without
+measuring it is not a neutral omission.
+
+\textbf{The mechanism is a single outlier weight.} The scale is
+$s = \max|W|/127$ per tensor, so one large weight fixes the resolution of every
+other weight in that tensor. Where the tree-guided students' per-layer
+$\max|W|/p_{99}|W|$ ratios stay between 1.1 and 3.6, the dense twin's first
+layer -- the one reading the encoder -- reaches 8.5--9.8 on three of five
+CSE-CIC-IDS2018 seeds and 6.1 on the worst Edge-IIoTset seed, where 42\% of its
+first-layer weights round to zero. Accuracy tracks that ratio: the seeds with
+ratios near 2.5--3.0 lose 0.2 points or less, the seeds near 9 lose 1.5--3.6.
+The spiking student does not accumulate comparable outliers on the same encoder
+input, which is what makes its deployed numbers insensitive to the projection.
+
+\textbf{Two causes, one amplifying the other.} Before the dataset repair of
+Section~\ref{subsec:audit}, this cell was far worse: DNN-Tree lost $11.46$ points
+on CSE-CIC-IDS2018, with a worst seed of $-29.27$ and a first-layer ratio of
+15.9. The leaked \texttt{Src~Port} feature was the teacher's most important
+input, and the outlier weight sat on it; removing the artifact removed the
+amplification but not the fragility, which now shows up on Edge-IIoTset instead.
+The dense twin has a per-tensor quantization fragility of its own, and a dataset
+artifact that concentrates importance in one feature makes it an order of
+magnitude worse. Neither explanation alone fits the measurements.
+
+% Section VI-A (per-dataset results), where the Edge-IIoTset ordering is given:
+\paragraph{Precision changes the Edge-IIoTset ordering.}
+On Edge-IIoTset the deployed (int8) ordering places Tree-to-Spike at 83.95
+macro-$F_1$ and DNN-Tree at 80.83, a 3.1-point lead; in floating point the same
+runs give 84.46 and 86.81, a 2.4-point lead the other way. The reversal is
+entirely the quantization loss of Table~\ref{tab:m3:quant}. We report the
+deployed artifacts throughout, because the claim of this paper concerns what is
+shipped to a constrained device, and on that basis the dense twin's fragility is
+a genuine deployment cost rather than a measurement artifact. A reader comparing
+the two \emph{architectures} at equal precision should use the fp32 columns,
+where the dense twin is ahead on this dataset.

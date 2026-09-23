@@ -30,18 +30,18 @@ NAME = {"kddcup99":"KDDCup99","nslkdd":"NSL-KDD","ctu13":"CTU-13",
         "ciciot2023":"CICIoT2023","ciciomt2024":"CICIoMT2024",
         "edgeiiot":"Edge-IIoTset","toniot":"TON-IoT"}
 
-def evaluate(ds, sel_rounds):
+def evaluate(ds, sel_rounds, seed=SEED):
     from src.data import get_dataset, DATASET_LOADERS
     from src.metrics import compute_metrics, compute_binary_ids_metrics
     from src.training_treespike import _arrays_from_bundle, _fit_teacher
     cfg = yaml.safe_load(open(REPO/f"experiments/Tree-to-Spike/{ds}/config.yaml"))
     lp = inspect.signature(DATASET_LOADERS[ds]).parameters
-    dk = dict(seed=SEED)
+    dk = dict(seed=seed)
     for o in ("subsample_fraction","test_fraction","label_mode"):
         if o in cfg and o in lp: dk[o] = cfg[o]
     b = get_dataset(ds, **dk)
     Xtr, ytr, _, _, Xte, yte = _arrays_from_bundle(b)
-    teacher, _, present = _fit_teacher(Xtr, ytr, b.num_classes, {**cfg, "seed": SEED})
+    teacher, _, present = _fit_teacher(Xtr, ytr, b.num_classes, {**cfg, "seed": seed})
     Xe = pd.DataFrame(Xte, columns=[f"f{i}" for i in range(Xte.shape[1])])
     out = {}
     for arm, rng in (("full", None), ("compact", (0, int(sel_rounds)))):
@@ -55,23 +55,41 @@ def evaluate(ds, sel_rounds):
     return out
 
 if __name__ == "__main__":
-    meas = pd.read_csv(REPO/"results/deployment/deployment_measurements.csv")
+    import argparse
+    _ap = argparse.ArgumentParser()
+    # Quality columns are five-seed mean +/- SD; footprint and latency stay at the
+    # single seed-42 deployment run. Mixing the two aggregations in one table
+    # without saying which applies per column group is what this fixes.
+    _ap.add_argument("--seeds", nargs="+", type=int, default=[SEED])
+    _a = _ap.parse_args()
+    meas = pd.read_csv(REPO/"results/deployment/deployment_measurements.csv", comment="#")
     meas = meas[meas.seed == SEED]
     comp = pd.read_csv(REPO/"results/deployment/compact_gbdt.csv")
     comp = comp[comp.seed == SEED].set_index("dataset")
     rows = []
     for ds in NAME:
-        try:
-            q = evaluate(ds, comp.loc[ds, "selected_rounds"])
-        except Exception as e:
-            print(f"[fail] {ds}: {e}", flush=True); continue
+        per_seed = {}
+        for _s in _a.seeds:
+            try:
+                per_seed[_s] = evaluate(ds, comp.loc[ds, "selected_rounds"], seed=_s)
+            except Exception as e:
+                print(f"[fail] {ds} seed {_s}: {e}", flush=True)
+        if not per_seed:
+            continue
+        q, qsd = {}, {}
+        for arm in ("full", "compact"):
+            vals = [v[arm] for v in per_seed.values() if arm in v]
+            q[arm] = {k: float(np.mean([x[k] for x in vals])) for k in vals[0]}
+            qsd[arm] = {k + "_sd": float(np.std([x[k] for x in vals], ddof=1))
+                        if len(vals) > 1 else 0.0 for k in vals[0]}
         sub = meas[meas.dataset == ds].set_index("system")
         t2s_e = float(sub.loc["t2s_exit", "sops"]) * E_ADD
         for arm, sysname in (("full", "full_gbdt"), ("compact", "compact_gbdt")):
             if sysname not in sub.index: continue
             r = sub.loc[sysname]
             e = float(r.tree_comparisons) * E_ADD
-            rows.append(dict(dataset=ds, name=NAME[ds], arm=arm, **q[arm],
+            rows.append(dict(dataset=ds, name=NAME[ds], arm=arm, n_seeds=len(per_seed),
+                             **q[arm], **qsd[arm],
                              bytes=int(r.model_bytes), p50_ms=float(r.p50_ms),
                              comparisons=float(r.tree_comparisons),
                              E_pJ=e, rel_E_vs_t2s=e/t2s_e if t2s_e else np.nan,

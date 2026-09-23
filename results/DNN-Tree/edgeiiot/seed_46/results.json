@@ -1,0 +1,511 @@
+{
+  "model": "DNN-Tree",
+  "dataset": "edgeiiot",
+  "neuron": "ReLU",
+  "encoding": "tree-guided-dense",
+  "config": {
+    "T": 20,
+    "pop_max": 3,
+    "prune_quantile": 0.2,
+    "jitter": 0.12,
+    "hidden": [
+      64,
+      64
+    ],
+    "clip_relu": null,
+    "teacher_n_estimators": 200,
+    "teacher_max_depth": 6,
+    "teacher_lr": 0.1,
+    "tau": 2.0,
+    "a_kd": 1.0,
+    "a_rank": 0.3,
+    "a_fp": 0.5,
+    "epochs": 10,
+    "batch_size": 128,
+    "lr": 0.002,
+    "weight_decay": 0.0,
+    "quantize": true,
+    "val_fraction": 0.1,
+    "seed": 46,
+    "device": "cuda"
+  },
+  "hardware": {
+    "device": "cuda",
+    "gpu_name": "NVIDIA H200 NVL",
+    "hostname": "michele-research-vm"
+  },
+  "data": {
+    "num_features": 64,
+    "num_classes": 14,
+    "class_names": [
+      "Normal",
+      "Backdoor",
+      "DDoS_HTTP",
+      "DDoS_ICMP",
+      "DDoS_TCP",
+      "DDoS_UDP",
+      "Fingerprinting",
+      "Password",
+      "Port_Scanning",
+      "Ransomware",
+      "SQL_injection",
+      "Uploading",
+      "Vulnerability_scanner",
+      "XSS"
+    ],
+    "class_counts_train": {
+      "Normal": 982078,
+      "Backdoor": 17299,
+      "DDoS_HTTP": 34951,
+      "DDoS_ICMP": 48916,
+      "DDoS_TCP": 36045,
+      "DDoS_UDP": 87528,
+      "Fingerprinting": 614,
+      "Password": 35951,
+      "Port_Scanning": 14384,
+      "Ransomware": 6976,
+      "SQL_injection": 36595,
+      "Uploading": 26501,
+      "Vulnerability_scanner": 36019,
+      "XSS": 10848
+    },
+    "encoder_channels": 35
+  },
+  "model_size": {
+    "total_parameters": 7374,
+    "trainable_parameters": 7374
+  },
+  "training": {
+    "train_time_s": 1186.885081768036,
+    "training_curve": [
+      {
+        "epoch": 1,
+        "train_loss": 0.9329031533702126,
+        "val_accuracy": 0.9515532423319912
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.8134888045281671,
+        "val_accuracy": 0.9538773773282267
+      },
+      {
+        "epoch": 3,
+        "train_loss": 0.7975010252947914,
+        "val_accuracy": 0.9581917575043373
+      },
+      {
+        "epoch": 4,
+        "train_loss": 0.7911723842029244,
+        "val_accuracy": 0.9583226946872238
+      },
+      {
+        "epoch": 5,
+        "train_loss": 0.7871928274964487,
+        "val_accuracy": 0.9590886772071099
+      },
+      {
+        "epoch": 6,
+        "train_loss": 0.7844708256159859,
+        "val_accuracy": 0.9592327081082851
+      },
+      {
+        "epoch": 7,
+        "train_loss": 0.7820078569611801,
+        "val_accuracy": 0.9596451602343775
+      },
+      {
+        "epoch": 8,
+        "train_loss": 0.7795175315115039,
+        "val_accuracy": 0.9594683950374807
+      },
+      {
+        "epoch": 9,
+        "train_loss": 0.7776076791450742,
+        "val_accuracy": 0.9610592818095519
+      },
+      {
+        "epoch": 10,
+        "train_loss": 0.7761294555786158,
+        "val_accuracy": 0.9605551736554389
+      }
+    ]
+  },
+  "test_plus": {
+    "n_samples": 381863,
+    "metrics": {
+      "accuracy": 0.8323534880310478,
+      "balanced_accuracy": 0.758893171423297,
+      "f1_macro": 0.7142186118700504,
+      "f1_weighted": 0.8636452485283319,
+      "precision_macro": 0.7196249885592584,
+      "recall_macro": 0.758893171423297,
+      "matthews_corrcoef": 0.7000496426437075,
+      "cohen_kappa": 0.6890156655581143,
+      "per_class": {
+        "Normal": {
+          "precision": 0.9518979139147122,
+          "recall": 0.8400219941348973,
+          "f1": 0.8924675486526801,
+          "support": 272800
+        },
+        "Backdoor": {
+          "precision": 0.9739824832560536,
+          "recall": 0.7868886576482831,
+          "f1": 0.8704961436629446,
+          "support": 4805
+        },
+        "DDoS_HTTP": {
+          "precision": 0.8712238909028137,
+          "recall": 0.5198269646719539,
+          "f1": 0.6511417881563669,
+          "support": 9709
+        },
+        "DDoS_ICMP": {
+          "precision": 1.0,
+          "recall": 0.9930821312923167,
+          "f1": 0.9965290598921793,
+          "support": 13588
+        },
+        "DDoS_TCP": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 10012
+        },
+        "DDoS_UDP": {
+          "precision": 1.0,
+          "recall": 0.9980258287406433,
+          "f1": 0.999011939069576,
+          "support": 24314
+        },
+        "Fingerprinting": {
+          "precision": 0.5607476635514018,
+          "recall": 0.7017543859649122,
+          "f1": 0.6233766233766234,
+          "support": 171
+        },
+        "Password": {
+          "precision": 0.24932584766367535,
+          "recall": 0.564734154400721,
+          "f1": 0.34592737978410204,
+          "support": 9987
+        },
+        "Port_Scanning": {
+          "precision": 0.8569168173598554,
+          "recall": 0.948936170212766,
+          "f1": 0.9005820168666112,
+          "support": 3995
+        },
+        "Ransomware": {
+          "precision": 0.4699835526315789,
+          "recall": 0.5897832817337462,
+          "f1": 0.5231121281464531,
+          "support": 1938
+        },
+        "SQL_injection": {
+          "precision": 0.86384096024006,
+          "recall": 0.6796851942941465,
+          "f1": 0.7607774046137753,
+          "support": 10165
+        },
+        "Uploading": {
+          "precision": 0.49115747114264535,
+          "recall": 0.6300774351310963,
+          "f1": 0.5520114258509878,
+          "support": 7361
+        },
+        "Vulnerability_scanner": {
+          "precision": 0.719313682358117,
+          "recall": 0.8170914542728636,
+          "f1": 0.7650912494150679,
+          "support": 10005
+        },
+        "XSS": {
+          "precision": 0.06635955680870498,
+          "recall": 0.5545967474278128,
+          "f1": 0.118535858693339,
+          "support": 3013
+        }
+      },
+      "class_names": [
+        "Normal",
+        "Backdoor",
+        "DDoS_HTTP",
+        "DDoS_ICMP",
+        "DDoS_TCP",
+        "DDoS_UDP",
+        "Fingerprinting",
+        "Password",
+        "Port_Scanning",
+        "Ransomware",
+        "SQL_injection",
+        "Uploading",
+        "Vulnerability_scanner",
+        "XSS"
+      ],
+      "roc_auc_weighted": 0.9754000263315714,
+      "confusion_matrix": [
+        [
+          229158,
+          1,
+          12,
+          0,
+          0,
+          0,
+          0,
+          16509,
+          0,
+          0,
+          0,
+          2159,
+          2612,
+          22349
+        ],
+        [
+          178,
+          3781,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          64,
+          333,
+          0,
+          440,
+          6,
+          1
+        ],
+        [
+          2885,
+          0,
+          5047,
+          0,
+          0,
+          0,
+          0,
+          287,
+          0,
+          0,
+          809,
+          424,
+          55,
+          202
+        ],
+        [
+          0,
+          0,
+          0,
+          13494,
+          0,
+          0,
+          94,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          10012,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          24266,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          48
+        ],
+        [
+          25,
+          0,
+          0,
+          0,
+          0,
+          0,
+          120,
+          0,
+          23,
+          0,
+          0,
+          3,
+          0,
+          0
+        ],
+        [
+          2587,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          5640,
+          0,
+          0,
+          33,
+          652,
+          234,
+          841
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3791,
+          0,
+          0,
+          204,
+          0,
+          0
+        ],
+        [
+          119,
+          80,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          58,
+          1143,
+          1,
+          536,
+          0,
+          0
+        ],
+        [
+          2591,
+          0,
+          485,
+          0,
+          0,
+          0,
+          0,
+          52,
+          0,
+          0,
+          6909,
+          0,
+          84,
+          44
+        ],
+        [
+          2188,
+          20,
+          2,
+          0,
+          0,
+          0,
+          0,
+          1,
+          488,
+          2,
+          0,
+          4638,
+          21,
+          1
+        ],
+        [
+          279,
+          0,
+          242,
+          0,
+          0,
+          0,
+          0,
+          38,
+          0,
+          954,
+          207,
+          86,
+          8175,
+          24
+        ],
+        [
+          728,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          94,
+          0,
+          0,
+          39,
+          301,
+          178,
+          1671
+        ]
+      ]
+    },
+    "binary_ids_metrics": {
+      "binary_accuracy": 0.8553879270837971,
+      "detection_rate": 0.8938228363422975,
+      "false_alarm_rate": 0.15997800586510263,
+      "binary_precision": 0.6907564216120461,
+      "binary_f1": 0.7792779829568165,
+      "tp": 97483,
+      "fp": 43642,
+      "tn": 229158,
+      "fn": 11580,
+      "binary_confusion_matrix": [
+        [
+          229158,
+          43642
+        ],
+        [
+          11580,
+          97483
+        ]
+      ]
+    },
+    "compute": {
+      "macs_per_sample": 7232,
+      "energy_pj_horowitz": 33267.2,
+      "e_mac_pj": 4.6,
+      "paradigm": "dense one-shot ANN (T=1)",
+      "quantized_int8": true
+    },
+    "teacher_upper_bound": {
+      "accuracy": 0.8620211960834121,
+      "f1_macro": 0.7492206679962246,
+      "matthews_corrcoef": 0.7696514714964132
+    },
+    "inference_ms_per_sample_batch1": 0.03239274024963379,
+    "inference_ms_per_sample_batched": 0.0005693435668945312
+  },
+  "test_minus_21": null
+}

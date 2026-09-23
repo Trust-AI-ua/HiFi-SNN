@@ -1,0 +1,34 @@
+==============================================================================
+TEST 1 -- per-class wrong-exit concentration (is 'diffuse' an artifact?)
+==============================================================================
+source class      n_wrong       top target   share   top2  exit step sd
+Normal              35299         Backdoor   99.7%  99.9%          0.69
+Backdoor              744           Normal   92.9%  96.6%          5.05
+DDoS_HTTP            3259           Normal   95.1%  98.5%          4.72
+DDoS_TCP             5840    Port_Scanning  100.0% 100.0%          0.85
+DDoS_UDP               84         DDoS_TCP  100.0% 100.0%          0.00
+Password             4297           Normal   88.8% 100.0%          6.57
+Ransomware            775           Normal   83.1%  96.8%          4.22
+SQL_injection        3378           Normal   76.0%  99.9%          7.40
+Uploading            4540           Normal   88.0%  96.7%          5.80
+Vulnerability_sc     4631         Backdoor   88.1%  95.5%          4.38
+XSS                  1201           Normal   79.4%  99.9%          7.14
+
+  mean PER-CLASS top-target share: 90.1%  (dataset-level modal share was 50.5%)
+  -> PAIRWISE ATTRACTORS (same mechanism, distributed)
+
+==============================================================================
+TEST 2 -- is the encoder protocol-blind?
+==============================================================================
+/home/student3/HiSNN/scripts/edgeiiot_mechanism.py:37: Pandas4Warning: For backward compatibility, 'str' dtypes are included by select_dtypes when 'object' dtype is specified. This behavior is deprecated and will be removed in a future version. Explicitly pass 'str' to `include` to select them, or to `exclude` to remove them and silence this warning.
+See https://pandas.pydata.org/docs/user_guide/migration-3-strings.html#string-migration-select-dtypes for details on how to write code that works with pandas 2 and 3.
+  obj = df.select_dtypes(include="object").columns.tolist()
+  features total 64 | names recovered 95 | kept 32
+  protocol-related features: 95 present, 32 retained (34%)
+    tcp  :  12/ 15 retained
+    udp  :   2/  2 retained
+    icmp :   2/  3 retained
+    http :   9/ 30 retained
+    arp  :   1/  2 retained
+    mqtt :   4/ 28 retained
+    dns  :   2/ 16 retained

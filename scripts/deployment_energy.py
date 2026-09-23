@@ -79,7 +79,7 @@ def e_total(p, sram_s=10, sram_m=20, sram_l=100, dram=1300, int8=False):
     return e_arith(p, int8) + p.accesses * per, per
 
 if __name__ == "__main__":
-    d = pd.read_csv(OUT / "deployment_measurements.csv")
+    d = pd.read_csv(OUT / "deployment_measurements.csv", comment="#")
     q = pd.read_csv(OUT / "deployment_summary.csv").set_index("system")
     p = profile(d)
     order = ["full_gbdt", "compact_gbdt", "raw_mlp_fp", "raw_mlp_int8",

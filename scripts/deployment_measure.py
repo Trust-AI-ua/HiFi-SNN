@@ -4,16 +4,20 @@
 Nothing is trained. Six deployed systems, measured on identical inputs on the same
 machine:
 
-  full_gbdt        native ensemble
-  compact_gbdt     validation-selected boosting-round prefix
-  raw_mlp_fp       raw features, floating-point weights
-  raw_mlp_int8     raw features, int8-grid weights
+  full_gbdt        packed ensemble (float32 thresholds, 16-bit leaves)
+  compact_gbdt     validation-selected boosting-round prefix, same packing
+  vanilla_snn      raw-feature latency code, float32 (reported in floating point)
+  tasnn            transformer-spiking hybrid, float32
   dnn_tree         tree-derived representation, int8-grid weights
   t2s_full         tree-guided TTFS, int8-grid weights, full T
   t2s_exit         same checkpoint, validation-selected early exit (DEPLOYED)
 
 Three principles that make the numbers honest:
 
+0. Each artifact is stored in the format its deployed values require
+   (src/serialize.py): int8 codes plus per-tensor scales for the grid-deployed
+   students, float32 for models reported in floating point, packed node arrays for
+   the ensembles. Tree accuracy is measured ON the packed artifact.
 1. Artifact bytes are measured from real serialized files, component by component
    (model / encoder / scaler+vocab / metadata), never inferred from parameter count.
    Tree-to-Spike's encoder tables and threshold arrays are part of what ships.
@@ -27,6 +31,36 @@ Three principles that make the numbers honest:
     python scripts/deployment_measure.py --datasets nslkdd --seeds 42
 """
 from __future__ import annotations
+
+# Release gate: this stage produces the only wall-clock numbers in the paper, so it
+# refuses to start until (a) a release file exists and (b) the one-minute load
+# average has stayed below LOAD_MAX for LOAD_HOLD_S. An earlier run began while the
+# encoder-variant jobs were still draining (load 18.2 at start, 1.4 at end).
+GATE_FILE = "results/deployment/.RELEASE_DEPLOYMENT"
+LOAD_MAX = 2.0          # this box idles near 1.0 (other users' services)
+LOAD_HOLD_S = 300
+
+
+def wait_for_gate(repo):
+    import os, time
+    gate = repo / GATE_FILE
+    while not gate.exists():
+        print(f"[gate] waiting for {GATE_FILE}", flush=True)
+        time.sleep(60)
+    quiet_since = None
+    while True:
+        load1 = os.getloadavg()[0]
+        now = time.time()
+        if load1 < LOAD_MAX:
+            quiet_since = quiet_since or now
+            if now - quiet_since >= LOAD_HOLD_S:
+                print(f"[gate] released: load {load1:.2f} held below {LOAD_MAX} "
+                      f"for {LOAD_HOLD_S}s", flush=True)
+                return load1
+        else:
+            quiet_since = None
+        print(f"[gate] load {load1:.2f}, waiting for a quiet machine", flush=True)
+        time.sleep(60)
 
 import argparse
 import json
@@ -52,6 +86,16 @@ N_WARMUP = 500
 N_TIMED = 2000
 
 
+from src import serialize as SER
+from src.metrics import compute_metrics   # per-system serialization rule (v2)
+
+
+def student_bytes(sd, int8_grid: bool) -> dict:
+    """int8 codes plus per-tensor scales for grid-deployed students (Tree-to-Spike,
+    DNN-Tree); float32 for models reported and executed in floating point."""
+    return SER.int8_student_bytes(sd) if int8_grid else SER.float32_model_bytes(sd)
+
+
 def nbytes_of(obj) -> int:
     """Real serialized size on disk, deterministic format."""
     with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as f:
@@ -74,8 +118,16 @@ def torch_bytes(sd) -> int:
         os.unlink(tmp)
 
 
-def booster_bytes(teacher, n_rounds=None) -> int:
-    """Actual serialized ensemble. For a prefix, truncate then serialize."""
+def booster_bytes(teacher, n_rounds=None, n_classes: int = 2) -> int:
+    """Packed node arrays, the format the compression sweep prices. The XGBoost
+    native file is a container, not a deployment artifact, and was about 15x
+    larger; see src/serialize.py."""
+    return SER.pack_booster(teacher, n_rounds, leaf_bits=16,
+                            n_classes=n_classes)["deploy_bytes"]
+
+
+def booster_bytes_native(teacher, n_rounds=None) -> int:
+    """Previous convention, retained for the comparison in the verification."""
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         tmp = f.name
     try:
@@ -133,7 +185,6 @@ def measure(dataset: str, seed: int) -> list:
                             quantize_int8_)
     from src.training_treespike import (_fit_teacher, _arrays_from_bundle, _resolve,
                                         _set_seed)
-    from run_raw_mlp import loader_kwargs, HIDDEN
     import yaml, inspect, copy
 
     torch.set_num_threads(1)          # single-thread CPU, as specified
@@ -188,7 +239,8 @@ def measure(dataset: str, seed: int) -> list:
         if nr is None:
             continue
         nodes, leaves, trees = gbdt_stats(nr)
-        mb = booster_bytes(teacher, None if tag == "full_gbdt" else nr)
+        mb = booster_bytes(teacher, None if tag == "full_gbdt" else nr,
+                           n_classes=len(present))
         Xdf_one = pd.DataFrame(Xsub[:1], columns=[f"f{i}" for i in range(F)])
         ir = (0, nr)
 
@@ -197,7 +249,26 @@ def measure(dataset: str, seed: int) -> list:
             return teacher.predict(d, iteration_range=ir)
 
         lat = time_fn(gb_fn, Xsub)
-        rows.append(dict(dataset=dataset, seed=seed, system=tag,
+        # the teacher is fit on the classes PRESENT in training (CSE-CIC-IDS2018
+        # declares five and exhibits four), so the packing and the label mapping
+        # must use the teacher's own class count, not the dataset's
+        K_t = len(present)
+        packed = SER.pack_booster(teacher, None if tag == "full_gbdt" else nr,
+                                  leaf_bits=16, n_classes=K_t)
+        ncap = min(len(Xsub), 5000)
+        pk_pred = present[SER.predict_packed(packed, Xsub[:ncap], K_t, leaf_bits=16)]
+        nat_pred = present[teacher.predict(pd.DataFrame(Xsub[:ncap],
+                                                        columns=[f"f{i}" for i in range(F)]),
+                                           iteration_range=ir)]
+        f1_packed = 100 * compute_metrics(yte[:ncap], pk_pred,
+                                          class_names=b.class_names)["f1_macro"]
+        f1_native = 100 * compute_metrics(yte[:ncap], nat_pred,
+                                          class_names=b.class_names)["f1_macro"]
+        rows.append(dict(packed_macro_f1=f1_packed, native_macro_f1=f1_native,
+                         packed_agreement=float(np.mean(pk_pred == nat_pred)),
+                         n_accuracy_compared=int(ncap),
+                         serialization_format=SER.SERIALIZATION_FORMAT,
+                         dataset=dataset, seed=seed, system=tag,
                          representation="tree ensemble",
                          precision="native" if tag == "full_gbdt" else "val-selected prefix",
                          model_bytes=mb, encoder_bytes=0, scaler_bytes=scaler_bytes,
@@ -207,32 +278,6 @@ def measure(dataset: str, seed: int) -> list:
                          tree_comparisons=float(trees * depth),
                          n_trees=trees, n_nodes=nodes, **lat))
 
-    # ---------------- Raw MLP: FP and int8-grid ----------------
-    rk, _ = loader_kwargs(dataset, seed)
-    ck = REPO / f"results/RawMLP/{dataset}/seed_{seed}/checkpoint.pt"
-    if ck.exists():
-        for tag, quant in (("raw_mlp_fp", False), ("raw_mlp_int8", True)):
-            m = DNNStudent(F, K, hidden=HIDDEN).to(dev)
-            m.load_state_dict(torch.load(ck, map_location=dev))
-            if quant:
-                quantize_int8_(m)
-            m.eval()
-
-            def mlp_fn(x, m=m):
-                with torch.no_grad():
-                    return m(torch.from_numpy(x))
-
-            lat = time_fn(mlp_fn, Xsub)
-            mb = torch_bytes(m.state_dict())
-            rows.append(dict(dataset=dataset, seed=seed, system=tag,
-                             representation="raw features",
-                             precision="FP32" if not quant else "int8-grid weights",
-                             model_bytes=mb, encoder_bytes=0, scaler_bytes=scaler_bytes,
-                             total_bytes=mb + scaler_bytes,
-                             op_kind="MAC", macs=float(m.macs_per_sample()), sops=np.nan,
-                             tree_nodes_visited=np.nan, tree_comparisons=np.nan,
-                             n_trees=0, n_nodes=0, **lat))
-
     # ---------------- shared tree-guided encoder ----------------
     enc = TreeGuidedSpikeEncoder(
         T=cfg["T"], pop_max=cfg["pop_max"], prune_quantile=cfg["prune_quantile"],
@@ -240,6 +285,105 @@ def measure(dataset: str, seed: int) -> list:
     ).fit(teacher, F, X=Xtr)
     eb = encoder_bytes(enc)
     ecmp = encoder_comparisons(enc)
+
+    # ---------------- Vanilla SNN and TASNN (float32, as reported) ----------------
+    import json as _json
+    vck = REPO / f"results/{dataset}/SNN_LeakyParallel/latency/seed_{seed}/checkpoint.pt"
+    if vck.exists():
+        from src.models import SNN
+        from src.encoding import get_encoder
+        vcfg = yaml.safe_load(open(REPO / f"configs/{dataset}/SNN_LeakyParallel/latency/config.yaml"))
+        vT = int(vcfg["num_steps"])
+        vm = SNN(num_features=F, hidden_size=vcfg["hidden_size"], num_classes=K,
+                 neuron_name=vcfg["neuron"], num_steps=vT).to(dev)
+        vm.load_state_dict(torch.load(vck, map_location=dev)); vm.eval()
+        venc = get_encoder(vcfg["encoding"])
+
+        def van_fn(x, vm=vm, venc=venc, vT=vT):
+            with torch.no_grad():
+                return vm(venc(torch.from_numpy(x), vT))
+
+        lat = time_fn(van_fn, Xsub)
+        vb = student_bytes(vm.state_dict(), int8_grid=False)
+        rj = REPO / f"results/{dataset}/SNN_LeakyParallel/latency/seed_{seed}/results.json"
+        _vss = _json.load(open(rj))["test_plus"]["spike_stats"]
+        spk = float(_vss["energy_spikes_per_sample"])
+        # Its own run counts BOTH synaptic layers (input spikes x hidden, hidden
+        # spikes x classes), which is the convention Tree-to-Spike now uses too
+        # after the input layer was added to its synops. Without this the row
+        # carried no operation count at all and the energy model priced it at
+        # nearly zero arithmetic.
+        if "synops_per_sample" in _vss:
+            vsops = float(_vss["synops_per_sample"])
+        else:
+            # The two repaired corpora were rerun by a path that did not persist it.
+            # src/opcount reproduces this exact convention (validated to the decimal
+            # against a run that does record it), so the count is recomputed rather
+            # than left missing.
+            from src.opcount import count_ops
+            _vx = Xsub[:2000]
+            with torch.no_grad(), count_ops(vm, batch_size=len(_vx)) as _vc:
+                vm(venc(torch.from_numpy(_vx), vT))
+            vsops = float(_vc.sops)
+        # The published tables add num_features * hidden_size on top of this value,
+        # which already counts the input layer from the features that ACTUALLY fire
+        # (41% of them on CICIoT2023). Both are recorded so the difference is visible
+        # without a rerun; see results/tables/vanilla_sops_double_count.md.
+        vsops_paper = vsops + float(F) * float(vcfg["hidden_size"])
+        rows.append(dict(dataset=dataset, seed=seed, system="vanilla_snn",
+                         representation="raw-feature TTFS", precision="FP32",
+                         model_bytes=vb["model_bytes"], encoder_bytes=0,
+                         scaler_bytes=scaler_bytes,
+                         total_bytes=vb["model_bytes"] + scaler_bytes,
+                         model_float_bytes=vb["model_float_bytes"],
+                         serialization_format=vb["serialization_format"],
+                         op_kind="SOP", macs=np.nan, sops=vsops,
+                         sops_paper_convention=vsops_paper,
+                         spikes_per_sample=spk, n_channels=float(F),
+                         tree_nodes_visited=np.nan, tree_comparisons=np.nan,
+                         n_trees=0, n_nodes=0, **lat))
+
+    tack = REPO / f"results/TASNN/{dataset}/seed_{seed}/checkpoint.pt"
+    if tack.exists():
+        from src.models import TASNN
+        tcfg = yaml.safe_load(open(REPO / f"experiments/TASNN/{dataset}/config.yaml"))
+        tcfg.update(_json.load(open(REPO / f"results/TASNN/{dataset}/seed_{seed}/results.json"))["config"])
+        tm = TASNN(num_features=F, num_classes=K, num_steps=tcfg["num_steps"],
+                   d_model=tcfg["d_model"], n_heads=tcfg["n_heads"], n_layers=tcfg["n_layers"],
+                   ff=tcfg["ff"], dropout=tcfg["dropout"], pop_M=tcfg["pop_M"],
+                   stc_channels=tcfg["stc_channels"], stc_kernel=tcfg["stc_kernel"],
+                   lif_hidden=tuple(tcfg["lif_hidden"]), lif_beta=tcfg["lif_beta"],
+                   lif_v_th=tcfg["lif_v_th"], lif_gamma=tcfg["lif_gamma"],
+                   surrogate_beta=tcfg["surrogate_beta"], target_rate=tcfg["target_rate"]).to(dev)
+        tm.load_state_dict(torch.load(tack, map_location=dev)); tm.eval()
+
+        def tas_fn(x, tm=tm):
+            with torch.no_grad():
+                return tm(torch.from_numpy(x))
+
+        lat = time_fn(tas_fn, Xsub)
+        # TASNN records no operation count. It is priced by the SAME analytic
+        # formula the published figures use (scripts/benchmark_4way.py), not by a
+        # new path: hook-based counting misses MultiheadAttention's projections and
+        # score products and lands at about half. This reproduces the paper.
+        from src.tasnn_energy import tasnn_energy_pj
+        _rec_t = _json.load(open(REPO / f"results/TASNN/{dataset}/seed_{seed}/results.json"))
+        _e_t, t_macs, t_sops = tasnn_energy_pj(_rec_t)
+        t_macs, t_sops = float(t_macs), float(t_sops)
+        tb2 = student_bytes(tm.state_dict(), int8_grid=False)
+        rj = REPO / f"results/TASNN/{dataset}/seed_{seed}/results.json"
+        spk = float(_json.load(open(rj))["test_plus"]["spike_stats"]["energy_spikes_per_sample"])
+        rows.append(dict(dataset=dataset, seed=seed, system="tasnn",
+                         representation="transformer + LIF core", precision="FP32",
+                         model_bytes=tb2["model_bytes"], encoder_bytes=0,
+                         scaler_bytes=scaler_bytes,
+                         total_bytes=tb2["model_bytes"] + scaler_bytes,
+                         model_float_bytes=tb2["model_float_bytes"],
+                         serialization_format=tb2["serialization_format"],
+                         op_kind="MAC+SOP", macs=t_macs, sops=t_sops,
+                         spikes_per_sample=spk, n_channels=float(F),
+                         tree_nodes_visited=np.nan, tree_comparisons=np.nan,
+                         n_trees=0, n_nodes=0, **lat))
 
     # ---------------- DNN-Tree (int8-grid checkpoint) ----------------
     dck = REPO / f"results/DNN-Tree/{dataset}/seed_{seed}/checkpoint.pt"
@@ -254,11 +398,15 @@ def measure(dataset: str, seed: int) -> list:
                 return m(enc.encode_dense(x))
 
         lat = time_fn(dnn_fn, Xsub)
-        mb = torch_bytes(m.state_dict())
+        bb = student_bytes(m.state_dict(), int8_grid=True); mb = bb["model_bytes"]
         rows.append(dict(dataset=dataset, seed=seed, system="dnn_tree",
                          representation="tree-derived", precision="int8-grid weights",
                          model_bytes=mb, scaler_bytes=scaler_bytes,
                          total_bytes=mb + eb["encoder_bytes"] + scaler_bytes,
+                         model_int8_bytes=bb["model_int8_bytes"],
+                         model_scale_bytes=bb["model_scale_bytes"],
+                         model_float_bytes=bb["model_float_bytes"],
+                         serialization_format=bb["serialization_format"],
                          op_kind="MAC", macs=float(m.macs_per_sample()), sops=np.nan,
                          tree_nodes_visited=np.nan, tree_comparisons=ecmp,
                          n_trees=0, n_nodes=0, **eb, **lat))
@@ -269,7 +417,7 @@ def measure(dataset: str, seed: int) -> list:
         st = SNNStudent(enc.out_dim, K, hidden=tuple(cfg["hidden"]),
                         beta=cfg["beta"], leaky=cfg["leaky"]).to(dev)
         st.load_state_dict(torch.load(tck, map_location=dev)); st.eval()
-        mb = torch_bytes(st.state_dict())
+        tbb = student_bytes(st.state_dict(), int8_grid=True); mb = tbb["model_bytes"]
 
         sel = REPO / "results/early_exit/selected_test.csv"
         theta, disabled, exec_sops, mean_exit = None, True, np.nan, float(cfg["T"])
@@ -291,7 +439,11 @@ def measure(dataset: str, seed: int) -> list:
                 sp = enc.encode(x)
                 if th is None:
                     return st(sp)
-                return st.predict_early_exit(sp, theta_exit=th)
+                # stop_when_done: at batch 1 this leaves the loop at the sample's
+                # own exit step, which is what a deployed exit does. Without it the
+                # timed path runs all T steps and the measured "exit" latency is the
+                # full-window latency plus per-step bookkeeping.
+                return st.predict_early_exit(sp, theta_exit=th, stop_when_done=True)
 
         for tag, fn, me in (("t2s_full", t2s_full_fn, float(cfg["T"])),
                             ("t2s_exit", t2s_exit_fn, mean_exit)):
@@ -316,6 +468,10 @@ def measure(dataset: str, seed: int) -> list:
                              model_bytes=mb, scaler_bytes=scaler_bytes,
                              total_bytes=mb + eb["encoder_bytes"] + scaler_bytes
                              + (0 if tag == "t2s_full" else 8),   # exit threshold
+                             model_int8_bytes=tbb["model_int8_bytes"],
+                             model_scale_bytes=tbb["model_scale_bytes"],
+                             model_float_bytes=tbb["model_float_bytes"],
+                             serialization_format=tbb["serialization_format"],
                              op_kind="SOP", macs=np.nan, sops=sops,
                              tree_nodes_visited=np.nan, tree_comparisons=ecmp,
                              n_trees=0, n_nodes=0, mean_exit=me,
@@ -331,6 +487,7 @@ if __name__ == "__main__":
     args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
 
+    load_at_start = wait_for_gate(REPO)
     allrows, t0 = [], time.time()
     for ds in args.datasets:
         for seed in args.seeds:
@@ -346,5 +503,20 @@ if __name__ == "__main__":
                 import traceback; traceback.print_exc()
                 print(f"[FAIL] {ds}/{seed}: {type(e).__name__}: {e}", flush=True)
     df = pd.DataFrame(allrows)
-    df.to_csv(OUT / "deployment_measurements.csv", index=False)
+    import subprocess, datetime
+    try:
+        sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"],
+                                      cwd=REPO, text=True).strip()
+    except Exception:
+        sha = "unknown"
+    run_id = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + sha
+    df["run_id"] = run_id
+    df["serialization_format"] = df.get("serialization_format", SER.SERIALIZATION_FORMAT)
+    df["serialization_format"] = df["serialization_format"].fillna(SER.SERIALIZATION_FORMAT)
+    df["source_script"] = "scripts/deployment_measure.py"
+    with open(OUT / "deployment_measurements.csv", "w") as fh:
+        fh.write(f"# run_id={run_id} serialization={SER.SERIALIZATION_FORMAT} "
+                 f"source=scripts/deployment_measure.py "
+                 f"load1_at_start={load_at_start:.2f}\n")
+        df.to_csv(fh, index=False)
     print(f"\nwrote {OUT}/deployment_measurements.csv ({len(df)} rows)")

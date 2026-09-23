@@ -94,6 +94,9 @@ def _flush(rows):
         old = pd.read_csv(f)
         new = pd.concat([old, new], ignore_index=True)
     key = ["dataset", "n_classes", "n_estimators", "max_depth", "gain_prune", "leaf_bits"]
+    # gain_prune mixes "none" with numbers, so a re-read gives strings where this
+    # process has floats; without normalising, 0.9 != "0.9" and stale rows survive.
+    new["gain_prune"] = new["gain_prune"].astype(str)
     new = new.drop_duplicates(subset=key, keep="last")
     new.to_csv(f, index=False)
     return new

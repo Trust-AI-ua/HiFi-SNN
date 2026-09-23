@@ -1,0 +1,50 @@
+IoT subset: ['ciciomt2024', 'ciciot2023', 'edgeiiot', 'toniot']
+==========================================================================
+Per-dataset total energy (nJ), two reuse assumptions
+==========================================================================
+
+-- COLD (one access per op) @ SRAM 100 / DRAM 1300 pJ
+system
+full_gbdt           1158.1
+compact_gbdt         436.4
+tasnn           42523485.1
+vanilla_snn          485.7
+dnn_tree             814.1
+t2s_full               NaN
+t2s_exit               NaN
+t2s_deployed        1356.5
+   dnn_tree / t2s_deployed = 0.60x
+
+-- REUSE-AWARE @ SRAM 100 / DRAM 1300 pJ
+system
+full_gbdt          1150.3
+compact_gbdt        428.7
+tasnn           2960379.9
+vanilla_snn         453.7
+dnn_tree            796.9
+t2s_full              NaN
+t2s_exit              NaN
+t2s_deployed        817.3
+   dnn_tree / t2s_deployed = 0.98x
+
+==========================================================================
+Crossover sweep: dnn_tree / t2s_deployed ratio (>1 = SNN wins)
+==========================================================================
+model    cold  reuse
+sram_pJ             
+5        0.97   1.35
+10       0.79   1.18
+20       0.69   1.07
+50       0.62   1.00
+100      0.60   0.98
+
+vs compact_gbdt:
+model    cold  reuse
+sram_pJ             
+5         0.3    0.5
+10        0.3    0.5
+20        0.3    0.5
+50        0.3    0.5
+100       0.3    0.5
+
+[wrote] /home/student3/HiSNN/results/deployment/energy_crossover_iot.csv
