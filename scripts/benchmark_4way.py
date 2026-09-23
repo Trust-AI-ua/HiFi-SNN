@@ -109,8 +109,13 @@ def _sops_total(r, key):
         h = cfg.get("hidden"); h0 = h[0] if isinstance(h, (list, tuple)) else 64
         inp = ch * h0 if ch else 0
     elif key == "vanilla":
-        nf = data.get("num_features"); hs = cfg.get("hidden_size", 128)
-        inp = nf * hs if nf else 0
+        # NOTHING to add. The Vanilla SNN's stored value already counts its input
+        # layer (src/models/snn.py: input_spikes * hidden + hidden_spikes * classes),
+        # and only from the features that actually fire. Adding num_features *
+        # hidden here counted that layer twice, as if every feature fired, and
+        # overstated the model 2.6x to 3.6x. See results/tables/
+        # vanilla_sops_double_count.md and scripts/guard_vanilla_ceiling.py.
+        inp = 0
     else:
         inp = 0
     return syn + inp
