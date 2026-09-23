@@ -185,6 +185,18 @@ def deployment():
             f"p50 latency ms, {s}")
         add(f"JNFitsKb{n}", str(int((g.total_bytes <= 131072).sum())), rel(src), "count of four",
             f"IoT datasets where {s} fits 128 KB")
+    # Encoder threshold tables inside the deployed Tree-to-Spike artifact (int8
+    # serialization: int8 weights + float32 scales/biases; bin edges, channel list and
+    # config stay float32). Same rows as JNKbTts, so size and share describe one artifact.
+    t = i[i.system == "t2s_deployed"]
+    enc = t.encoder_edges_bytes + t.encoder_channels_bytes + t.encoder_config_bytes
+    share = 100 * enc / t.total_bytes
+    add("JNEncKbTts", f(enc.mean() / 1024, 1), rel(src), "single seed-42 run, IoT mean",
+        "encoder threshold tables in the Tree-to-Spike artifact, KB")
+    add("JNEncShareTts", pct(share.mean()), rel(src), "single seed-42 run, mean of the four per-dataset shares",
+        "percent of the Tree-to-Spike artifact taken by the encoder threshold tables")
+    add("JNEncShareTtsMin", pct(share.min()), rel(src), "single seed-42 run, IoT min", "lowest per-dataset share")
+    add("JNEncShareTtsMax", pct(share.max()), rel(src), "single seed-42 run, IoT max", "highest per-dataset share")
     full = pd.read_csv(src, comment="#")
     add("JNLatMsTtsFull", f(full[full.dataset.isin(IOT) & (full.system == "t2s_full")].p50_ms.mean()),
         rel(src), "single seed-42 run, IoT mean", "Tree-to-Spike full-window p50 latency")
@@ -234,6 +246,17 @@ def others():
         add(f"JNViolationPooledT{w}", pct(100 * (e >= T).mean()), "saved encoder tables", "pooled IoT, five seeds",
             f"percent of retained features violating the bound at T = {T}")
     add("JNExactShare", pct(100 * (e < 20).mean(), 0), "saved encoder tables", "pooled IoT", "percent transmitted exactly at T = 20")
+    add("JNMaxEdges", str(int(e.max())), "saved encoder tables", "pooled IoT, max over cells",
+        "largest |E_j| of any retained feature")
+    add("JNBoundWindow", str(int(e.max()) + 1), "saved encoder tables", "pooled IoT",
+        "window meeting T >= |E_j| + 1 for every retained feature")
+    add("JNBoundWindowFactor", f((int(e.max()) + 1) / 20, 1), "saved encoder tables", "pooled IoT",
+        "that window as a multiple of T = 20 ('roughly thirteenfold')")
+    add("JNViolationPerCellMean", pct(100 * g.loc[IOT, "frac"].mean()), rel(src), "mean over IoT datasets of five-seed means",
+        "percent violating at T = 20, per-dataset mean (pooled: JNViolationPooledTTwenty)")
+    for ds in IOT:
+        add(f"JNMedianEdges{DS[ds]}", pct(g.loc[ds, "median_E"], 0), rel(src), "five-seed mean of per-cell medians",
+            f"median |E_j| of retained features, {ds}")
     add("JNViolatingCount", str(int((e >= 20).sum())), "saved encoder tables", "pooled IoT", "violating retained features")
     add("JNRetainedCount", str(len(e)), "saved encoder tables", "pooled IoT", "retained features")
 
