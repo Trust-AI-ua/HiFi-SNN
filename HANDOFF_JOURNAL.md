@@ -363,7 +363,7 @@ Abbrev: T2S=Tree-to-Spike, DNN=DNN-Tree, Van=Vanilla SNN, TAS=TASNN, IoT4=CICIoT
 ### 1. Claim verdict (write only the "survives" form)
 | Claim | Verdict |
 |---|---|
-| Comparable to DNN on ML metrics | YES, descriptive: macro-F1 within 1.1 at every precision; ACC/MCC/DR within ~0.5. Exceptions: TON BACC -2.0; CICIoMT FAR 0.87 vs 0.10. Not equivalence (N=4). Macro precision NOT reported, do not claim. |
+| Comparable to DNN on ML metrics | YES, descriptive: macro-F1 within 1.1 at every precision; ACC/MCC/DR within 0.6 on CICIoT/CICIoMT/TON (CICIoT MCC -0.59). Edge differs via DNN int8 fragility: T2S +3.28 ACC, +5.61 MCC, -0.95 DR. Exceptions: TON BACC -2.0; CICIoMT FAR 0.87 vs 0.10. Not equivalence (N=4). Macro precision NOT reported, do not claim. |
 | Energy advantage vs DNN | Compute (arithmetic) YES: 3.16x, every IoT dataset, full window. Total (memory-incl.) CONDITIONAL. All estimated, none measured. |
 | ...via fewer spikes | NO. T2S does 1.2-1.9x MORE ops than DNN MACs; saving = AC 0.9 vs MAC 4.6 pJ. |
 | ...via early exit | NO for compute. Exit admitted only CICIoMT 5/5, TON 2/5; helps total energy only. |
@@ -373,18 +373,18 @@ Abbrev: T2S=Tree-to-Spike, DNN=DNN-Tree, Van=Vanilla SNN, TAS=TASNN, IoT4=CICIoT
 | On GP benchmarks | T2S ties Van (76.07 vs 76.16), trails DNN (77.51). State plainly. |
 
 ### 2. Canonical numbers
-- Macro-F1: T2S 72.22/89.42/83.94/92.98 mean 84.64; DNN 72.43/89.24/80.60/94.06 mean 84.08; Van mean 75.72; TAS 75.50. T2S-DNN -0.22/+0.18/+3.34/-1.08, median -0.02.
+- Macro-F1: T2S 72.22/89.42/83.94/92.98 mean 84.64; DNN 72.43/89.24/80.60/94.06 mean 84.08; Van mean 75.71; TAS 75.50. T2S-DNN -0.22/+0.18/+3.34/-1.08, median -0.02.
 - Stats: Friedman chi2=9.60, exact p=0.0069; ranks 1.5/1.5/3.5/3.5; no pairwise test possible at N=4. Pooled 11 -> appendix.
 - Precision: T2S-DNN fp32 -1.05 (DNN leads 4/4); per-tensor +0.50 reruns (+0.56 headline); per-channel -0.64 (DNN leads 3/4). Per-channel recovers 73% of DNN loss (Edge 80%: -5.97 -> -1.22). T2S 84.72/84.64/84.69. TON seed 43 resists (fc1 alone -> FAR 0.34 -> 14.33%). Van counterfactual Edge -14.91.
-- M8 steps (mean): arch -0.21, precision -0.40, encoder +9.14 (every dataset, >=2.8 SD), distillation +0.40 (mixed sign); total +8.93. Raw arm 7-28% more params.
-- Ablation: quantile loses 4/4 (1.7-12.0 pts, +20-37% ops); uniform -0.05 to -0.62, CICIoT -2.76; all 1.3-1.9x ops, +2.5 CICIoMT, +2.2 Edge; encoder +24-59% ops vs raw (no-KD basis).
+- M8 steps (mean): arch -0.21, precision -0.40, encoder +9.14 (every dataset, >=2.8 SD), distillation +0.40 (mixed sign); total +8.93. Raw arm 6.4-28.2% more params.
+- Ablation: quantile loses 4/4 (1.7-12.0 pts, +20-37% ops); uniform -0.05 to -0.62, CICIoT -2.75; all 1.3-1.9x ops, +2.5 CICIoMT, +2.2 Edge; encoder +24-59% ops vs raw (no-KD basis).
 - Energy: arithmetic nJ T2S 11.5/7.5/9.5/16.2, DNN 32.6/31.6/34.0/43.3, Van 3.5/2.8/5.2/5.3; DNN/T2S 2.82/4.20/3.58/2.66, 3.16 of means, int8 4.74. Memory share 92.3-99.7% (95.6-99.4 excl TAS) at 100 pJ. DNN/T2S memory-incl: deployed 0.60-1.35, full window 0.46-1.11; T2S cheaper only reuse-aware at 5-20 pJ deployed, 5 pJ full. Van/T2S 0.36-0.56.
-- Deployment (seed 42, IoT mean): KB T2S 21.4 (encoder 54.5%, 41.0-67.2), DNN 20.8, Van 40.4, TAS 2092.0, GBDT full 748.0, compact 313.7; fits 128 KB 4/4/4/0/0/1; ms T2S 2.61 deployed (2.89 full), DNN 0.16, Van 1.34, TAS 1.95, GBDT 1.96/1.72.
+- Deployment (seed 42, IoT mean): KB T2S 21.4 (encoder 54.5%, 41.0-67.2), DNN 20.8, Van 40.4, TAS 2092.0, GBDT full 748.0, compact 313.7; fits 128 KB 4/4/4/0/0/1; ms T2S 2.61 deployed (2.89 full), DNN 0.16, Van 1.35, TAS 1.97, GBDT 1.96/1.72.
 - Teacher: full 82.95/90.54/74.75/96.67 (86.23), compact 85.67. Student-teacher -10.73/-1.12 n.s./+9.19/-3.69. Edge: 34/48 sweep configs beat full; best 79.78 vs 75.07 (seed 42); student +4.16 over best. Sweep <=128 KB: 4/4, within 1 pt of full only Edge; trails 1.08/2.03/5.86 (seed 42, test-selected).
 - Early exit: admitted 0/5, 5/5, 0/5, 2/5; wrong@0.90 60.53/19.25/18.83/17.08% (seed-dependent); CICIoMT deployed -0.25 at 60.7% fewer ops; flagged 0.16/0.06/5.69/2.03%; margin 0.8730 correct vs 0.8791 wrong (seed 42). Old "wrong-exit predicts gate" claim DEAD.
 - M5: 352/767 (45.9%) violate T>=|E_j|+1 at T=20; 54.1% exact; all-feature bound needs T=256 (12.8x); median |E_j| 117/90/1/1. Lemma 2 bound = 1/(2(T-1)).
 - T sweep (CICIoT/CICIoMT/TON vs T=20): T10 -5.19/-0.06/+0.58; T40 -0.94/+5.06/+0.26; T80 +0.91/+3.48/-0.37 -> T=20 is a fixed cost-accuracy choice.
-- Setup: hyperparams fixed 2026-06-11 (`0fdeb96`), not tuned; LR T2S/DNN 2e-3, Van/TAS 1e-3; timing EPYC 9555, 1 thread, batch 1, 500 warm-up, N=2000, median, load<2.0 x5 min; CICIoT 5% pre-split, CICIoMT 25% per provider partition, uniform, redrawn per seed, shared across models; CICIoMT split 73.4/8.2/18.4.
+- Setup: hyperparams fixed 2026-06-11 (`0fdeb96`), not tuned; LR T2S/DNN 2e-3, Van/TAS 1e-3; DNN trained on the same distillation objective minus sparsity; timing EPYC 9555, 1 thread, batch 1, 500 warm-up, N=2000, median, load<2.0 x5 min; CICIoT 5% pre-split, CICIoMT 25% per provider partition, uniform, redrawn per seed, shared across models; CICIoMT split 73.4/8.2/18.4.
 
 ### 3. Manuscript state (drafts in Claude outputs)
 - Structure: I Intro | II Background+Related (merged) | III Tree-to-Spike | IV Setup | V Results | VI Limitations | VII Conclusion | Appendix. Budget 15 pp incl. refs: 1.5/1.25/2/2/5.5/0.75/0.3/refs 1.5.
