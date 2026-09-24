@@ -456,6 +456,74 @@ def results_section():
         add(f"JNExitTPninety{DS[ds]}Five", f(float(np.percentile(tp, 90)), 0), "prefix artifacts", "pooled over five seeds", "t' p90")
 
 
+def results_extras():
+    """Flagged column, the CICIoMT2024 accuracy-versus-operations point, and ranges
+    the text derives, computed from unrounded values (ratios of rounded macros drift)."""
+    fl = pd.read_csv(REPO / "results/tables/tab_m4_flags.csv", index_col=0)
+    for ds in IOT:
+        add(f"JNExitFlag{DS[ds]}", f(fl.loc[ds, "unc"]), "results/tables/tab_m4_flags.csv",
+            "mean over five seeds, each at its validation-selected threshold (full window where rejected)",
+            f"theta_unc = 0.5 flag rate %, {ds}")
+        add(f"JNExitFlag{DS[ds]}Sd", f(fl.loc[ds, "unc_sd"]), "results/tables/tab_m4_flags.csv", "sample SD over seeds", "")
+    add("JNExitBeforeInputMax", f(fl.loc[IOT, "before"].max()), "results/tables/tab_m4_flags.csv",
+        "five-seed mean, max over IoT", "percent of samples exiting before their first input spike")
+    # accuracy-versus-operations curve, CICIoMT2024, theta 0.99 (descriptive, test)
+    c = pd.read_csv(REPO / "results/tables/m4_accuracy_vs_ops.csv")
+    c["theta"] = c.theta.astype(str)
+    g = c[c.dataset == "ciciomt2024"]
+    a, fw = g[g.theta == "0.99"].set_index("seed"), g[g.theta == "full"].set_index("seed")
+    src = "results/tables/m4_accuracy_vs_ops.csv"
+    add("JNCurveCicIoMTFoneNinetyNine", f(a.macro_f1.mean()), src, "five-seed mean, test, descriptive", "macro-F1 at theta 0.99")
+    add("JNCurveCicIoMTFoneFull", f(fw.macro_f1.mean()), src, "five-seed mean", "full-window macro-F1")
+    add("JNCurveCicIoMTSavedNinetyNine", pct(100 * (1 - a.mean_sops.mean() / fw.mean_sops.mean())), src,
+        "ratio of five-seed means", "percent fewer operations at theta 0.99 than the full window")
+    per = 100 * (1 - a.mean_sops / fw.mean_sops)
+    add("JNCurveCicIoMTSavedMin", pct(per.min()), src, "min over seeds", "")
+    add("JNCurveCicIoMTSavedMax", pct(per.max()), src, "max over seeds", "")
+    sel = pd.read_csv(REPO / "results/early_exit/selected_test.csv")
+    sm = sel[sel.dataset == "ciciomt2024"]
+    add("JNCurveCicIoMTSelectedCount", str(int((sm.selected_threshold == 0.99).sum())),
+        "results/early_exit/selected_test.csv", "of five seeds", "seeds on which validation selected theta 0.99")
+    add("JNExitDepCicIoMTDiff", sgn(sm.d_macro_f1.mean()), "results/early_exit/selected_test.csv",
+        "five-seed mean, validation-selected threshold", "deployed exit minus full-window macro-F1, CICIoMT2024")
+    add("JNExitDepCicIoMTSaved", pct(sm.mean_sop_reduction.mean()), "results/early_exit/selected_test.csv",
+        "five-seed mean, validation-selected threshold", "percent fewer operations at the deployed exit, CICIoMT2024")
+    # ablation ranges, unrounded
+    def arm(ds, patt):
+        rs = [json.loads((REPO / patt.format(d=ds, s=sd)).read_text()) for sd in range(42, 47)]
+        return (np.mean([100 * r["test_plus"]["metrics"]["f1_macro"] for r in rs]),
+                np.mean([r["test_plus"]["spike_stats"]["synops_per_sample"]
+                         + r["data"]["encoder_channels"] * r["config"]["hidden"][0] for r in rs]))
+    m8 = pd.read_csv(REPO / "results/diagnostics/m8_input_spikes.csv").groupby("dataset").total_sops.mean()
+    loss, extra, enc = [], [], []
+    for ds in IOT:
+        (tf, ts), (qf, qs) = arm(ds, "results/Tree-to-Spike/{d}/seed_{s}/results.json"), \
+            arm(ds, "results/encoder_ablation/{d}/quantile/seed_{s}/results.json")
+        _, ns = arm(ds, "results/encoder_ablation/{d}/nokd/seed_{s}/results.json")
+        loss.append(tf - qf); extra.append(100 * (qs / ts - 1)); enc.append(100 * (ns / m8[ds] - 1))
+    for nm, v, d_, mng in (("JNAblQuantileLossMin", min(loss), 2, "smallest quantile loss, points"),
+                           ("JNAblQuantileLossMax", max(loss), 2, "largest quantile loss, points"),
+                           ("JNAblQuantileExtraOpsMin", min(extra), 0, "least extra operations of quantile, percent"),
+                           ("JNAblQuantileExtraOpsMax", max(extra), 0, "most extra operations of quantile, percent"),
+                           ("JNAblEncoderExtraOpsMin", min(enc), 0, "tree-guided vs raw latency, like-for-like (no-KD loss), percent"),
+                           ("JNAblEncoderExtraOpsMax", max(enc), 0, "same, max")):
+        add(nm, f(v, d_), "encoder ablation + results/diagnostics/m8_input_spikes.csv", "five-seed means, unrounded", mng)
+    # Vanilla SNN against Tree-to-Spike: arithmetic range and total-energy multiple
+    t = pd.read_csv(REPO / "results/tables/tab_iot_arithmetic.csv", index_col=0)
+    r = t["Vanilla / T2S"]
+    if r.isna().any():
+        raise SystemExit("tab_iot_arithmetic.csv has an empty Vanilla SNN ratio; regenerate it")
+    add("JNVanArithRatioMin", f(r.min()), "results/tables/tab_iot_arithmetic.csv", "five-seed means, IoT min", "")
+    add("JNVanArithRatioMax", f(r.max()), "results/tables/tab_iot_arithmetic.csv", "five-seed means, IoT max", "")
+    add("JNVanArithRatioIot", f(t["Vanilla pJ"].mean() / t["T2S pJ"].mean()), "results/tables/tab_iot_arithmetic.csv",
+        "ratio of IoT means", "Vanilla SNN / Tree-to-Spike arithmetic")
+    b = pd.read_csv(REPO / "results/deployment/energy_crossover_iot.csv")
+    dv = b[b.config == "deployed"].vs_vanilla_snn
+    add("JNTtsOverVanTotalMin", f(1 / dv.max(), 1), "results/deployment/energy_crossover_iot.csv",
+        "single seed-42 run, deployed, over swept SRAM prices", "Tree-to-Spike total energy as a multiple of the Vanilla SNN's, min")
+    add("JNTtsOverVanTotalMax", f(1 / dv.min(), 1), "results/deployment/energy_crossover_iot.csv", "same", "max")
+
+
 def _tprime(ds, seed):
     z = np.load(REPO / f"results/prefix_outputs/{ds}/treespike/seed_{seed}/test_prefix.npz", allow_pickle=True)
     pl = z["prefix_logits"].astype(np.float32)
@@ -504,7 +572,7 @@ def perchannel():
 
 def main():
     for fn in (quality, precision, statistics, energy, deployment, others, tsweep, compact, perchannel,
-               results_section):
+               results_section, results_extras):
         fn()
     sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip()
     # The generator's own two outputs are excluded: once tracked, the previous
