@@ -32,6 +32,7 @@ import torch.nn.functional as F
 from src.data import get_dataset, DATASET_LOADERS
 from src.metrics import (compute_metrics, compute_binary_ids_metrics, count_parameters)
 from src.models import TreeGuidedSpikeEncoder, DNNStudent, quantize_int8_
+from src.models.tree_to_spike import quantize_int8_per_channel_
 from src.training_treespike import (_fit_teacher, _teacher_proba_global,
                                     _arrays_from_bundle, distillation_loss)
 
@@ -196,6 +197,15 @@ def run_experiment(cfg: Dict) -> Dict:
         fp32_record = {"metrics": compute_metrics(yte, fp_pred, y_score=fp_score,
                                                   class_names=bundle.class_names),
                        "binary_ids_metrics": compute_binary_ids_metrics(yte, fp_pred, normal_class_index=0)}
+        # per-channel int8 of the same fp32 weights (one scale per output row), on a copy,
+        # so E1 covers the three precisions of tab_perchannel.csv (fp32, per-tensor, per-channel)
+        import copy
+        pc = quantize_int8_per_channel_(copy.deepcopy(student)).eval()
+        pc_pred, pc_score = _forward_batches(pc, encoder, Xte, bs, device)
+        fp32_record["per_channel_int8"] = {
+            "metrics": compute_metrics(yte, pc_pred, y_score=pc_score, class_names=bundle.class_names),
+            "binary_ids_metrics": compute_binary_ids_metrics(yte, pc_pred, normal_class_index=0)}
+        del pc
 
     # ---------- deploy: int8 fake-quant (matched precision vs the int8 SNN student) ----------
     if cfg.get("quantize"):

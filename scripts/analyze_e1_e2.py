@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 """Apply the pre-registered rules to E1 and E2 (results/preregistration/
-2026-09-24_matched_info_and_entropy_edges.md). Refuses to report while any cell is
-missing or any new run's split differs from the stored Tree-to-Spike run.
+2026-09-24_matched_info_and_entropy_edges.md, with its amendment). Refuses to report
+while any cell is missing or any new run's split differs from the stored Tree-to-Spike
+run.
+
+E1 is reported per dataset at three precisions (fp32, per-tensor int8, per-channel
+int8); the registered outcome is decided on fp32 only. A dataset is flagged when it
+accounts for more than half of a change (level input -> spike-time input, at any
+precision). E2 reports each dataset's fallback share (median filler cuts / entropy
+cuts, pooled over seeds); above one half, that dataset's comparison is labelled as
+largely against quantile placement, which Table V already covers.
 
     python scripts/analyze_e1_e2.py
 Output: results/tables/tab_e1_matched_info.{csv,md}, results/tables/tab_e2_entropy.{csv,md}
@@ -43,7 +51,7 @@ def md(df):
     cols = [df.index.name or ""] + list(df.columns)
     out = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     for i, r in df.iterrows():
-        out.append(f"| {i} | " + " | ".join(f"{v:+.2f}" if isinstance(v, float) and ("gap" in c or c.startswith("d")) else
+        out.append(f"| {i} | " + " | ".join(f"{v:+.2f}" if isinstance(v, float) and ("gap" in c or c.startswith(("d_", "chg_"))) else
                                            (f"{v:.2f}" if isinstance(v, float) else str(v)) for c, v in r.items()) + " |")
     return "\n".join(out) + "\n"
 
@@ -57,25 +65,51 @@ def e1():
     if bad:
         sys.exit(f"E1: splits differ from Tree-to-Spike on {bad}; refused")
     pc = pd.read_csv(REPO / "results/tables/tab_perchannel.csv")
-    ref = pc.groupby(["model", "dataset"])[["fp32_f1", "per_tensor_f1"]].mean()
+    P = {"fp32": "fp32_f1", "pt": "per_tensor_f1", "pc": "per_channel_f1"}
+    ref = pc.groupby(["model", "dataset"])[list(P.values())].mean()
     rows = []
     for d in IOT:
         rs = [rj(REPO / E.format(d=d, s=s)) for s in SEEDS]
-        fp = np.mean([100 * r["test_plus"]["fp32_before_projection"]["metrics"]["f1_macro"] for r in rs])
-        q8 = np.mean([100 * r["test_plus"]["metrics"]["f1_macro"] for r in rs])
-        t_fp, t_q = ref.loc[("Tree-to-Spike", d)]
-        l_fp, l_q = ref.loc[("DNN-Tree", d)]
-        rows.append(dict(dataset=d, dnn_level_fp32=l_fp, dnn_tq_fp32=fp, t2s_fp32=t_fp, gap_level_fp32=l_fp - t_fp,
-                         gap_tq_fp32=fp - t_fp, dnn_level_int8=l_q, dnn_tq_int8=q8, t2s_int8=t_q, gap_tq_int8=q8 - t_q))
+        if any("per_channel_int8" not in r["test_plus"]["fp32_before_projection"] for r in rs):
+            sys.exit(f"E1: {d} has cells without the per-channel score (pre-amendment runs); refused")
+        new = {"fp32": np.mean([100 * r["test_plus"]["fp32_before_projection"]["metrics"]["f1_macro"] for r in rs]),
+               "pt": np.mean([100 * r["test_plus"]["metrics"]["f1_macro"] for r in rs]),
+               "pc": np.mean([100 * r["test_plus"]["fp32_before_projection"]["per_channel_int8"]["metrics"]["f1_macro"] for r in rs])}
+        row = {"dataset": d}
+        for k, col in P.items():
+            t2s, lvl = ref.loc[("Tree-to-Spike", d), col], ref.loc[("DNN-Tree", d), col]
+            row.update({f"dnn_level_{k}": lvl, f"dnn_tq_{k}": new[k], f"t2s_{k}": t2s,
+                        f"gap_level_{k}": lvl - t2s, f"gap_tq_{k}": new[k] - t2s, f"chg_{k}": new[k] - lvl})
+        rows.append(row)
     t = pd.DataFrame(rows).set_index("dataset")
     g_tq, g_lv = t.gap_tq_fp32.mean(), t.gap_level_fp32.mean()
     outcome = ("A: matched information closes the gap" if g_tq <= 0.35 else
                "B: about one point is the cost of spiking computation" if g_tq >= 0.70 else
                f"C: input resolution explains {100 * (1 - g_tq / g_lv):.0f}% of the gap")
+    # dominance: dataset d's share of the IoT-mean change is chg_d / (4 * mean chg)
+    flags = []
+    for k, name in (("fp32", "fp32"), ("pt", "per-tensor int8"), ("pc", "per-channel int8")):
+        c = t[f"chg_{k}"]
+        tot = c.sum()
+        if (c > 0).any() and (c < 0).any():
+            flags.append(f"the {name} change has mixed signs across datasets "
+                         f"({', '.join(f'{d} {v:+.2f}' for d, v in c.items())}); its IoT mean is a net")
+        for d, v in c.items():
+            share = v / tot if abs(tot) > 1e-12 else np.inf
+            if share > 0.5:
+                flags.append(f"{d} accounts for {100 * share:.0f}% of the {name} change "
+                             f"({v:+.2f} of the four-dataset sum {tot:+.2f}; IoT mean {tot / 4:+.2f})")
     t.loc["IoT mean"] = t.mean()
     t.to_csv(REPO / "results/tables/tab_e1_matched_info.csv")
-    (REPO / "results/tables/tab_e1_matched_info.md").write_text(md(t.round(2)) + f"\nPre-registered outcome: {outcome}\n")
-    print(t.round(2).to_string()); print(f"\nE1 gap_TQ = {g_tq:+.2f} (level input {g_lv:+.2f}) -> {outcome}")
+    note = ("\nColumns: five-seed means of macro-F1 (%); level = production DNN-Tree input, tq = spike-time "
+            "input; gap = dense minus Tree-to-Spike; chg = tq minus level. Outcome decided on fp32.\n")
+    dom = ("\nSingle-dataset dominance (> half of a change) and sign notes:\n" + "\n".join(f"- {f}" for f in flags) + "\n"
+           if flags else "\nNo single dataset accounts for more than half of any change.\n")
+    (REPO / "results/tables/tab_e1_matched_info.md").write_text(
+        md(t.round(2)) + note + f"\nPre-registered outcome: {outcome}\n" + dom)
+    print(t.round(2).T.to_string())
+    print(f"\nE1 gap_TQ = {g_tq:+.2f} (level input {g_lv:+.2f}) -> {outcome}")
+    print(dom.strip())
 
 
 def e2():
@@ -91,22 +125,41 @@ def e2():
         f1 = [100 * r["test_plus"]["metrics"]["f1_macro"] for r in rs]
         ops = [r["test_plus"]["spike_stats"]["synops_per_sample"] + r["data"]["encoder_channels"] * r["config"]["hidden"][0] for r in rs]
         return np.mean(f1), np.std(f1, ddof=1), np.mean(ops)
+    def fallback(d):
+        dg = [rj(REPO / E.format(d=d, s=s))["data"].get("entropy_edges") for s in SEEDS]
+        if any(g is None for g in dg):
+            sys.exit(f"E2: {d} has cells without recorded edge diagnostics (pre-amendment runs); refused")
+        if any(g["cost_power"] != 1.0 for g in dg):
+            sys.exit(f"E2: {d} entropy cutter not weighted with the teacher's power 1.0; refused")
+        fill, tot = sum(g["filler_total"] for g in dg), sum(g["edges_entropy_total"] for g in dg)
+        short = sum(g["edges_tree_total"] - g["edges_entropy_total"] for g in dg)
+        return fill / max(tot, 1), short / len(dg)
     rows = []
     for d in IOT:
         tf, tsd, to = arm("results/Tree-to-Spike/{d}/seed_{s}/results.json", d)
         ef, esd, eo = arm(E, d)
+        fb, short = fallback(d)
         rows.append(dict(dataset=d, tree=tf, tree_sd=tsd, entropy=ef, entropy_sd=esd, d_tree_minus_entropy=tf - ef,
-                         tree_ksops=to / 1000, entropy_ksops=eo / 1000))
+                         tree_ksops=to / 1000, entropy_ksops=eo / 1000, fallback_share=fb,
+                         edge_shortfall_per_run=short,
+                         reading=("largely against quantile placement (Table V)" if fb > 0.5
+                                  else "against supervised entropy placement")))
     t = pd.DataFrame(rows).set_index("dataset")
     dm, ahead_t, ahead_e = t.d_tree_minus_entropy.mean(), int((t.d_tree_minus_entropy > 0).sum()), int((t.d_tree_minus_entropy < 0).sum())
     outcome = ("A: tree clearly wins (tree-derived placement is the mechanism)" if dm >= 1.0 and ahead_t >= 3 else
                "B: match (supervised threshold placement)" if abs(dm) < 1.0 else
                "C: entropy clearly wins" if dm <= -1.0 and ahead_e >= 3 else
                "D: mixed; no mechanism claim beyond supervised placement")
-    t.loc["IoT mean"] = t.mean()
+    t.loc["IoT mean"] = t.drop(columns="reading").mean()
+    t.loc["IoT mean", "reading"] = ""
     t.to_csv(REPO / "results/tables/tab_e2_entropy.csv")
-    (REPO / "results/tables/tab_e2_entropy.md").write_text(md(t.round(2)) + f"\nPre-registered outcome: {outcome}\n")
+    scope = ("\nScope: E2 isolates edge placement only; channel selection, the per-feature edge budget and "
+             "pruning stay tree-derived in both arms.\n")
+    fb = [f"- {d}: fallback share {t.loc[d, 'fallback_share']:.2f} -> {t.loc[d, 'reading']}" for d in IOT]
+    (REPO / "results/tables/tab_e2_entropy.md").write_text(
+        md(t.round(2)) + f"\nPre-registered outcome: {outcome}\n" + scope + "\nFallback reading:\n" + "\n".join(fb) + "\n")
     print(t.round(2).to_string()); print(f"\nE2 d = {dm:+.2f}, tree ahead on {ahead_t}/4 -> {outcome}")
+    print(scope.strip()); print("\n".join(fb))
 
 
 if __name__ == "__main__":

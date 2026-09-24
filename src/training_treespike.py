@@ -274,7 +274,8 @@ def run_experiment(cfg: Dict) -> Dict:
     # ---------- 2) tree-guided spike encoder ----------
     encoder = TreeGuidedSpikeEncoder(
         T=cfg["T"], pop_max=cfg["pop_max"], prune_quantile=cfg["prune_quantile"],
-        jitter=cfg["jitter"], encoder_mode=cfg["encoder_mode"]).fit(
+        jitter=cfg["jitter"], encoder_mode=cfg["encoder_mode"],
+        cost_power=float(cfg.get("teacher_cost_power", 1.0))).fit(
             teacher, Xtr.shape[1], X=Xtr, y=ytr)   # X: "quantile"/"entropy"; y: "entropy" only
     print(f"[encoder] kept {encoder.out_dim} spike channels from {Xtr.shape[1]} features")
 
@@ -412,6 +413,8 @@ def run_experiment(cfg: Dict) -> Dict:
             "class_names": bundle.class_names,
             "class_counts_train": bundle.class_counts_train,
             "encoder_channels": int(encoder.out_dim),
+            **({"entropy_edges": encoder.diagnostics_}
+               if getattr(encoder, "diagnostics_", None) is not None else {}),
             "splits": {
                 "train": len(bundle.train_loader.dataset),
                 "val": len(bundle.val_loader.dataset),

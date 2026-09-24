@@ -34,7 +34,23 @@ from snntorch import surrogate
 # ======================================================================================
 # Tree-guided spike encoder (the contribution)
 # ======================================================================================
-def entropy_cuts(x, y, k):
+def teacher_class_weights(y, power: float = 1.0):
+    """The teacher's cost-sensitive class weights, reproduced exactly: w_c = N / (n_c + 1e-6)
+    in float32 over the classes present in y, raised to ``power`` when power != 1, as in
+    training_treespike._fit_teacher. Returned indexed by GLOBAL class id (0 where absent).
+    scripts/guard_e1_e2.py (G5) checks these equal the weights the teacher is fitted with."""
+    y = np.asarray(y, dtype=np.int64)
+    present = np.unique(y)
+    counts = np.array([(y == c).sum() for c in present], dtype=np.float32)
+    w_local = counts.sum() / (counts + 1e-6)
+    if float(power) != 1.0:
+        w_local = w_local ** float(power)
+    w = np.zeros(int(y.max()) + 1, dtype=np.float32)
+    w[present] = w_local
+    return w
+
+
+def entropy_cuts(x, y, k, class_weight=None):
     """k class-supervised cut points for one feature (the E2 control).
 
     Greedy best-first splitting: repeatedly split the segment whose best boundary gives
@@ -43,6 +59,7 @@ def entropy_cuts(x, y, k):
     boundary). Stops at k cuts. If no positive-gain split remains first, the largest
     segment is split at its median so the count still matches; those are counted as
     filler cuts. Cut values are midpoints between neighbouring distinct values.
+    ``class_weight`` (indexed by class id) weights each class's counts in the entropy.
     Deterministic. Returns (sorted float32 cuts, number of filler cuts).
     """
     import heapq
@@ -54,8 +71,14 @@ def entropy_cuts(x, y, k):
         return np.zeros(0, dtype=np.float32), 0
     K = int(y.max()) + 1
     cnt = np.bincount(inv * K + y, minlength=U * K).reshape(U, K).astype(np.float64)
+    ncum_raw = np.concatenate([[0.0], np.cumsum(cnt.sum(1))])        # unweighted sample counts
+    if class_weight is not None:
+        # entropy over the teacher's cost-weighted class masses (E2 amendment): the cutter
+        # is fitted to what the teacher is fitted to, so the two differ only in HOW cuts
+        # are chosen. Median fillers below stay on unweighted counts (quantile semantics).
+        cnt = cnt * np.asarray(class_weight, dtype=np.float64)[:K][None, :]
     cum = np.vstack([np.zeros((1, K)), np.cumsum(cnt, axis=0)])        # cum[i] = first i values
-    ncum = cum.sum(1)
+    ncum = ncum_raw
 
     def nh(c):                                                          # n * entropy (nats)
         c = np.asarray(c, dtype=np.float64)
@@ -71,9 +94,10 @@ def entropy_cuts(x, y, k):
         left = cum[a + 1:b] - cum[a]                                    # split before s = a+1..b-1
         cost = nh(left) + nh(tot[None, :] - left)
         i = int(np.argmin(cost))
-        gain = float(nh(tot) - cost[i])
+        h_tot = float(nh(tot))
+        gain = h_tot - float(cost[i])
         s = a + 1 + i
-        filler = gain <= 1e-9
+        filler = gain <= 1e-12 * max(1.0, abs(h_tot))                   # relative: weights rescale nh
         if filler:                                                      # no information left: median
             half = ncum[a] + (ncum[b] - ncum[a]) / 2.0
             s = int(np.clip(np.searchsorted(ncum, half), a + 1, b - 1))
@@ -110,7 +134,7 @@ class TreeGuidedSpikeEncoder:
     """
 
     def __init__(self, T: int = 20, pop_max: int = 3, prune_quantile: float = 0.20,
-                 jitter: float = 0.12, encoder_mode: str = "tree"):
+                 jitter: float = 0.12, encoder_mode: str = "tree", cost_power: float = 1.0):
         self.T = T
         self.pop_max = pop_max          # max channels for the most important feature
         self.prune_quantile = prune_quantile
@@ -126,6 +150,7 @@ class TreeGuidedSpikeEncoder:
         # thresholds. Only the edge placement changes, so tree-vs-quantile isolates whether
         # the teacher's split points ("the ruler") matter at matched budget. Requires X in fit().
         self.encoder_mode = encoder_mode
+        self.cost_power = cost_power    # "entropy" only: the teacher's class-weight power
         self.edges_ = {}                # feat_idx -> sorted unique split thresholds
         self.channels_ = []             # list of (feat_idx, level_offset)
         self.out_dim = 0
@@ -213,13 +238,23 @@ class TreeGuidedSpikeEncoder:
             X = np.asarray(X, dtype=np.float32)
             y = np.asarray(y, dtype=np.int64)
             self.entropy_filler_ = {}
+            w = teacher_class_weights(y, self.cost_power)
+            per = {}
             for j in sorted({j for j, _ in self.channels_}):
                 k = len(self.edges_[j])
-                e, n_fill = entropy_cuts(X[:, j], y, k)
+                e, n_fill = entropy_cuts(X[:, j], y, k, class_weight=w)
                 if len(e) == 0:                               # constant feature: keep tree edges
+                    per[int(j)] = [k, k, 0, 0]
                     continue
                 self.edges_[j] = e
                 self.entropy_filler_[j] = n_fill
+                per[int(j)] = [k, int(len(e)), int(n_fill), int(k - len(e))]
+            # [tree count, entropy count, filler (median) cuts, shortfall]; recorded in results
+            self.diagnostics_ = {"cost_power": float(self.cost_power),
+                                 "edges_tree_total": int(sum(v[0] for v in per.values())),
+                                 "edges_entropy_total": int(sum(v[1] for v in per.values())),
+                                 "filler_total": int(sum(v[2] for v in per.values())),
+                                 "per_feature": per}
         self.out_dim = len(self.channels_)
         return self
 
@@ -433,6 +468,19 @@ class SNNStudent(nn.Module):
         # hidden layers only, the same convention as forward(); see the note there
         synops = (n_spk1 * self.fanouts[1] + n_spk2 * self.fanouts[2]) / B
         return preds, exit_step, uncertain, total_spikes, spike_sites, synops
+
+
+def quantize_int8_per_channel_(model: nn.Module) -> nn.Module:
+    """Symmetric int8 with one scale per OUTPUT row of every nn.Linear weight,
+    s_i = max_j |W_ij| / 127 (+1e-12). The same projection as scripts/perchannel_check.py
+    (checked bitwise by scripts/guard_e1_e2.py, G6). Biases untouched."""
+    with torch.no_grad():
+        for m in model.modules():
+            if isinstance(m, nn.Linear):
+                w = m.weight.data
+                s = w.abs().amax(dim=1, keepdim=True) / 127.0 + 1e-12
+                m.weight.data = torch.round(w / s).clamp(-127, 127) * s
+    return model
 
 
 def quantize_int8_(model: nn.Module) -> nn.Module:

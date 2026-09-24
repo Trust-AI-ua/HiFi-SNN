@@ -7,11 +7,11 @@ L=results/repaired_runs/e1_e2.log
 log(){ echo "[$(date -u +%FT%TZ)] $*" | tee -a $L; }
 REF=0af66b2          # last commit before the encoder/trainer changes
 export OMP_NUM_THREADS=2 MKL_NUM_THREADS=2
-log "START guards G4 G1 G3 (vs $REF)"
+log "START guards G4 G6 G1 G3 G5 (vs $REF; amendment 1)"
 .venv/bin/python -u scripts/guard_e1_e2.py --ref $REF > results/repaired_runs/guard_e1_e2.log 2>&1 \
-  || { log "ABORT: G1/G3/G4 failed (see guard_e1_e2.log)"; exit 1; }
-log "ok G4 G1 G3"
-log "START guard G2 (DNN-Tree TON-IoT seed 42 reproduction)"
+  || { log "ABORT: G1/G3/G4/G5/G6 failed (see guard_e1_e2.log)"; exit 1; }
+log "ok G4 G6 G1 G3 G5"
+log "START guard G2 (DNN-Tree TON-IoT seed 42: int8, fp32, per-channel reproduction)"
 .venv/bin/python -u scripts/run_dnn_tq.py --guard > results/repaired_runs/guard_g2.log 2>&1 \
   || { log "ABORT: G2 failed (see guard_g2.log)"; exit 1; }
 log "ok G2"

@@ -69,3 +69,61 @@ SOPs per sample (full window, input-inclusive) are reported for both arms.
       deterministic.
   After the runs: every new run's split (test size, per-class training counts) matches
   the stored Tree-to-Spike run for its dataset and seed.
+
+## Amendment 1 (2026-09-24, before any training)
+
+The first launch was stopped by the operator during G1, before any E1 or E2 run
+trained (log: results/repaired_runs/e1_e2.log). No result of either experiment
+existed when this amendment was written. The registered thresholds are unchanged.
+
+E2, weighted criterion. The entropy cutter scores each candidate cut on the
+teacher's cost-weighted class masses: every class's counts are multiplied by the
+teacher's class weight w_c = N / (n_c + 1e-6), raised to teacher_cost_power (1.0 in
+all four configs), computed in float32 exactly as _fit_teacher computes it. The
+cutter and the teacher are then fitted to the same weighted objective, and the two
+arms differ only in how cuts are chosen. The median fallback still splits on
+unweighted sample counts (quantile semantics). The no-gain test for a filler is now
+relative (gain <= 1e-12 x the segment's weighted n*entropy), since weighting
+rescales the criterion.
+
+E2, fallback share. Each run records, per kept feature, the tree's edge count, the
+entropy cut count, the filler (median) cuts and any shortfall (results.json,
+data.entropy_edges). The fallback share of a dataset is its filler cuts over its
+entropy cuts, pooled over the five seeds, and it is reported per dataset. Reading
+rule: where the share exceeds one half, that dataset's comparison is labelled
+"largely against quantile placement", which Table V already covers, and is not
+read as a test of supervised placement. The A-D outcome is still computed on all
+four datasets as registered; the labels qualify its reading.
+
+E2, scope. The write-up states in one clause that E2 isolates edge placement only:
+channel selection, the per-feature edge budget and pruning stay tree-derived in
+both arms.
+
+E1, three precisions. Each E1 cell also scores per-channel int8 (one symmetric
+scale per output row of every nn.Linear, s_i = max_j |W_ij| / 127, biases fp32),
+projected from the same fp32 weights on a copy, before the deployed per-tensor
+projection. References (tab_perchannel.csv, five-seed IoT means): Tree-to-Spike
+fp32 84.72, per-tensor 84.64, per-channel 84.69; DNN-Tree with level input fp32
+85.77, per-tensor 84.14, per-channel 85.33. The registered outcome is decided on
+fp32 only; per-tensor and per-channel gaps are reported beside it.
+
+E1, per-dataset reporting. Every E1 quantity is reported per dataset. For each
+change from level input to spike-time input (chg = DNN-TQ - DNN-Tree level, at
+fp32, per-tensor and per-channel), a dataset's share is its chg over the sum of
+the four datasets' chg. When one dataset's share exceeds one half, the write-up
+says that this dataset accounts for more than half of that change.
+
+Added guards (must pass before any run starts):
+
+  G2 (extended). The trainer's per-channel score for DNN-Tree TON-IoT seed 42 with
+      the production input reproduces scripts/perchannel_check.py's recorded value
+      exactly.
+  G4 (extended). Unit class weights reproduce the unweighted cutter bitwise; the
+      weighted cutter recovers separable boundaries; on imbalanced synthetic data
+      the teacher's weights move the cut.
+  G5. On every IoT dataset at seed 42, the class weights given to the cutter equal,
+      bitwise, the per-sample weights the teacher is fitted with (captured at
+      XGBClassifier.fit); the recorded diagnostics agree with the encoder's edges.
+  G6. The per-channel projection in src equals perchannel_check.py's, bitwise, on
+      the stored DNN-Tree and Tree-to-Spike TON-IoT seed-42 checkpoints.
+  G1 compares against the encoder at 0af66b2, the last commit before E1/E2.
