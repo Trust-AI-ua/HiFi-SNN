@@ -150,6 +150,13 @@ def run_experiment(cfg: Dict) -> Dict:
     encoder = TreeGuidedSpikeEncoder(T=cfg["T"], pop_max=cfg["pop_max"],
                                      prune_quantile=cfg["prune_quantile"],
                                      jitter=cfg["jitter"]).fit(teacher, Xtr.shape[1])
+    # E1 (matched information): "spike_time" feeds the dense twin the levels exactly as
+    # the spike train carries them (see TreeGuidedSpikeEncoder.encode_dense). Default
+    # "level" is the production input, unchanged.
+    dense_input = cfg.get("dense_input", "level")
+    if dense_input not in ("level", "spike_time"):
+        raise ValueError(f"dense_input must be 'level' or 'spike_time', got {dense_input!r}")
+    encoder.dense_time_quantized = dense_input == "spike_time"
     print(f"[encoder] {encoder.out_dim} channels from {Xtr.shape[1]} features (in_dim shared with SNN)")
 
     # ---------- DNN student (iso-architecture twin) ----------
@@ -182,6 +189,14 @@ def run_experiment(cfg: Dict) -> Dict:
               f"ce={parts.get('ce',0):.3f} kd={parts.get('kd',0):.3f} val_acc={val_acc:.4f}")
     train_time_s = time.time() - train_start
 
+    # ---------- optional: fp32 test metrics, captured BEFORE the int8 projection ----------
+    fp32_record = None
+    if cfg.get("record_fp32"):
+        fp_pred, fp_score = _forward_batches(student, encoder, Xte, bs, device)
+        fp32_record = {"metrics": compute_metrics(yte, fp_pred, y_score=fp_score,
+                                                  class_names=bundle.class_names),
+                       "binary_ids_metrics": compute_binary_ids_metrics(yte, fp_pred, normal_class_index=0)}
+
     # ---------- deploy: int8 fake-quant (matched precision vs the int8 SNN student) ----------
     if cfg.get("quantize"):
         quantize_int8_(student)
@@ -213,6 +228,9 @@ def run_experiment(cfg: Dict) -> Dict:
         "inference_ms_per_sample_batch1": bs1_ms,
         "inference_ms_per_sample_batched": batched_ms,
     }
+    if fp32_record is not None:
+        test_record["fp32_before_projection"] = fp32_record
+    test_record["dense_input"] = dense_input
     param_info = count_parameters(student)
     hw = {"device": str(device)}
     if cuda:

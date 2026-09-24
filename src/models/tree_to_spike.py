@@ -34,6 +34,71 @@ from snntorch import surrogate
 # ======================================================================================
 # Tree-guided spike encoder (the contribution)
 # ======================================================================================
+def entropy_cuts(x, y, k):
+    """k class-supervised cut points for one feature (the E2 control).
+
+    Greedy best-first splitting: repeatedly split the segment whose best boundary gives
+    the largest information gain, where candidate boundaries are between consecutive
+    distinct values (the Fayyad-Irani result: an entropy-optimal cut lies on such a
+    boundary). Stops at k cuts. If no positive-gain split remains first, the largest
+    segment is split at its median so the count still matches; those are counted as
+    filler cuts. Cut values are midpoints between neighbouring distinct values.
+    Deterministic. Returns (sorted float32 cuts, number of filler cuts).
+    """
+    import heapq
+    x = np.asarray(x, dtype=np.float32)
+    y = np.asarray(y, dtype=np.int64)
+    u, inv = np.unique(x, return_inverse=True)
+    U = len(u)
+    if U < 2 or k <= 0:
+        return np.zeros(0, dtype=np.float32), 0
+    K = int(y.max()) + 1
+    cnt = np.bincount(inv * K + y, minlength=U * K).reshape(U, K).astype(np.float64)
+    cum = np.vstack([np.zeros((1, K)), np.cumsum(cnt, axis=0)])        # cum[i] = first i values
+    ncum = cum.sum(1)
+
+    def nh(c):                                                          # n * entropy (nats)
+        c = np.asarray(c, dtype=np.float64)
+        n = c.sum(-1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t = np.where(c > 0, c * np.log(c), 0.0).sum(-1)
+            return np.where(n > 0, n * np.log(np.maximum(n, 1e-300)), 0.0) - t
+
+    def best(a, b):                                                     # segment [a, b)
+        if b - a < 2:
+            return None
+        tot = cum[b] - cum[a]
+        left = cum[a + 1:b] - cum[a]                                    # split before s = a+1..b-1
+        cost = nh(left) + nh(tot[None, :] - left)
+        i = int(np.argmin(cost))
+        gain = float(nh(tot) - cost[i])
+        s = a + 1 + i
+        filler = gain <= 1e-9
+        if filler:                                                      # no information left: median
+            half = ncum[a] + (ncum[b] - ncum[a]) / 2.0
+            s = int(np.clip(np.searchsorted(ncum, half), a + 1, b - 1))
+        return (0.0 if filler else gain), s, filler
+
+    heap, order = [], 0
+    def push(a, b):
+        nonlocal order
+        r = best(a, b)
+        if r is not None:
+            g, s_, f_ = r
+            heapq.heappush(heap, (-g, -(ncum[b] - ncum[a]), order, a, b, s_, f_))
+            order += 1
+    push(0, U)
+    cuts, n_fill = [], 0
+    while heap and len(cuts) < k:
+        _, _, _, a, b, s_, f_ = heapq.heappop(heap)
+        cuts.append(s_)
+        n_fill += int(f_)
+        push(a, s_)
+        push(s_, b)
+    vals = np.unique(((u[np.array(cuts) - 1].astype(np.float64) + u[np.array(cuts)]) / 2.0).astype(np.float32))
+    return vals, n_fill
+
+
 class TreeGuidedSpikeEncoder:
     """Turns tabular flow features into spike trains using a trained GBDT teacher.
 
@@ -65,7 +130,7 @@ class TreeGuidedSpikeEncoder:
         self.channels_ = []             # list of (feat_idx, level_offset)
         self.out_dim = 0
 
-    def fit(self, teacher, n_features: int, X=None):
+    def fit(self, teacher, n_features: int, X=None, y=None):
         if self.encoder_mode == "raw_vanilla":
             # M8 control arm: the conventional SNN's own latency code (floor, with
             # the epsilon suppression of Eq. 3) on raw features, one channel each,
@@ -137,6 +202,24 @@ class TreeGuidedSpikeEncoder:
                 if len(e) == 0:                               # constant feature: keep tree edges
                     continue
                 self.edges_[j] = e
+        if self.encoder_mode == "entropy":
+            # supervised non-tree control (E2): IDENTICAL channels to "tree" and the SAME
+            # per-feature edge COUNT, like "quantile", but the edges are class-supervised
+            # univariate cut points on the training data (information-gain splitting at
+            # Fayyad-Irani boundary points). Only the placement differs from "tree", and it
+            # is supervised, unlike "quantile". Requires X and y in fit().
+            if X is None or y is None:
+                raise ValueError("encoder_mode='entropy' requires the training X and y in fit()")
+            X = np.asarray(X, dtype=np.float32)
+            y = np.asarray(y, dtype=np.int64)
+            self.entropy_filler_ = {}
+            for j in sorted({j for j, _ in self.channels_}):
+                k = len(self.edges_[j])
+                e, n_fill = entropy_cuts(X[:, j], y, k)
+                if len(e) == 0:                               # constant feature: keep tree edges
+                    continue
+                self.edges_[j] = e
+                self.entropy_filler_[j] = n_fill
         self.out_dim = len(self.channels_)
         return self
 
@@ -172,7 +255,14 @@ class TreeGuidedSpikeEncoder:
         matrix in [0, 1] with no temporal dimension. This is the input the
         iso-architecture DNN twin consumes (same channels as the SNN student sees,
         but processed in a single forward pass instead of as a T-step spike train)."""
-        return torch.from_numpy(self._level_channels(X))
+        lc = self._level_channels(X)
+        if getattr(self, "dense_time_quantized", False):
+            # E1 (matched information): the level exactly as the spike train carries it,
+            # l_hat = 1 - t/(T-1) with t = round((1 - l)(T - 1)), the same rounding as
+            # encode(). Off by default, so the production dense twin is unchanged.
+            t = np.round((1.0 - lc) * (self.T - 1))
+            lc = (1.0 - t / (self.T - 1)).astype(np.float32)
+        return torch.from_numpy(lc)
 
     VANILLA_EPS = 0.01          # Eq. 3 threshold of the conventional baseline
 
