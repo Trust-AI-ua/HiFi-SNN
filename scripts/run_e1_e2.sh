@@ -6,7 +6,10 @@ cd "$(dirname "$0")/.."
 L=results/repaired_runs/e1_e2.log
 log(){ echo "[$(date -u +%FT%TZ)] $*" | tee -a $L; }
 REF=0af66b2          # last commit before the encoder/trainer changes
-export OMP_NUM_THREADS=2 MKL_NUM_THREADS=2
+# No thread cap: XGBoost caps n_jobs at the OpenMP thread count, and the teacher fit
+# depends on it (OMP_NUM_THREADS=2 changed the TON-IoT seed-42 teacher; G2 caught it).
+# The production teachers reproduce with the default environment.
+unset OMP_NUM_THREADS MKL_NUM_THREADS OPENBLAS_NUM_THREADS TORCH_NUM_THREADS
 log "START guards G4 G6 G1 G3 G5 (vs $REF; amendment 1)"
 .venv/bin/python -u scripts/guard_e1_e2.py --ref $REF > results/repaired_runs/guard_e1_e2.log 2>&1 \
   || { log "ABORT: G1/G3/G4/G5/G6 failed (see guard_e1_e2.log)"; exit 1; }

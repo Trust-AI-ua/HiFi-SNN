@@ -127,3 +127,19 @@ Added guards (must pass before any run starts):
   G6. The per-channel projection in src equals perchannel_check.py's, bitwise, on
       the stored DNN-Tree and Tree-to-Spike TON-IoT seed-42 checkpoints.
   G1 compares against the encoder at 0af66b2, the last commit before E1/E2.
+
+## Amendment 2 (2026-09-24, before any training)
+
+The relaunch after amendment 1 stopped at G2, before any E1 or E2 run trained. G2
+failed because the launcher capped OpenMP at two threads: XGBoost limits n_jobs to
+the OpenMP thread count, and the TON-IoT seed-42 teacher fitted with two threads
+scores 0.968515 test macro-F1 against the stored 0.969213; with the default
+environment it reproduces 0.969213 exactly. The launcher no longer caps threads.
+Every stored IoT run (Tree-to-Spike, DNN-Tree, both M3 reruns, the four ablation
+arms) records the same teacher for its dataset and seed, so no reported comparison
+mixes teachers.
+
+The post-run check is extended: besides the split, each new cell's recorded teacher
+test macro-F1 must equal the stored Tree-to-Spike run's exactly, so each arm is
+compared under the same teacher. The analysis refuses to report otherwise. The
+registered rules are unchanged.

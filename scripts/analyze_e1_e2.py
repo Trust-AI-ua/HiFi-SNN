@@ -33,7 +33,10 @@ def rj(p):
 
 
 def split_sig(r):
-    return (r["test_plus"].get("n_samples"), json.dumps(r["data"].get("class_counts_train"), sort_keys=True))
+    # split (test size, per-class training counts) and the teacher: its recorded test
+    # macro-F1 must equal the stored run's bitwise, so both arms share one teacher
+    return (r["test_plus"].get("n_samples"), json.dumps(r["data"].get("class_counts_train"), sort_keys=True),
+            r["test_plus"]["teacher_upper_bound"]["f1_macro"])
 
 
 def check_splits(pattern):
@@ -63,7 +66,7 @@ def e1():
         print(f"E1: {len(miss)} cells missing; not reported"); return
     bad = check_splits(E)
     if bad:
-        sys.exit(f"E1: splits differ from Tree-to-Spike on {bad}; refused")
+        sys.exit(f"E1: split or teacher differs from Tree-to-Spike on {bad}; refused")
     pc = pd.read_csv(REPO / "results/tables/tab_perchannel.csv")
     P = {"fp32": "fp32_f1", "pt": "per_tensor_f1", "pc": "per_channel_f1"}
     ref = pc.groupby(["model", "dataset"])[list(P.values())].mean()
@@ -119,7 +122,7 @@ def e2():
         print(f"E2: {len(miss)} cells missing; not reported"); return
     bad = check_splits(E)
     if bad:
-        sys.exit(f"E2: splits differ from Tree-to-Spike on {bad}; refused")
+        sys.exit(f"E2: split or teacher differs from Tree-to-Spike on {bad}; refused")
     def arm(pat, d):
         rs = [rj(REPO / pat.format(d=d, s=s)) for s in SEEDS]
         f1 = [100 * r["test_plus"]["metrics"]["f1_macro"] for r in rs]
