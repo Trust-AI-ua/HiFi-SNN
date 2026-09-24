@@ -456,6 +456,42 @@ def results_section():
         add(f"JNExitTPninety{DS[ds]}Five", f(float(np.percentile(tp, 90)), 0), "prefix artifacts", "pooled over five seeds", "t' p90")
 
 
+def pooled():
+    """Appendix: pooled eleven-dataset statistics, parsed from scripts/m9_stats.py's output."""
+    src = REPO / "results/diagnostics/m9_stats.txt"
+    t = src.read_text()
+    code = {"DNN-Tree": "Dnn", "Tree-to-Spike": "Tts", "Vanilla SNN": "Van", "TASNN": "Tasnn"}
+    # Ranks recomputed EXACTLY from the per-seed cells: m9_stats.txt prints them to three
+    # decimals, and re-rounding 1.545 (really 17/11 = 1.5454...) to two gives 1.54, not 1.55.
+    from scipy.stats import rankdata
+    c = pd.read_csv(REPO / "results/diagnostics/per_seed_all_cells.csv")
+    mm = c.groupby(["dataset", "model"]).f1.mean().unstack()
+    names = {"dnn": "DNN-Tree", "treespike": "Tree-to-Spike", "vanilla": "Vanilla SNN", "tasnn": "TASNN"}
+    R = pd.DataFrame([rankdata(-row) for row in mm.values], columns=mm.columns).mean()
+    for m_, name in names.items():
+        add(f"JNPooledRank{code[name]}", f(R[m_]), "results/diagnostics/per_seed_all_cells.csv",
+            "N = 11 datasets, exact", f"pooled mean rank, {name}")
+    chi, pchi = re.search(r"Friedman chi2_F=([\d.]+) df=3 p=([\d.e+-]+)", t).groups()
+    ff, pff = re.search(r"Iman-Davenport F_F=([\d.]+) df=\(3,30\) p=([\d.e+-]+)", t).groups()
+    cd = re.search(r"Nemenyi CD=([\d.]+)", t).group(1)
+    sci = lambda x: (lambda m, e: rf"\ensuremath{{{m}\times10^{{{int(e)}}}}}")(*f"{float(x):.1e}".split("e"))
+    add("JNPooledChi", f(float(chi)), rel(src), "N = 11", "pooled Friedman chi-square, df 3")
+    add("JNPooledChiP", sci(pchi), rel(src), "N = 11", "pooled Friedman p")
+    add("JNPooledIdF", f(float(ff)), rel(src), "N = 11", "pooled Iman-Davenport F, df (3, 30)")
+    add("JNPooledIdP", sci(pff), rel(src), "N = 11", "pooled Iman-Davenport p")
+    add("JNPooledCD", f(float(cd), 3), rel(src), "N = 11, k = 4, alpha 0.05", "Nemenyi critical difference")
+    for a, b_, gap, sig in re.findall(r"  (DNN-Tree|Tree-to-Spike|Vanilla SNN|TASNN) vs (DNN-Tree|Tree-to-Spike|Vanilla SNN|TASNN): ([\d.]+) (SIG|ns)", t):
+        add(f"JNPooledGap{code[a]}{code[b_]}", f(float(gap), 3), rel(src), "N = 11", f"mean-rank gap {a} vs {b_} ({sig})")
+    md, med, sdv = re.search(r"Tree-to-Spike - DNN-Tree: mean diff ([-\d.]+)\s+median ([-\d.]+)\s+sd ([\d.]+)", t).groups()
+    add("JNPooledDiffTtsDnnMean", sgn(float(md)), rel(src), "N = 11", "pooled T2S - DNN mean difference")
+    add("JNPooledDiffTtsDnnMedian", sgn(float(med)), rel(src), "N = 11", "pooled T2S - DNN median difference")
+    add("JNPooledTostP", f(float(re.search(r"TOST \(margin \+/-1.0\): p=([\d.]+)", t).group(1)), 3), rel(src),
+        "N = 11", "TOST p at a one-point margin")
+    lo, hi = re.search(r"bootstrap 95% CI \[([-\d.]+), ([-\d.]+)\]", t).groups()
+    add("JNPooledCiLo", sgn(float(lo)), rel(src), "N = 11", "bootstrap 95% CI lower")
+    add("JNPooledCiHi", sgn(float(hi)), rel(src), "N = 11", "bootstrap 95% CI upper")
+
+
 def general_purpose():
     """Appendix: the seven general-purpose benchmarks (macro-F1, five-seed means)."""
     src = REPO / "results/diagnostics/per_seed_all_cells.csv"
@@ -590,7 +626,7 @@ def perchannel():
 
 def main():
     for fn in (quality, precision, statistics, energy, deployment, others, tsweep, compact, perchannel,
-               results_section, results_extras, general_purpose):
+               results_section, results_extras, general_purpose, pooled):
         fn()
     sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip()
     # The generator's own two outputs are excluded: once tracked, the previous
