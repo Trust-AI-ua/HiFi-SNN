@@ -182,9 +182,13 @@ def g1_g3(ref):
         sp = tree_enc.encode(Xs).numpy()                     # [T, B, C]
         fires_once = bool((sp.sum(0) == 1).all())
         t_first = sp.argmax(0)
-        g3 = fires_once and np.array_equal(lhat, (1.0 - t_first / (cfg["T"] - 1)).astype(np.float32))
+        want = (1.0 - t_first / (cfg["T"] - 1)).astype(np.float32)
+        steps_eq = np.array_equal(np.round((1.0 - lhat.astype(np.float64)) * (cfg["T"] - 1)).astype(np.int64), t_first)
+        g3 = fires_once and steps_eq and np.array_equal(lhat, want)
         tree_enc.dense_time_quantized = False
         rec["G3_every_channel_fires_once"] = fires_once
+        rec["G3_steps_match_first_spike"] = bool(steps_eq)
+        rec["G3_max_abs_diff"] = float(np.abs(lhat - want).max())
         rec["G3_lhat_matches_spike_time"] = bool(g3)
         rec["G3_levels_changed_by_quantization_share"] = float((lhat != tree_enc.encode_dense(Xs).numpy()).mean())
         ok &= g3

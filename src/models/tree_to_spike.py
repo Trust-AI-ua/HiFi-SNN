@@ -295,8 +295,11 @@ class TreeGuidedSpikeEncoder:
             # E1 (matched information): the level exactly as the spike train carries it,
             # l_hat = 1 - t/(T-1) with t = round((1 - l)(T - 1)), the same rounding as
             # encode(). Off by default, so the production dense twin is unchanged.
-            t = np.round((1.0 - lc) * (self.T - 1))
-            lc = (1.0 - t / (self.T - 1)).astype(np.float32)
+            # t in float32 exactly as encode() computes it; the level then in float64 and
+            # cast once, the correctly rounded float32 of 1 - t/(T-1) (float32 arithmetic
+            # double-rounds and is 1 ulp off on 6 of the 20 steps).
+            t = np.round((1.0 - lc) * (self.T - 1)).astype(np.int64)
+            lc = (1.0 - t / float(self.T - 1)).astype(np.float32)
         return torch.from_numpy(lc)
 
     VANILLA_EPS = 0.01          # Eq. 3 threshold of the conventional baseline
