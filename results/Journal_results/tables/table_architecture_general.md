@@ -24,7 +24,7 @@ Mean +/- std over 5 seeds. DNN-Tree is the dense iso-architecture twin: it emits
 | CIC-IDS2017 | 5 | Tree-to-Spike | 68 - 64 - 64 - 5 (LIF, T=20) | 8.5K | 43.4 / 18.5 (incl. enc.) | 301 +/- 42.8 | 14.4 +/- 0.2 /20 | 7.5 +/- 0.9 /20 | 1.00x |
 | CIC-IDS2017 | 5 | DNN-Tree | 68 - 64 - 64 - 5 (ReLU) | 8.5K | 43.4 / 18.5 (incl. enc.) | 26 +/- 1.1 (act.) | -- | -- | 3.56x |
 | CIC-IDS2017 | 5 | TASNN | 78 - Tr(d=128x3) - STC64 - 128 - 64 - 5 (T=16) | 523.9K | 2,046.6 / 511.6 | 7 +/- 1.1 | -- | -- | 15kx (analytic) |
-| CSE-CIC-2018 | 5 | Vanilla SNN | 78 - 128 - 5 (LIF, T=25) | 27.3K | 106.5 / 26.6 | 147 +/- 22.0 | -- | 12.6 +/- 1.1 /25 | 0.38x |
+| CSE-CIC-2018 | 5 | Vanilla SNN | 78 - 128 - 5 (LIF, T=25) | 27.3K | 106.5 / 26.6 | 152 +/- 14.5 | -- | 11.8 +/- 1.1 /25 | 0.39x |
 | CSE-CIC-2018 | 5 | Tree-to-Spike | 63 - 64 - 64 - 5 (LIF, T=20) | 8.6K | 50.0 / 24.8 (incl. enc.) | 319 +/- 51.6 | -- | 16.0 +/- 1.1 /20 | 1.00x |
 | CSE-CIC-2018 | 5 | DNN-Tree | 63 - 64 - 64 - 5 (ReLU) | 8.6K | 50.0 / 24.8 (incl. enc.) | --- | -- | -- | 3.16x |
 | CSE-CIC-2018 | 5 | TASNN | 78 - Tr(d=128x3) - STC64 - 128 - 64 - 5 (T=16) | 523.9K | 2,046.6 / 511.6 | 9 +/- 1.1 | -- | -- | 14kx (analytic) |

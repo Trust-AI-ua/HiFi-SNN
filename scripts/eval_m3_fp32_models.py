@@ -155,9 +155,11 @@ def main():
     ap.add_argument("--models", nargs="+", default=["vanilla", "tasnn"])
     ap.add_argument("--datasets", nargs="+", default=DATASETS)
     ap.add_argument("--seeds", nargs="+", type=int, default=SEEDS)
+    ap.add_argument("--force", action="store_true",
+                    help="recompute the requested cells even if present (the merge keeps the new row)")
     a = ap.parse_args()
     done = set()
-    if OUT.exists():
+    if OUT.exists() and not a.force:
         done = set(map(tuple, pd.read_csv(OUT)[KEY].astype(str).values.tolist()))
     for model in a.models:
         for d in a.datasets:

@@ -1,0 +1,148 @@
+[2026-09-24T05:19:25Z] START backfill
+device=cuda  eval_batch=1024  force=False
+
+=== cse-cic-ids2018: 5 runs across seeds [42, 43, 44, 45, 46] ===
+  ok  LeakyParallel /latency  seed=42  exit=12.6/25  ee_f1=0.683  synops=5315
+  ok  LeakyParallel /latency  seed=43  exit=10.4/25  ee_f1=0.688  synops=5360
+  ok  LeakyParallel /latency  seed=44  exit=11.0/25  ee_f1=0.689  synops=5276
+  ok  LeakyParallel /latency  seed=45  exit=13.2/25  ee_f1=0.694  synops=5245
+  ok  LeakyParallel /latency  seed=46  exit=11.8/25  ee_f1=0.691  synops=5204
+
+============================================================
+backfill done in 3.3 min — ok=5 skip=0 no-ckpt=0 fail=0
+companion summary: /home/student3/HiSNN/results/summary_snn_efficiency.csv  (10 rows)
+[2026-09-24T05:22:47Z] START guard: shared subsample
+[2026-09-24T05:22:49Z] ok guard: all four models share one subsample on every dataset and seed
+[2026-09-24T05:22:49Z] START regeneration
+[wrote] /home/student3/HiSNN/results/diagnostics/per_seed_all_cells.csv: 220 rows, 44 cells
+model               dnn  tasnn  treespike  vanilla
+dataset                                           
+cicids2017        98.55  94.81      98.39    98.62
+ciciomt2024       89.24  74.18      89.42    72.61
+ciciot2023        72.43  59.09      72.22    62.82
+cse-cic-ids2018   75.70  69.55      74.02    69.65
+ctu13            100.00  99.98     100.00   100.00
+edgeiiot          80.60  78.37      83.94    75.39
+iscxids2012       98.18  96.55      98.03    97.04
+kddcup99          63.35  54.49      61.83    61.99
+nslkdd            62.44  50.41      58.48    59.30
+toniot            94.06  90.37      92.98    92.04
+unswnb15          44.38  40.50      41.73    44.47
+[wrote] /home/student3/HiSNN/results/Journal_results/tables/table_results_iot.tex  (4 datasets x 4 models)
+[wrote] /home/student3/HiSNN/results/Journal_results/tables/table_results_general.tex  (7 datasets x 4 models)
+[wrote] /home/student3/HiSNN/results/Journal_results/tables/table_results_full.tex  (11 datasets x 4 models)
+[benchmark_4way] wrote tables -> /home/student3/HiSNN/results/Journal_results/tables
+   encoder_ablation.md
+   encoder_ablation_full.md
+   encoder_ablation_general.md
+   encoder_ablation_iot.md
+   table_DR.md
+   table_FAR.md
+   table_accuracy.md
+   table_architecture.md
+   table_architecture_full.md
+   table_architecture_general.md
+   table_architecture_iot.md
+   table_efficiency.md
+   table_f1_macro.md
+   table_mcc.md
+   table_silhouette.md
+[benchmark_4way] wrote figures -> /home/student3/HiSNN/results/Journal_results/figures
+   bar_DR.pdf
+   bar_FAR.pdf
+   bar_accuracy.pdf
+   bar_f1_macro.pdf
+   bar_mcc.pdf
+   cd_diagram.pdf
+   cd_diagram_f1_macro.pdf
+   cd_diagram_mcc.pdf
+   embeddings_cicids2017.pdf
+   embeddings_ciciomt2024.pdf
+   embeddings_ciciot2023.pdf
+   embeddings_cse-cic-ids2018.pdf
+   embeddings_ctu13.pdf
+   embeddings_edgeiiot.pdf
+   embeddings_iscxids2012.pdf
+   embeddings_kddcup99.pdf
+   embeddings_nslkdd.pdf
+   embeddings_toniot.pdf
+   embeddings_unswnb15.pdf
+   encoder_ablation_frontier.pdf
+   encoder_ablation_sops.pdf
+   energy_4way.pdf
+   energy_iso_trio.pdf
+   energy_precision.pdf
+   heatmap_DR.pdf
+   heatmap_FAR.pdf
+   heatmap_accuracy.pdf
+   heatmap_energy.pdf
+   heatmap_f1_macro.pdf
+   heatmap_mcc.pdf
+   meanrank_accuracy.pdf
+   meanrank_f1_macro.pdf
+   meanrank_mcc.pdf
+   pareto_f1_vs_energy.pdf
+   pareto_f1_vs_params.pdf
+   radar_4way.pdf
+   radar_grid_4way.pdf
+
+Mean Macro-F1 across datasets:
+   Vanilla SNN      75.8%  (n_datasets=11)
+   Tree-to-Spike    79.2%  (n_datasets=11)
+   DNN-Tree         79.9%  (n_datasets=11)
+   TASNN            73.5%  (n_datasets=11)
+
+B2 matched-precision compute energy - DNN-Tree / Tree-to-Spike ratio:
+   32-bit  DNN-Tree=    39,043 pJ   Tree-to-Spike=   10,624 pJ   -> 3.7x less
+   int8    DNN-Tree=     1,952 pJ   Tree-to-Spike=      354 pJ   -> 5.5x less
+[wrote] /home/student3/HiSNN/results/Journal_results/tables/table_architecture_iot.tex + .md  (16 rows)
+[wrote] /home/student3/HiSNN/results/Journal_results/tables/table_architecture_general.tex + .md  (28 rows)
+[wrote] /home/student3/HiSNN/results/Journal_results/tables/table_architecture_full.tex + .md  (44 rows)
+# generated 2026-09-24T05:22:54Z by scripts/m9_stats.py at git 0447575
+# source: results/diagnostics/per_seed_all_cells.csv
+datasets: cicids2017, ciciomt2024, ciciot2023, cse-cic-ids2018, ctu13, edgeiiot, iscxids2012, kddcup99, nslkdd, toniot, unswnb15
+N=11 datasets, k=4 models
+mean ranks: DNN-Tree=1.545  Tree-to-Spike=2.182  Vanilla SNN=2.455  TASNN=3.818
+Friedman chi2_F=18.164 df=3 p=4.070e-04
+Iman-Davenport F_F=12.243 df=(3,30) p=2.110e-05
+Nemenyi CD=1.414
+  DNN-Tree vs Tree-to-Spike: 0.636 ns
+  DNN-Tree vs Vanilla SNN: 0.909 ns
+  DNN-Tree vs TASNN: 2.273 SIG
+  Tree-to-Spike vs Vanilla SNN: 0.273 ns
+  Tree-to-Spike vs TASNN: 1.636 SIG
+  Vanilla SNN vs TASNN: 1.364 ns
+
+Tree-to-Spike - DNN-Tree: mean diff -0.716  median -0.217  sd 1.861
+Wilcoxon p=0.1230
+TOST (margin +/-1.0): p=0.3121
+bootstrap 95% CI [-1.741, 0.360]  contained in margin: False
+[wrote] results/Journal_results/figures/cd_diagram.pdf (+ .png), results/diagnostics/m9_stats.txt
+/home/student3/HiSNN/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py:757: UserWarning: RNN module weights are not part of single contiguous chunk of memory. This means they need to be compacted at every call, possibly greatly increasing memory usage. To compact weights again call flatten_parameters(). (Triggered internally at /pytorch/aten/src/ATen/native/cudnn/RNN.cpp:1479.)
+  result = _VF.rnn_relu(
+/home/student3/HiSNN/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py:757: UserWarning: RNN module weights are not part of single contiguous chunk of memory. This means they need to be compacted at every call, possibly greatly increasing memory usage. To compact weights again call flatten_parameters(). (Triggered internally at /pytorch/aten/src/ATen/native/cudnn/RNN.cpp:1479.)
+  result = _VF.rnn_relu(
+[m3] vanilla cse-cic-ids2018 42 fp=69.65 int8=72.93 int8_all=73.30 stored=69.65 lin=0.02
+/home/student3/HiSNN/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py:757: UserWarning: RNN module weights are not part of single contiguous chunk of memory. This means they need to be compacted at every call, possibly greatly increasing memory usage. To compact weights again call flatten_parameters(). (Triggered internally at /pytorch/aten/src/ATen/native/cudnn/RNN.cpp:1479.)
+  result = _VF.rnn_relu(
+/home/student3/HiSNN/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py:757: UserWarning: RNN module weights are not part of single contiguous chunk of memory. This means they need to be compacted at every call, possibly greatly increasing memory usage. To compact weights again call flatten_parameters(). (Triggered internally at /pytorch/aten/src/ATen/native/cudnn/RNN.cpp:1479.)
+  result = _VF.rnn_relu(
+[m3] vanilla cse-cic-ids2018 43 fp=69.91 int8=69.45 int8_all=69.40 stored=69.91 lin=0.02
+/home/student3/HiSNN/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py:757: UserWarning: RNN module weights are not part of single contiguous chunk of memory. This means they need to be compacted at every call, possibly greatly increasing memory usage. To compact weights again call flatten_parameters(). (Triggered internally at /pytorch/aten/src/ATen/native/cudnn/RNN.cpp:1479.)
+  result = _VF.rnn_relu(
+/home/student3/HiSNN/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py:757: UserWarning: RNN module weights are not part of single contiguous chunk of memory. This means they need to be compacted at every call, possibly greatly increasing memory usage. To compact weights again call flatten_parameters(). (Triggered internally at /pytorch/aten/src/ATen/native/cudnn/RNN.cpp:1479.)
+  result = _VF.rnn_relu(
+[m3] vanilla cse-cic-ids2018 44 fp=69.41 int8=70.16 int8_all=70.29 stored=69.41 lin=0.02
+/home/student3/HiSNN/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py:757: UserWarning: RNN module weights are not part of single contiguous chunk of memory. This means they need to be compacted at every call, possibly greatly increasing memory usage. To compact weights again call flatten_parameters(). (Triggered internally at /pytorch/aten/src/ATen/native/cudnn/RNN.cpp:1479.)
+  result = _VF.rnn_relu(
+/home/student3/HiSNN/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py:757: UserWarning: RNN module weights are not part of single contiguous chunk of memory. This means they need to be compacted at every call, possibly greatly increasing memory usage. To compact weights again call flatten_parameters(). (Triggered internally at /pytorch/aten/src/ATen/native/cudnn/RNN.cpp:1479.)
+  result = _VF.rnn_relu(
+[m3] vanilla cse-cic-ids2018 45 fp=70.14 int8=70.32 int8_all=69.83 stored=70.14 lin=0.02
+/home/student3/HiSNN/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py:757: UserWarning: RNN module weights are not part of single contiguous chunk of memory. This means they need to be compacted at every call, possibly greatly increasing memory usage. To compact weights again call flatten_parameters(). (Triggered internally at /pytorch/aten/src/ATen/native/cudnn/RNN.cpp:1479.)
+  result = _VF.rnn_relu(
+/home/student3/HiSNN/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py:757: UserWarning: RNN module weights are not part of single contiguous chunk of memory. This means they need to be compacted at every call, possibly greatly increasing memory usage. To compact weights again call flatten_parameters(). (Triggered internally at /pytorch/aten/src/ATen/native/cudnn/RNN.cpp:1479.)
+  result = _VF.rnn_relu(
+[m3] vanilla cse-cic-ids2018 46 fp=69.17 int8=69.40 int8_all=69.38 stored=69.17 lin=0.02
+[wrote] /home/student3/HiSNN/results/tables/tab_m3_quant.csv /home/student3/HiSNN/results/tables/tab_m3_quant.tex (44/44 cells done)
+[wrote] results/tables/numbers.tex (606 macros) and results/tables/numbers_provenance.json
+[2026-09-24T05:41:42Z] downstream done

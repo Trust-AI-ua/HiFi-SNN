@@ -48,9 +48,12 @@ def main():
             for s in range(42, 47):
                 r = json.loads((REPO / rp.format(d=ds, s=s)).read_text())
                 cc = r.get("data", {}).get("class_counts_train")
-                rows.append(dict(model=model, dataset=ds, seed=s,
-                                 **{k: (cfg[k] if k in cfg and k in params else default[k]) for k in default},
-                                 source={k: ("config" if k in cfg and k in params else "loader default") for k in default}["subsample_fraction"],
+                lk = r.get("loader_kwargs")          # recorded by runs made after 2026-09-24
+                val = {k: (lk.get(k, default[k]) if lk else (cfg[k] if k in cfg and k in params else default[k]))
+                       for k in default}
+                src = "recorded loader_kwargs" if lk else \
+                    ("config" if "subsample_fraction" in cfg and "subsample_fraction" in params else "loader default")
+                rows.append(dict(model=model, dataset=ds, seed=s, **val, source=src,
                                  config_last_commit=last,
                                  test_n=r["test_plus"].get("n_samples") or (r["data"].get("splits") or {}).get("test_plus"),
                                  train_counts_sha=hashlib.sha256(json.dumps(cc, sort_keys=True).encode()).hexdigest()[:12] if cc else None))

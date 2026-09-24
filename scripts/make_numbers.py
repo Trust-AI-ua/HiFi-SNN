@@ -456,6 +456,24 @@ def results_section():
         add(f"JNExitTPninety{DS[ds]}Five", f(float(np.percentile(tp, 90)), 0), "prefix artifacts", "pooled over five seeds", "t' p90")
 
 
+def general_purpose():
+    """Appendix: the seven general-purpose benchmarks (macro-F1, five-seed means)."""
+    src = REPO / "results/diagnostics/per_seed_all_cells.csv"
+    c = pd.read_csv(src)
+    gp = c[~c.dataset.isin(IOT)]
+    if gp.dataset.nunique() != 7 or (gp.groupby(["dataset", "model"]).seed.nunique() != 5).any():
+        raise SystemExit("general-purpose cells incomplete")
+    means = gp.groupby(["dataset", "model"]).f1.mean().groupby("model").mean()
+    for m, mc in MOD.items():
+        add(f"JNFone{mc}GpMean", f(means[m]), rel(src), "mean over seven GP datasets of five-seed means",
+            f"general-purpose macro-F1, {m}")
+    add("JNDiffTtsVanGpMean", sgn(means["treespike"] - means["vanilla"]), rel(src), "GP mean", "T2S minus Vanilla SNN, GP")
+    add("JNDiffTtsDnnGpMean", sgn(means["treespike"] - means["dnn"]), rel(src), "GP mean", "T2S minus DNN-Tree, GP")
+    cse = gp[gp.dataset == "cse-cic-ids2018"].groupby("model").f1
+    for m, mc in MOD.items():
+        add(f"JNFone{mc}CseCic", f(cse.mean()[m]), rel(src), "five-seed mean", f"CSE-CIC-IDS2018 macro-F1, {m}")
+
+
 def results_extras():
     """Flagged column, the CICIoMT2024 accuracy-versus-operations point, and ranges
     the text derives, computed from unrounded values (ratios of rounded macros drift)."""
@@ -572,7 +590,7 @@ def perchannel():
 
 def main():
     for fn in (quality, precision, statistics, energy, deployment, others, tsweep, compact, perchannel,
-               results_section, results_extras):
+               results_section, results_extras, general_purpose):
         fn()
     sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip()
     # The generator's own two outputs are excluded: once tracked, the previous
