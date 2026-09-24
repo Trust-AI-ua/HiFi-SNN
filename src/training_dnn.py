@@ -230,6 +230,10 @@ def run_experiment(cfg: Dict) -> Dict:
                     "teacher_n_estimators", "teacher_max_depth", "teacher_lr",
                     "tau", "a_kd", "a_rank", "a_fp", "epochs", "batch_size", "lr",
                     "weight_decay", "quantize", "val_fraction", "seed", "device"]},
+        # The exact keyword arguments passed to get_dataset: subsample fraction, split,
+        # label granularity and seed. Earlier runs did not record them, so the config
+        # files were their only record (see results/diagnostics/loader_provenance.csv).
+        "loader_kwargs": dict(dk),
         "hardware": hw,
         "data": {"num_features": bundle.num_features, "num_classes": bundle.num_classes,
                  "class_names": bundle.class_names, "class_counts_train": bundle.class_counts_train,

@@ -333,6 +333,10 @@ def run_experiment(cfg: Dict) -> Dict:
                     "focal_gamma", "kd_tau", "batch_size", "epochs", "lr",
                     "weight_decay", "class_weighted", "early_exit_conf",
                     "val_fraction", "seed", "device"]},
+        # The exact keyword arguments passed to get_dataset: subsample fraction, split,
+        # label granularity and seed. Earlier runs did not record them, so the config
+        # files were their only record (see results/diagnostics/loader_provenance.csv).
+        "loader_kwargs": dict(dataset_kwargs),
         "hardware": hw,
         "data": {
             "num_features": bundle.num_features,
