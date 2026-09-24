@@ -137,7 +137,9 @@ def distillation_loss(logits, y, teacher_proba, hidden_rate, benign_class=0,
     eps = 1e-8
     ce = F.cross_entropy(logits, y, weight=ce_weight)
 
-    # KD: soft cross-entropy from the (temperature-sharpened) teacher distribution
+    # KD: soft cross-entropy from the temperature-SOFTENED teacher distribution.
+    # q^(1/tau), renormalised, equals softmax(log q / tau); with tau = 2 > 1 it flattens
+    # the teacher. No temperature on the student logits and no tau^2 factor.
     t = teacher_proba.clamp_min(eps) ** (1.0 / tau)
     t = t / t.sum(-1, keepdim=True)
     kd = -(t * F.log_softmax(logits, dim=-1)).sum(-1).mean()
