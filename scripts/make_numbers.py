@@ -302,12 +302,166 @@ def compact():
     e = c[c.dataset == "edgeiiot"].selected_rounds
     add("JNCompactRoundsEdgeIIoTMin", str(int(e.min())), rel(src), "five seeds", "fewest rounds kept, Edge-IIoTset")
     add("JNCompactRoundsEdgeIIoTMax", str(int(e.max())), rel(src), "five seeds", "most rounds kept, Edge-IIoTset")
-    d = pd.read_csv(REPO / "results/deployment/deployment_measurements.csv", comment="#")
-    r = d[(d.dataset == "edgeiiot") & (d.system == "compact_gbdt")].iloc[0]
-    add("JNKbGbdtCompactEdgeIIoT", f(r.total_bytes / 1024, 1), "results/deployment/deployment_measurements.csv",
-        "single seed-42 run", "compact GBDT artifact, Edge-IIoTset, KB")
+    # JNKbGbdtCompactEdgeIIoT is defined with the other per-dataset artifact sizes
+    # in results_section(); same source, same format.
     add("JNTimingWarmup", "500", "scripts/deployment_measure.py (N_WARMUP)", "protocol constant", "warm-up calls")
     add("JNTimingN", "2{,}000", "scripts/deployment_measure.py (N_TIMED)", "protocol constant", "timed samples")
+
+
+def results_section():
+    """Values for section_V_results.tex (IoT four, five seeds unless stated)."""
+    import glob as _glob
+    import make_results_table as MRT
+    import deployment_energy2 as E2
+    from make_dep_systems_table import deployed
+
+    # 1. results table: every metric through make_results_table.cell(), the path the
+    #    published results tables use, so the section cannot drift from them
+    code = {"vanilla": "Van", "tree": "Tts", "dnn": "Dnn", "tasnn": "Tasnn"}
+    energy = {}
+    for key, _, patt in MRT.MODELS:
+        for ds in IOT:
+            recs = [json.loads(Path(x).read_text()) for x in sorted(_glob.glob(str(REPO / patt.format(d=ds))))
+                    if int(Path(x).parent.name.split("_")[1]) in range(42, 47)]
+            if len(recs) != 5:
+                raise SystemExit(f"{key}/{ds}: {len(recs)} seeds")
+            c = MRT.cell(key, recs)
+            for m, mc in (("acc", "Acc"), ("bacc", "Bacc"), ("mcc", "Mcc"), ("dr", "Dr"), ("far", "Far")):
+                add(f"JN{mc}{code[key]}{DS[ds]}", f(100 * c[m]), patt.format(d=ds), "five-seed mean",
+                    f"{m} x100, {key}, {ds}")
+                add(f"JN{mc}{code[key]}{DS[ds]}Sd", f(100 * c[m + "_sd"]), patt.format(d=ds), "five-seed sample SD", "")
+            energy[(key, ds)] = c["energy"]
+
+    # 4a. energy table: 32-bit, full-window arithmetic, pJ per sample (same cell())
+    for (key, ds), e in energy.items():
+        add(f"JNEnergy{code[key]}{DS[ds]}", f"{e:,.0f}".replace(",", "{,}"),
+            "scripts/make_results_table.py cell()", "five-seed mean, 32-bit, full window",
+            f"arithmetic energy pJ per sample, {key}, {ds}")
+
+    # 2. encoder ablation: macro-F1 and input-inclusive full-window SOPs (thousands)
+    variants = {"Tree": "results/Tree-to-Spike/{d}/seed_{s}/results.json",
+                "Quantile": "results/encoder_ablation/{d}/quantile/seed_{s}/results.json",
+                "Uniform": "results/encoder_ablation/{d}/uniform/seed_{s}/results.json",
+                "All": "results/encoder_ablation/{d}/all/seed_{s}/results.json",
+                "Nokd": "results/encoder_ablation/{d}/nokd/seed_{s}/results.json"}
+    fone = {}
+    for v, patt in variants.items():
+        for ds in IOT:
+            rs = [json.loads((REPO / patt.format(d=ds, s=sd)).read_text()) for sd in range(42, 47)]
+            f1v = float(np.mean([100 * r["test_plus"]["metrics"]["f1_macro"] for r in rs]))
+            sops = float(np.mean([r["test_plus"]["spike_stats"]["synops_per_sample"]
+                                  + r["data"]["encoder_channels"] * r["config"]["hidden"][0] for r in rs]))
+            fone[(v, ds)] = f1v
+            add(f"JNAbl{v}{DS[ds]}Fone", f(f1v), patt.format(d=ds, s="*"), "five-seed mean", f"macro-F1, {v}, {ds}")
+            add(f"JNAbl{v}{DS[ds]}Ksops", f(sops / 1000, 1), patt.format(d=ds, s="*"),
+                "five-seed mean, full window, input-inclusive", f"SOPs per sample (thousands), {v}, {ds}")
+    m8 = pd.read_csv(REPO / "results/diagnostics/m8_input_spikes.csv")
+    for ds in IOT:
+        g = m8[m8.dataset == ds]
+        if len(g) != 5:
+            raise SystemExit(f"m8 input spikes: {ds} has {len(g)} seeds")
+        add(f"JNAblRaw{DS[ds]}Fone", f(g.macro_f1.mean()), "results/encoder_ablation/{ds}/m8_raw", "five-seed mean",
+            f"macro-F1, raw latency (M8 arm: raw-feature latency code with the no-KD loss), {ds}")
+        add(f"JNAblRaw{DS[ds]}Ksops", f(g.total_sops.mean() / 1000, 1), "results/diagnostics/m8_input_spikes.csv",
+            "five-seed mean, full window, input-inclusive (spikes actually emitted)",
+            f"SOPs per sample (thousands), raw latency, {ds}")
+    add("JNAblQuantileLoses", str(sum(fone[("Quantile", ds)] < fone[("Tree", ds)] for ds in IOT)),
+        "encoder ablation", "count of four", "IoT datasets where the quantile variant loses macro-F1 to tree")
+
+    # 3. per-channel quantization: delta = int8 minus fp32, M3 reruns
+    pc = pd.read_csv(REPO / "results/tables/tab_perchannel.csv")
+    pm = pc.groupby(["model", "dataset"])[["fp32_f1", "per_tensor_f1", "per_channel_f1"]].mean()
+    for model, mc in (("Tree-to-Spike", "Tts"), ("DNN-Tree", "Dnn")):
+        for ds in IOT:
+            r = pm.loc[(model, ds)]
+            add(f"JNPcDelta{mc}{DS[ds]}", sgn(r.per_channel_f1 - r.fp32_f1), "results/tables/tab_perchannel.csv",
+                "five-seed mean, M3 reruns", f"per-channel int8 minus fp32 macro-F1, {model}, {ds}")
+            add(f"JNPtDelta{mc}{DS[ds]}", sgn(r.per_tensor_f1 - r.fp32_f1), "results/tables/tab_perchannel.csv",
+                "five-seed mean, M3 reruns", f"per-tensor int8 minus fp32 macro-F1, {model}, {ds}")
+
+    # 4b. memory share of total energy, band systems, 100 pJ SRAM, both memory models,
+    #     both student configurations (deployed and full window)
+    raw = pd.read_csv(REPO / "results/deployment/deployment_measurements.csv", comment="#")
+    shares = []
+    for cfgname, frame in (("deployed", deployed(raw)), ("full", raw.assign(system=raw.system.replace({"t2s_full": "t2s_deployed"})))):
+        fr = frame[frame.dataset.isin(IOT) & frame.system.isin(["tasnn", "vanilla_snn", "dnn_tree", "t2s_deployed"])]
+        for reuse in (False, True):
+            for _, r in fr.iterrows():
+                a, mem = E2.row_energy(r, 100, 1300, reuse)
+                shares.append(100 * mem / (a + mem))
+    add("JNMemShareMin", pct(min(shares)), "scripts/deployment_energy2.py row_energy",
+        "single seed-42 run, IoT four, 100 pJ SRAM, both memory models, both configurations",
+        "lowest memory share of total energy across TASNN, Vanilla SNN, DNN-Tree, Tree-to-Spike")
+    add("JNMemShareMax", pct(max(shares)), "scripts/deployment_energy2.py row_energy", "same", "highest memory share")
+    # 4c. Vanilla SNN / Tree-to-Spike memory-inclusive ratio, deployed
+    band = pd.read_csv(REPO / "results/deployment/energy_crossover_iot.csv")
+    word = {5: "Five", 10: "Ten", 20: "Twenty", 50: "Fifty", 100: "Hundred"}
+    for r in band[band.config == "deployed"].itertuples():
+        add(f"JNVanBandDep{r.model.capitalize()}{word[r.sram_pJ]}", f(r.vs_vanilla_snn),
+            "results/deployment/energy_crossover_iot.csv", "single seed-42 run, IoT four, deployed",
+            f"Vanilla SNN / Tree-to-Spike total energy, {r.model}, {r.sram_pJ} pJ SRAM")
+
+    # 5. deployment extras
+    di = raw[raw.dataset.isin(IOT)]
+    for ds in IOT:
+        for sysname, n in (("vanilla_snn", "Van"), ("compact_gbdt", "GbdtCompact"), ("full_gbdt", "GbdtFull")):
+            r = di[(di.dataset == ds) & (di.system == sysname)].iloc[0]
+            add(f"JNKb{n}{DS[ds]}", f(r.total_bytes / 1024, 1), "results/deployment/deployment_measurements.csv",
+                "single seed-42 run", f"artifact KB, {sysname}, {ds}")
+    tt = pd.read_csv(REPO / "results/tables/tab_teacher_per_dataset.csv")
+    for arm, n in (("full", "GbdtFull"), ("compact", "GbdtCompact")):
+        g = tt[(tt.arm == arm) & tt.dataset.isin(IOT)]
+        add(f"JNFone{n}IotMean", f(g.F1M.mean()), "results/tables/tab_teacher_per_dataset.csv",
+            "IoT mean of five-seed means", f"GBDT {arm} macro-F1")
+        for r in g.itertuples():
+            add(f"JNFone{n}{DS[r.dataset]}", f(r.F1M), "results/tables/tab_teacher_per_dataset.csv",
+                "five-seed mean", f"GBDT {arm} macro-F1, {r.dataset}")
+
+    # 6. envelope: repriced sweep (verified packed format), 128 KiB
+    env = pd.read_csv(REPO / "results/deployment/gbdt_compression_repriced.csv")
+    env["gain_prune"] = env.gain_prune.astype(str)
+    ei = env[env.dataset.isin(IOT)]
+    fits = ei[ei.deploy_bytes_packed_fp32_thresholds <= 131072]
+    add("JNEnvFitsIot", str(fits.dataset.nunique()), "results/deployment/gbdt_compression_repriced.csv",
+        "seed 42, count of four", "IoT datasets with at least one sweep configuration within 128 KB")
+    full = ei[(ei.n_estimators == 200) & (ei.max_depth == 6) & (ei.gain_prune == "none") & (ei.leaf_bits == 16)] \
+        .set_index("dataset").macro_f1
+    near = fits[fits.apply(lambda r: r.macro_f1 >= full[r.dataset] - 1.0, axis=1)]
+    add("JNEnvFitsNearFullIot", str(near.dataset.nunique()), "results/deployment/gbdt_compression_repriced.csv",
+        "seed 42, count of four, test-selected (disclosed)",
+        "IoT datasets with a configuration within 128 KB AND within one point of the full ensemble")
+
+    # 7. early-exit audit
+    sel = pd.read_csv(REPO / "results/early_exit/selected_test.csv")
+    ton = sel[(sel.dataset == "toniot") & (~sel.early_exit_disabled)].seed.tolist()
+    add("JNExitTonAdmittedCount", str(len(ton)), "results/early_exit/selected_test.csv", "of five seeds",
+        "TON-IoT seeds on which early exit is admitted")
+    add("JNExitTonAdmittedSeeds", " and ".join(str(x) for x in ton), "results/early_exit/selected_test.csv", "",
+        "which TON-IoT seeds admit early exit")
+    ea = pd.read_csv(REPO / "results/tables/tab_exit_audit_iot.csv")
+    for ds in IOT:
+        g = ea[ea.dataset == ds]
+        r42 = g[g.seed == 42].iloc[0]
+        tp = np.concatenate([_tprime(ds, sd) for sd in range(42, 47)])
+        for stat, col in (("Wrong", "wrong_exit"), ("Inclusion", "inclusion")):
+            add(f"JNExit{stat}{DS[ds]}SeedFortyTwo", f(r42[col]), "results/tables/tab_exit_audit_iot.csv",
+                "seed 42 (as in evidence_arrival.json)", f"{col} %, {ds}")
+            add(f"JNExit{stat}{DS[ds]}Five", f(g[col].mean()), "results/tables/tab_exit_audit_iot.csv",
+                "mean over five seeds", f"{col} %, {ds}")
+            add(f"JNExit{stat}{DS[ds]}Min", f(g[col].min()), "results/tables/tab_exit_audit_iot.csv", "min over seeds", "")
+            add(f"JNExit{stat}{DS[ds]}Max", f(g[col].max()), "results/tables/tab_exit_audit_iot.csv", "max over seeds", "")
+        add(f"JNExitTMedian{DS[ds]}SeedFortyTwo", f(r42.t_median, 0), "results/tables/tab_exit_audit_iot.csv", "seed 42", "t' median")
+        add(f"JNExitTPninety{DS[ds]}SeedFortyTwo", f(r42.t_p90, 0), "results/tables/tab_exit_audit_iot.csv", "seed 42", "t' p90")
+        add(f"JNExitTMedian{DS[ds]}Five", f(float(np.median(tp)), 0), "prefix artifacts", "pooled over five seeds", "t' median")
+        add(f"JNExitTPninety{DS[ds]}Five", f(float(np.percentile(tp, 90)), 0), "prefix artifacts", "pooled over five seeds", "t' p90")
+
+
+def _tprime(ds, seed):
+    z = np.load(REPO / f"results/prefix_outputs/{ds}/treespike/seed_{seed}/test_prefix.npz", allow_pickle=True)
+    pl = z["prefix_logits"].astype(np.float32)
+    pred, y = pl.argmax(-1), z["labels"]
+    ok = pred[:, -1] == y
+    return ((pred == y[:, None]) & ok[:, None]).argmax(1)[ok] + 1
 
 
 def perchannel():
@@ -349,7 +503,8 @@ def perchannel():
 
 
 def main():
-    for fn in (quality, precision, statistics, energy, deployment, others, tsweep, compact, perchannel):
+    for fn in (quality, precision, statistics, energy, deployment, others, tsweep, compact, perchannel,
+               results_section):
         fn()
     sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip()
     # The generator's own two outputs are excluded: once tracked, the previous
