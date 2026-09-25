@@ -1,0 +1,531 @@
+{
+  "model": "DNN-Tree",
+  "dataset": "ciciomt2024",
+  "neuron": "ReLU",
+  "encoding": "tree-guided-dense",
+  "config": {
+    "T": 20,
+    "pop_max": 3,
+    "prune_quantile": 0.2,
+    "jitter": 0.12,
+    "hidden": [
+      64,
+      64
+    ],
+    "clip_relu": null,
+    "teacher_n_estimators": 200,
+    "teacher_max_depth": 6,
+    "teacher_lr": 0.1,
+    "tau": 2.0,
+    "a_kd": 1.0,
+    "a_rank": 0.3,
+    "a_fp": 0.5,
+    "epochs": 10,
+    "batch_size": 128,
+    "lr": 0.002,
+    "weight_decay": 0.0,
+    "quantize": true,
+    "val_fraction": 0.1,
+    "seed": 43,
+    "device": "cuda"
+  },
+  "loader_kwargs": {
+    "batch_size": 128,
+    "val_fraction": 0.1,
+    "seed": 43,
+    "subsample_fraction": 0.25,
+    "label_mode": "category"
+  },
+  "hardware": {
+    "device": "cuda",
+    "gpu_name": "NVIDIA H200 NVL",
+    "hostname": "michele-research-vm"
+  },
+  "data": {
+    "num_features": 45,
+    "num_classes": 6,
+    "class_names": [
+      "Benign",
+      "DDoS",
+      "DoS",
+      "MQTT",
+      "Recon",
+      "Spoofing"
+    ],
+    "class_counts_train": {
+      "Benign": 43389,
+      "DDoS": 1075199,
+      "DoS": 406487,
+      "MQTT": 59096,
+      "Recon": 23427,
+      "Spoofing": 3588
+    },
+    "encoder_channels": 37
+  },
+  "model_size": {
+    "total_parameters": 6982,
+    "trainable_parameters": 6982
+  },
+  "training": {
+    "train_time_s": 1347.5960817337036,
+    "training_curve": [
+      {
+        "epoch": 1,
+        "train_loss": 0.18149678035741917,
+        "val_accuracy": 0.9951011333865859
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.11820490319372966,
+        "val_accuracy": 0.9948385943548522
+      },
+      {
+        "epoch": 3,
+        "train_loss": 0.11426355264350549,
+        "val_accuracy": 0.9958664067344054
+      },
+      {
+        "epoch": 4,
+        "train_loss": 0.11061956530953584,
+        "val_accuracy": 0.9959557817239318
+      },
+      {
+        "epoch": 5,
+        "train_loss": 0.10916440345999179,
+        "val_accuracy": 0.9958719926712508
+      },
+      {
+        "epoch": 6,
+        "train_loss": 0.1087631854726742,
+        "val_accuracy": 0.9962741801241195
+      },
+      {
+        "epoch": 7,
+        "train_loss": 0.10662599534511301,
+        "val_accuracy": 0.9962685941872741
+      },
+      {
+        "epoch": 8,
+        "train_loss": 0.10671828360443868,
+        "val_accuracy": 0.9962071488819747
+      },
+      {
+        "epoch": 9,
+        "train_loss": 0.10515236482616072,
+        "val_accuracy": 0.9958328911133331
+      },
+      {
+        "epoch": 10,
+        "train_loss": 0.10550382744324399,
+        "val_accuracy": 0.9961624613872115
+      }
+    ]
+  },
+  "test_plus": {
+    "n_samples": 403545,
+    "metrics": {
+      "accuracy": 0.996498531762257,
+      "balanced_accuracy": 0.9138463594645501,
+      "f1_macro": 0.91633113435658,
+      "f1_weighted": 0.996500277739294,
+      "precision_macro": 0.919904248210652,
+      "recall_macro": 0.9138463594645501,
+      "matthews_corrcoef": 0.9929320338095846,
+      "cohen_kappa": 0.9929264209959155,
+      "per_class": {
+        "Benign": {
+          "precision": 0.9215686274509803,
+          "recall": 0.9957837040160219,
+          "f1": 0.9572398419292735,
+          "support": 9487
+        },
+        "DDoS": {
+          "precision": 0.999294514096584,
+          "recall": 0.9994595385810636,
+          "f1": 0.9993770195263096,
+          "support": 266439
+        },
+        "DoS": {
+          "precision": 0.9987794212342261,
+          "recall": 0.9975522428175125,
+          "f1": 0.9981654548423348,
+          "support": 104177
+        },
+        "MQTT": {
+          "precision": 0.9923741097876095,
+          "recall": 0.9849868635055674,
+          "f1": 0.9886666875961448,
+          "support": 15986
+        },
+        "Recon": {
+          "precision": 0.9989182506567764,
+          "recall": 0.9215854006273168,
+          "f1": 0.9586948461253244,
+          "support": 7014
+        },
+        "Spoofing": {
+          "precision": 0.6084905660377359,
+          "recall": 0.583710407239819,
+          "f1": 0.5958429561200924,
+          "support": 442
+        }
+      },
+      "class_names": [
+        "Benign",
+        "DDoS",
+        "DoS",
+        "MQTT",
+        "Recon",
+        "Spoofing"
+      ],
+      "roc_auc_weighted": 0.9999266623213272,
+      "confusion_matrix": [
+        [
+          9447,
+          1,
+          0,
+          5,
+          2,
+          32
+        ],
+        [
+          14,
+          266295,
+          125,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          142,
+          103922,
+          107,
+          4,
+          0
+        ],
+        [
+          146,
+          35,
+          1,
+          15746,
+          1,
+          57
+        ],
+        [
+          462,
+          6,
+          1,
+          5,
+          6464,
+          76
+        ],
+        [
+          180,
+          4,
+          0,
+          0,
+          0,
+          258
+        ]
+      ]
+    },
+    "binary_ids_metrics": {
+      "binary_accuracy": 0.9979085356032165,
+      "detection_rate": 0.9979596912129687,
+      "false_alarm_rate": 0.004216295983978075,
+      "binary_precision": 0.9998982949142372,
+      "binary_f1": 0.998928052510186,
+      "tp": 393254,
+      "fp": 40,
+      "tn": 9447,
+      "fn": 804,
+      "binary_confusion_matrix": [
+        [
+          9447,
+          40
+        ],
+        [
+          804,
+          393254
+        ]
+      ]
+    },
+    "compute": {
+      "macs_per_sample": 6848,
+      "energy_pj_horowitz": 31500.8,
+      "e_mac_pj": 4.6,
+      "paradigm": "dense one-shot ANN (T=1)",
+      "quantized_int8": true
+    },
+    "teacher_upper_bound": {
+      "accuracy": 0.997207250740314,
+      "f1_macro": 0.904725260257472,
+      "matthews_corrcoef": 0.9943611545076656
+    },
+    "inference_ms_per_sample_batch1": 0.05381155014038086,
+    "inference_ms_per_sample_batched": 0.0010874271392822266,
+    "fp32_before_projection": {
+      "metrics": {
+        "accuracy": 0.9964638392248696,
+        "balanced_accuracy": 0.9040486307905476,
+        "f1_macro": 0.920049783980493,
+        "f1_weighted": 0.9964233103013025,
+        "precision_macro": 0.9448704926320698,
+        "recall_macro": 0.9040486307905476,
+        "matthews_corrcoef": 0.9928619813200472,
+        "cohen_kappa": 0.9928539324295474,
+        "per_class": {
+          "Benign": {
+            "precision": 0.9093614978396544,
+            "recall": 0.9983134816064088,
+            "f1": 0.9517636418450407,
+            "support": 9487
+          },
+          "DDoS": {
+            "precision": 0.9989160562450538,
+            "recall": 0.9995909007314995,
+            "f1": 0.9992533645494487,
+            "support": 266439
+          },
+          "DoS": {
+            "precision": 0.9991823857023306,
+            "recall": 0.9971106866198873,
+            "f1": 0.9981454611844065,
+            "support": 104177
+          },
+          "MQTT": {
+            "precision": 0.9980982567353407,
+            "recall": 0.9849243087701739,
+            "f1": 0.9914675230628759,
+            "support": 15986
+          },
+          "Recon": {
+            "precision": 0.9987640970183841,
+            "recall": 0.9217279726261762,
+            "f1": 0.9587009713057018,
+            "support": 7014
+          },
+          "Spoofing": {
+            "precision": 0.7649006622516556,
+            "recall": 0.5226244343891403,
+            "f1": 0.6209677419354839,
+            "support": 442
+          }
+        },
+        "class_names": [
+          "Benign",
+          "DDoS",
+          "DoS",
+          "MQTT",
+          "Recon",
+          "Spoofing"
+        ],
+        "roc_auc_weighted": 0.9999110237429994,
+        "confusion_matrix": [
+          [
+            9471,
+            0,
+            0,
+            5,
+            2,
+            9
+          ],
+          [
+            18,
+            266330,
+            84,
+            4,
+            0,
+            3
+          ],
+          [
+            2,
+            277,
+            103876,
+            16,
+            5,
+            1
+          ],
+          [
+            203,
+            12,
+            0,
+            15745,
+            1,
+            25
+          ],
+          [
+            510,
+            0,
+            1,
+            5,
+            6465,
+            33
+          ],
+          [
+            211,
+            0,
+            0,
+            0,
+            0,
+            231
+          ]
+        ]
+      },
+      "binary_ids_metrics": {
+        "binary_accuracy": 0.997621083150578,
+        "detection_rate": 0.9976044135634856,
+        "false_alarm_rate": 0.00168651839359123,
+        "binary_precision": 0.999959300994582,
+        "binary_f1": 0.9987804692144697,
+        "tp": 393114,
+        "fp": 16,
+        "tn": 9471,
+        "fn": 944,
+        "binary_confusion_matrix": [
+          [
+            9471,
+            16
+          ],
+          [
+            944,
+            393114
+          ]
+        ]
+      },
+      "per_channel_int8": {
+        "metrics": {
+          "accuracy": 0.9964861415703329,
+          "balanced_accuracy": 0.9059250446631785,
+          "f1_macro": 0.9209360873836997,
+          "f1_weighted": 0.9964507208052469,
+          "precision_macro": 0.9435531110426464,
+          "recall_macro": 0.9059250446631785,
+          "matthews_corrcoef": 0.9929069880629676,
+          "cohen_kappa": 0.9928989930309576,
+          "per_class": {
+            "Benign": {
+              "precision": 0.909702209414025,
+              "recall": 0.9982080742068093,
+              "f1": 0.9519022968286677,
+              "support": 9487
+            },
+            "DDoS": {
+              "precision": 0.9989235656606194,
+              "recall": 0.9996059135486922,
+              "f1": 0.9992646231193487,
+              "support": 266439
+            },
+            "DoS": {
+              "precision": 0.9992304584543759,
+              "recall": 0.9971298847154362,
+              "f1": 0.9981790664712806,
+              "support": 104177
+            },
+            "MQTT": {
+              "precision": 0.998287888395688,
+              "recall": 0.984799199299387,
+              "f1": 0.9914976697317043,
+              "support": 15986
+            },
+            "Recon": {
+              "precision": 0.9987642879209144,
+              "recall": 0.9218705446250356,
+              "f1": 0.9587781731909846,
+              "support": 7014
+            },
+            "Spoofing": {
+              "precision": 0.7564102564102564,
+              "recall": 0.5339366515837104,
+              "f1": 0.6259946949602122,
+              "support": 442
+            }
+          },
+          "class_names": [
+            "Benign",
+            "DDoS",
+            "DoS",
+            "MQTT",
+            "Recon",
+            "Spoofing"
+          ],
+          "roc_auc_weighted": 0.999911171521456,
+          "confusion_matrix": [
+            [
+              9470,
+              0,
+              0,
+              5,
+              2,
+              10
+            ],
+            [
+              18,
+              266334,
+              79,
+              3,
+              1,
+              4
+            ],
+            [
+              4,
+              275,
+              103878,
+              15,
+              4,
+              1
+            ],
+            [
+              203,
+              12,
+              0,
+              15743,
+              1,
+              27
+            ],
+            [
+              509,
+              0,
+              1,
+              4,
+              6466,
+              34
+            ],
+            [
+              206,
+              0,
+              0,
+              0,
+              0,
+              236
+            ]
+          ]
+        },
+        "binary_ids_metrics": {
+          "binary_accuracy": 0.9976285172657324,
+          "detection_rate": 0.9976145643534708,
+          "false_alarm_rate": 0.001791925793190682,
+          "binary_precision": 0.9999567578567159,
+          "binary_f1": 0.9987842879700404,
+          "tp": 393118,
+          "fp": 17,
+          "tn": 9470,
+          "fn": 940,
+          "binary_confusion_matrix": [
+            [
+              9470,
+              17
+            ],
+            [
+              940,
+              393118
+            ]
+          ]
+        }
+      }
+    },
+    "dense_input": "spike_time"
+  },
+  "test_minus_21": null
+}

@@ -624,9 +624,128 @@ def perchannel():
     add("JNPcTonSeedPerChannel", f(one.per_channel_f1), rel(src), "TON-IoT seed 43", "DNN-Tree per-channel int8")
 
 
+# ------------------------------------------------------------------ E1 / E2 (pre-registered)
+def e1_e2():
+    """E1 (dense twin on spike-time input, "Tq") and E2 (entropy edges), read from the
+    per-run records; results/preregistration/2026-09-24_matched_info_and_entropy_edges.md.
+    Refuses unless every cell exists and shares its split and teacher with the stored
+    Tree-to-Spike run (the registered post-run check)."""
+    seeds = range(42, 47)
+    rj = lambda p: json.loads((REPO / p).read_text())
+    t2s = {(ds, sd): rj(f"results/Tree-to-Spike/{ds}/seed_{sd}/results.json") for ds in IOT for sd in seeds}
+    sig = lambda r: (r["test_plus"]["n_samples"], json.dumps(r["data"]["class_counts_train"], sort_keys=True),
+                     r["test_plus"]["teacher_upper_bound"]["f1_macro"])
+
+    def load(patt):
+        out = {}
+        for ds in IOT:
+            for sd in seeds:
+                p = patt.format(d=ds, s=sd)
+                if not (REPO / p).exists():
+                    raise SystemExit(f"E1/E2: {p} missing")
+                r = rj(p)
+                if sig(r) != sig(t2s[(ds, sd)]):
+                    raise SystemExit(f"E1/E2: {p} split or teacher differs from Tree-to-Spike")
+                out[(ds, sd)] = r
+        return out
+
+    # E1: fp32, per-tensor int8, per-channel int8
+    E1 = "results/DNN-TQ/{d}/seed_{s}/results.json"
+    tq = load(E1)
+    get = {"Fp": lambda r: 100 * r["test_plus"]["fp32_before_projection"]["metrics"]["f1_macro"],
+           "PerTensor": lambda r: 100 * r["test_plus"]["metrics"]["f1_macro"],
+           "PerChannel": lambda r: 100 * r["test_plus"]["fp32_before_projection"]["per_channel_int8"]["metrics"]["f1_macro"]}
+    pc = pd.read_csv(REPO / "results/tables/tab_perchannel.csv")
+    ref = {"Fp": "fp32_f1", "PerTensor": "per_tensor_f1", "PerChannel": "per_channel_f1"}
+    src1 = E1.format(d="*", s="*")
+    mean, gap, lvl_gap, chg = {}, {}, {}, {}
+    for cc, g in get.items():
+        for ds in IOT:
+            v = np.array([g(tq[(ds, sd)]) for sd in seeds])
+            mean[(cc, ds)] = v.mean()
+            add(f"JNPcTq{cc}{DS[ds]}", f(v.mean()), src1, "five-seed mean", f"DNN-TQ macro-F1, {cc}, {ds}")
+            add(f"JNPcTq{cc}{DS[ds]}Sd", f(v.std(ddof=1)), src1, "five-seed sample SD", f"DNN-TQ, {cc}, {ds}")
+            t = pc[(pc.model == "Tree-to-Spike") & (pc.dataset == ds)][ref[cc]].mean()
+            l = pc[(pc.model == "DNN-Tree") & (pc.dataset == ds)][ref[cc]].mean()
+            gap[(cc, ds)], lvl_gap[(cc, ds)], chg[(cc, ds)] = v.mean() - t, l - t, v.mean() - l
+            add(f"JNTqGap{cc}{DS[ds]}", sgn(gap[(cc, ds)]), f"{src1}; results/tables/tab_perchannel.csv",
+                "five-seed means", f"DNN-TQ minus Tree-to-Spike, {cc}, {ds}")
+        add(f"JNPcTq{cc}IotMean", f(np.mean([mean[(cc, ds)] for ds in IOT])), src1,
+            "IoT mean of five-seed means", f"DNN-TQ macro-F1, {cc}")
+        add(f"JNTqGap{cc}IotMean", sgn(np.mean([gap[(cc, ds)] for ds in IOT])),
+            f"{src1}; results/tables/tab_perchannel.csv", "IoT mean", f"DNN-TQ minus Tree-to-Spike, {cc}")
+    for cc, nm in (("PerTensor", "Pt"), ("PerChannel", "Pc")):
+        for ds in IOT:
+            add(f"JN{nm}DeltaTq{DS[ds]}", sgn(mean[(cc, ds)] - mean[("Fp", ds)]), src1, "five-seed mean",
+                f"{cc} int8 minus fp32 macro-F1, DNN-TQ, {ds}")
+        add(f"JN{nm}DeltaTqIotMean", sgn(np.mean([mean[(cc, ds)] - mean[("Fp", ds)] for ds in IOT])), src1,
+            "IoT mean", f"{cc} int8 minus fp32 macro-F1, DNN-TQ")
+    g_lv = np.mean([lvl_gap[("Fp", ds)] for ds in IOT])
+    g_tq = np.mean([gap[("Fp", ds)] for ds in IOT])
+    add("JNTqGapLevelFpIotMean", sgn(g_lv), "results/tables/tab_perchannel.csv", "IoT mean, M3 reruns",
+        "DNN-Tree (level input) minus Tree-to-Spike, fp32 (E1 reference gap)")
+    add("JNTqClosedPct", pct(100 * (1 - g_tq / g_lv), 0), src1, "IoT means",
+        "E1: percent of the fp32 gap closed by spike-time input (registered outcome C)")
+    for cc, nm in (("Fp", "Fp"), ("PerTensor", "PerTensor")):
+        tot = sum(chg[(cc, ds)] for ds in IOT)
+        add(f"JNTqEdgeShare{nm}", pct(100 * chg[(cc, "edgeiiot")] / tot, 0), src1, "five-seed means",
+            f"E1: Edge-IIoTset's percent of the four-dataset {cc} change (spike-time minus level input)")
+    t2s_fp = pc[(pc.model == "Tree-to-Spike") & (pc.dataset == "toniot")].set_index("seed").fp32_f1
+    ton = [get["Fp"](tq[("toniot", sd)]) - t2s_fp[sd] for sd in seeds]
+    add("JNTqTonGapMin", f(min(ton)), src1, "TON-IoT, per seed", "DNN-TQ minus Tree-to-Spike fp32, smallest seed")
+    add("JNTqTonGapMax", f(max(ton)), src1, "TON-IoT, per seed", "DNN-TQ minus Tree-to-Spike fp32, largest seed")
+
+    # E2: entropy edges vs tree edges
+    E2p = "results/encoder_ablation/{d}/entropy/seed_{s}/results.json"
+    ent = load(E2p)
+    src2 = E2p.format(d="*", s="*")
+    fone = lambda r: 100 * r["test_plus"]["metrics"]["f1_macro"]
+    ksops = lambda r: (r["test_plus"]["spike_stats"]["synops_per_sample"]
+                       + r["data"]["encoder_channels"] * r["config"]["hidden"][0]) / 1000
+    quant = {(ds, sd): rj(f"results/encoder_ablation/{ds}/quantile/seed_{sd}/results.json") for ds in IOT for sd in seeds}
+    d_ds, fill, tot_e, vs_q = {}, 0, 0, {}
+    for ds in IOT:
+        e = np.array([fone(ent[(ds, sd)]) for sd in seeds])
+        t = np.array([fone(t2s[(ds, sd)]) for sd in seeds])
+        q = np.array([fone(quant[(ds, sd)]) for sd in seeds])
+        d = t - e
+        d_ds[ds], vs_q[ds] = d.mean(), e.mean() - q.mean()
+        add(f"JNAblEntropy{DS[ds]}Fone", f(e.mean()), src2, "five-seed mean", f"macro-F1, Entropy, {ds}")
+        add(f"JNAblEntropy{DS[ds]}FoneSd", f(e.std(ddof=1)), src2, "five-seed sample SD", f"macro-F1, Entropy, {ds}")
+        add(f"JNAblEntropy{DS[ds]}Ksops", f(np.mean([ksops(ent[(ds, sd)]) for sd in seeds]), 1), src2,
+            "five-seed mean, full window, input-inclusive", f"SOPs per sample (thousands), Entropy, {ds}")
+        add(f"JNEntD{DS[ds]}", sgn(d.mean()), src2, "five-seed means", f"E2: tree minus entropy macro-F1, {ds}")
+        add(f"JNEntDMin{DS[ds]}", sgn(d.min()), src2, "per seed, paired", f"E2: smallest seed tree minus entropy, {ds}")
+        add(f"JNEntDMax{DS[ds]}", sgn(d.max()), src2, "per seed, paired", f"E2: largest seed tree minus entropy, {ds}")
+        add(f"JNEntSeedsAhead{DS[ds]}", str(int((d > 0).sum())), src2, "count of five seeds",
+            f"E2: seeds where tree beats entropy, {ds}")
+        add(f"JNEntVsQuantile{DS[ds]}", sgn(vs_q[ds]), src2, "five-seed means", f"entropy minus quantile macro-F1, {ds}")
+        for sd in seeds:
+            g = ent[(ds, sd)]["data"]["entropy_edges"]
+            fill += g["filler_total"]; tot_e += g["edges_entropy_total"]
+    dsum = sum(d_ds.values())
+    add("JNEntDIotMean", sgn(dsum / 4), src2, "IoT mean", "E2: tree minus entropy macro-F1 (registered outcome A)")
+    add("JNEntTreeAhead", str(sum(v > 0 for v in d_ds.values())), src2, "count of four", "E2: datasets where tree beats entropy")
+    add("JNEntBeatsQuantile", str(sum(v > 0 for v in vs_q.values())), src2, "count of four",
+        "datasets where entropy beats quantile")
+    for ds in IOT:
+        add(f"JNEntShare{DS[ds]}", pct(100 * d_ds[ds] / dsum, 0), src2, "five-seed means",
+            f"E2: {ds}'s percent of the four-dataset tree-minus-entropy sum")
+    shares = []
+    for ds in IOT:
+        gs = [ent[(ds, sd)]["data"]["entropy_edges"] for sd in seeds]
+        shares.append(sum(g["filler_total"] for g in gs) / sum(g["edges_entropy_total"] for g in gs))
+    add("JNEntFallbackMaxPct", pct(100 * max(shares), 1), src2, "per dataset, pooled over seeds",
+        "E2: largest per-dataset share of median fallback cuts (percent)")
+    for v, patt in (("Tree", "results/Tree-to-Spike/{d}/seed_{s}/results.json"),
+                    ("Quantile", "results/encoder_ablation/{d}/quantile/seed_{s}/results.json"), ("Entropy", E2p)):
+        m = np.mean([np.mean([fone(rj(patt.format(d=ds, s=sd))) for sd in seeds]) for ds in IOT])
+        add(f"JNAbl{v}IotMeanFone", f(m), patt.format(d="*", s="*"), "IoT mean of five-seed means", f"macro-F1, {v}")
+
+
 def main():
     for fn in (quality, precision, statistics, energy, deployment, others, tsweep, compact, perchannel,
-               results_section, results_extras, general_purpose, pooled):
+               results_section, results_extras, general_purpose, pooled, e1_e2):
         fn()
     sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip()
     # The generator's own two outputs are excluded: once tracked, the previous
