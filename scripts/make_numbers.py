@@ -684,16 +684,17 @@ def e1_e2():
     g_tq = np.mean([gap[("Fp", ds)] for ds in IOT])
     add("JNTqGapLevelFpIotMean", sgn(g_lv), "results/tables/tab_perchannel.csv", "IoT mean, M3 reruns",
         "DNN-Tree (level input) minus Tree-to-Spike, fp32 (E1 reference gap)")
-    add("JNTqClosedPct", pct(100 * (1 - g_tq / g_lv), 0), src1, "IoT means",
+    add("JNTqClosedPct", pct(100 * (1 - g_tq / g_lv), 0), f"{src1}; results/tables/tab_perchannel.csv", "IoT means",
         "E1: percent of the fp32 gap closed by spike-time input (registered outcome C)")
     for cc, nm in (("Fp", "Fp"), ("PerTensor", "PerTensor")):
         tot = sum(chg[(cc, ds)] for ds in IOT)
-        add(f"JNTqEdgeShare{nm}", pct(100 * chg[(cc, "edgeiiot")] / tot, 0), src1, "five-seed means",
+        add(f"JNTqEdgeShare{nm}", pct(100 * chg[(cc, "edgeiiot")] / tot, 0), f"{src1}; results/tables/tab_perchannel.csv",
+            "five-seed means",
             f"E1: Edge-IIoTset's percent of the four-dataset {cc} change (spike-time minus level input)")
     t2s_fp = pc[(pc.model == "Tree-to-Spike") & (pc.dataset == "toniot")].set_index("seed").fp32_f1
     ton = [get["Fp"](tq[("toniot", sd)]) - t2s_fp[sd] for sd in seeds]
-    add("JNTqTonGapMin", f(min(ton)), src1, "TON-IoT, per seed", "DNN-TQ minus Tree-to-Spike fp32, smallest seed")
-    add("JNTqTonGapMax", f(max(ton)), src1, "TON-IoT, per seed", "DNN-TQ minus Tree-to-Spike fp32, largest seed")
+    add("JNTqTonGapMin", f(min(ton)), f"{src1}; results/tables/tab_perchannel.csv", "TON-IoT, per seed", "DNN-TQ minus Tree-to-Spike fp32, smallest seed")
+    add("JNTqTonGapMax", f(max(ton)), f"{src1}; results/tables/tab_perchannel.csv", "TON-IoT, per seed", "DNN-TQ minus Tree-to-Spike fp32, largest seed")
 
     # E2: entropy edges vs tree edges
     E2p = "results/encoder_ablation/{d}/entropy/seed_{s}/results.json"
@@ -737,6 +738,49 @@ def e1_e2():
         shares.append(sum(g["filler_total"] for g in gs) / sum(g["edges_entropy_total"] for g in gs))
     add("JNEntFallbackMaxPct", pct(100 * max(shares), 1), src2, "per dataset, pooled over seeds",
         "E2: largest per-dataset share of median fallback cuts (percent)")
+    # Stalled runs (post hoc, disclosed; not a registered analysis): final validation
+    # accuracy more than 5 points below the median final validation accuracy of the ten
+    # runs (tree and entropy arms) on the same dataset.
+    fva = lambda r: r["training"]["training_curve"][-1]["val_accuracy"]
+    stalled = {"tree": set(), "entropy": set()}
+    for ds in IOT:
+        med = np.median([fva(t2s[(ds, sd)]) for sd in seeds] + [fva(ent[(ds, sd)]) for sd in seeds])
+        for arm, recs in (("tree", t2s), ("entropy", ent)):
+            stalled[arm] |= {(ds, sd) for sd in seeds if fva(recs[(ds, sd)]) < med - 0.05}
+    rule = "post hoc: final val. accuracy > 5 points below the dataset's ten-run median"
+    add("JNEntStalled", str(len(stalled["entropy"])), src2, rule, "E2: stalled entropy runs (of 20)")
+    add("JNEntStalledTree", str(len(stalled["tree"])), "results/Tree-to-Spike/*/seed_*/results.json", rule,
+        "E2: stalled tree runs (of 20)")
+    d_ns = {}
+    for ds in IOT:
+        keep = [sd for sd in seeds if (ds, sd) not in stalled["entropy"] | stalled["tree"]]
+        d_ns[ds] = np.mean([fone(t2s[(ds, sd)]) - fone(ent[(ds, sd)]) for sd in keep])
+        add(f"JNEntD{DS[ds]}NoStall", sgn(d_ns[ds]), src2, f"mean over non-stalled seeds ({rule})",
+            f"E2: tree minus entropy without stalled runs, {ds}")
+    add("JNEntDIotMeanNoStall", sgn(np.mean(list(d_ns.values()))), src2, f"IoT mean ({rule})",
+        "E2: tree minus entropy without stalled runs")
+    add("JNEntTreeAheadNoStall", str(sum(v > 0 for v in d_ns.values())), src2, f"count of four ({rule})",
+        "E2: datasets where tree beats entropy without stalled runs")
+    # Tree edge counts per kept feature (the per-dataset pattern in Section V-B)
+    for ds in IOT:
+        pfs = [ent[(ds, sd)]["data"]["entropy_edges"]["per_feature"] for sd in seeds]
+        meds = [np.median([v[0] for v in pf.values()]) for pf in pfs]
+        ones = [np.mean([v[0] == 1 for v in pf.values()]) for pf in pfs]
+        add(f"JNEntMedianEdges{DS[ds]}", f(np.mean(meds), 0), src2, "mean over seeds of the per-seed median",
+            f"tree edges per kept feature, median, {ds}")
+        add(f"JNEntSingleEdgePct{DS[ds]}", pct(100 * np.mean(ones), 0), src2, "mean over seeds",
+            f"percent of kept features with a single tree edge, {ds}")
+    # Single-threshold features: do tree and entropy pick the same cut? (seed 42 spot check)
+    sc_src = REPO / "results/diagnostics/single_edge_partition.csv"
+    sc = pd.read_csv(sc_src)
+    for ds in ("edgeiiot", "toniot"):
+        g = sc[sc.dataset == ds]
+        add(f"JNEntSingleCutSame{DS[ds]}", str(int(g.same_partition.sum())), rel(sc_src), "seed 42",
+            f"single-edge features where the entropy cut splits the training values as the tree's does, {ds}")
+        add(f"JNEntSingleCutTotal{DS[ds]}", str(len(g)), rel(sc_src), "seed 42", f"single-edge kept features, {ds}")
+    add("JNEntSingleCutSame", str(int(sc.same_partition.sum())), rel(sc_src), "seed 42, Edge-IIoTset and TON-IoT",
+        "single-edge features where the entropy cut matches the tree's partition")
+    add("JNEntSingleCutTotal", str(len(sc)), rel(sc_src), "seed 42, Edge-IIoTset and TON-IoT", "single-edge kept features")
     for v, patt in (("Tree", "results/Tree-to-Spike/{d}/seed_{s}/results.json"),
                     ("Quantile", "results/encoder_ablation/{d}/quantile/seed_{s}/results.json"), ("Entropy", E2p)):
         m = np.mean([np.mean([fone(rj(patt.format(d=ds, s=sd))) for sd in seeds]) for ds in IOT])
