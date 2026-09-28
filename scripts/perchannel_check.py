@@ -52,7 +52,7 @@ def quantize_per_channel_(model):
     return model
 
 
-def cell(model_name, ds, seed, device="cpu"):
+def cell(model_name, ds, seed, device="cpu", runs_root="results/diagnostics/val_curves", out_dir=None):
     import src.training_treespike as tts
     import src.training_dnn as tdnn
     from src.models import TreeGuidedSpikeEncoder, SNNStudent, DNNStudent, quantize_int8_
@@ -60,7 +60,7 @@ def cell(model_name, ds, seed, device="cpu"):
     from src.metrics import compute_metrics, compute_binary_ids_metrics
     import inspect
 
-    run = REPO / f"results/diagnostics/val_curves/{model_name}/{ds}/runs/seed_{seed}"
+    run = REPO / runs_root / f"{model_name}/{ds}/runs/seed_{seed}"   # runs_root: Part B A5 reruns live elsewhere
     rec = json.loads((run / "test_fp32_int8.json").read_text())
     saved_ch = json.loads((run / "encoder_channels.json").read_text())["channels"]
     mod = tdnn if model_name == "DNN-Tree" else tts
@@ -128,8 +128,9 @@ def cell(model_name, ds, seed, device="cpu"):
                **{f"per_tensor_{k}": v for k, v in r_pt.items()},
                **{f"per_channel_{k}": v for k, v in r_pc.items()},
                device=device, guards="encoder, fp32 and per-tensor reproduced")
-    OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / f"{model_name}_{ds}_seed{seed}.json").write_text(json.dumps(out, indent=1))
+    od = OUT if out_dir is None else Path(out_dir)
+    od.mkdir(parents=True, exist_ok=True)
+    (od / f"{model_name}_{ds}_seed{seed}.json").write_text(json.dumps(out, indent=1))
     print(f"{model_name:13s} {ds:12s} {seed}: fp32 {r_fp['f1']:.2f} | per-tensor {r_pt['f1']:.2f} "
           f"| per-channel {r_pc['f1']:.2f}", flush=True)
 
