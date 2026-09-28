@@ -228,6 +228,8 @@ def run_experiment(cfg: Dict) -> Dict:
 
     # ---------- training ----------
     training_curve = []  # list of {epoch, train_loss, val_loss, val_accuracy}
+    from src.selection import ValSelector, precision_scores
+    sel = ValSelector(cfg.get("select_on_val", False))   # Part B A1; off by default
     train_start = time.time()
     for epoch in range(cfg["epochs"]):
         model.train()
@@ -252,9 +254,20 @@ def run_experiment(cfg: Dict) -> Dict:
             "val_loss": val_loss,
             "val_accuracy": val_acc,
         })
+        vf1 = sel.update(epoch + 1, val_eval["y_true"], val_eval["y_pred"], model)
+        if vf1 is not None:
+            training_curve[-1]["val_macro_f1"] = vf1
         print(f"[epoch {epoch+1}/{cfg['epochs']}] "
               f"train_loss={train_loss:.4f} val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
     train_time_s = time.time() - train_start
+    selection = sel.finalize(model)            # selected checkpoint for everything below
+    precisions = None
+    if cfg.get("record_precisions"):
+        def _score(m):
+            e = _eval(m, bundle.test_loader, encoder, num_steps, device)
+            return e["y_pred"], e.get("y_score")
+        precisions = precision_scores(model, _score, _eval(model, bundle.test_loader, encoder, num_steps, device)["y_true"],
+                                      bundle.class_names)
 
     # ---------- final evaluation on both test sets ----------
     test_eval = _eval(model, bundle.test_loader, encoder, num_steps, device, loss_fn=loss_fn)
@@ -315,6 +328,10 @@ def run_experiment(cfg: Dict) -> Dict:
         "test_minus_21": test21_record,
     }
 
+    if selection.get("enabled"):
+        record["training"]["selection"] = selection
+    if precisions is not None:
+        record["test_plus"]["precisions"] = precisions
     with open(results_dir / "results.json", "w") as f:
         json.dump(record, f, indent=2)
     torch.save(model.state_dict(), results_dir / "checkpoint.pt")

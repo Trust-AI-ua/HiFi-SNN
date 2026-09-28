@@ -123,6 +123,29 @@ def entropy_cuts(x, y, k, class_weight=None):
     return vals, n_fill
 
 
+def median_fill(x, cut_positions, k):
+    """Complete a cut set to k cuts with the entropy cutter's median fillers: repeatedly
+    split the largest remaining segment (unweighted count; ties: leftmost) at its median.
+    ``cut_positions`` are indices s into the sorted distinct values u (a cut lies between
+    u[s-1] and u[s]). Returns (filler cut values as midpoints, the cutter's convention)."""
+    x = np.asarray(x, dtype=np.float32)
+    u, inv = np.unique(x, return_inverse=True)
+    ncum = np.concatenate([[0.0], np.cumsum(np.bincount(inv, minlength=len(u)).astype(np.float64))])
+    cuts = sorted(set(int(c) for c in cut_positions))
+    fill = []
+    while len(cuts) + len(fill) < k:
+        bounds = [0] + sorted(cuts + fill) + [len(u)]
+        segs = [(-(ncum[b] - ncum[a]), a, b) for a, b in zip(bounds[:-1], bounds[1:]) if b - a >= 2]
+        if not segs:
+            break
+        _, a, b = min(segs)
+        half = ncum[a] + (ncum[b] - ncum[a]) / 2.0
+        fill.append(int(np.clip(np.searchsorted(ncum, half), a + 1, b - 1)))
+    vals = ((u[np.array(fill, dtype=int) - 1].astype(np.float64) + u[np.array(fill, dtype=int)]) / 2.0).astype(np.float32) \
+        if fill else np.zeros(0, np.float32)
+    return vals
+
+
 class TreeGuidedSpikeEncoder:
     """Turns tabular flow features into spike trains using a trained GBDT teacher.
 
@@ -255,6 +278,44 @@ class TreeGuidedSpikeEncoder:
                                  "edges_entropy_total": int(sum(v[1] for v in per.values())),
                                  "filler_total": int(sum(v[2] for v in per.values())),
                                  "per_feature": per}
+        if self.encoder_mode == "entropy_tree":
+            # Part B fourth arm (B2 fired, amendment A2): the tree's channels and per-feature
+            # edge count as in "entropy"; cuts from sklearn's per-feature entropy tree
+            # (max_leaf_nodes = |E_j| + 1, the teacher's class weights), each moved to the
+            # smallest distinct training value above the threshold (x >= edge, the same
+            # partition of the training values); the cutter's median fillers complete the
+            # count when the tree stops early. Requires X and y in fit().
+            from sklearn.tree import DecisionTreeClassifier
+            if X is None or y is None:
+                raise ValueError("encoder_mode='entropy_tree' requires the training X and y in fit()")
+            X = np.asarray(X, dtype=np.float32)
+            y = np.asarray(y, dtype=np.int64)
+            self.entropy_filler_ = {}
+            w = teacher_class_weights(y, self.cost_power)
+            sw = w[y].astype(np.float64)
+            per = {}
+            for j in sorted({j for j, _ in self.channels_}):
+                k = len(self.edges_[j])
+                x = X[:, j]
+                u = np.unique(x)
+                if u.size < 2:                                # constant feature: keep tree edges
+                    per[int(j)] = [k, k, 0, 0]
+                    continue
+                clf = DecisionTreeClassifier(criterion="entropy", max_leaf_nodes=k + 1, random_state=0)
+                clf.fit(x.reshape(-1, 1), y, sample_weight=sw)
+                thr = clf.tree_.threshold[clf.tree_.children_left != -1]
+                pos = np.unique(np.searchsorted(u.astype(np.float64), thr, side="right"))
+                pos = pos[(pos >= 1) & (pos < len(u))]
+                fill = median_fill(x, pos, k)
+                e = np.unique(np.concatenate([u[pos], fill]).astype(np.float32))
+                self.edges_[j] = e
+                self.entropy_filler_[j] = int(len(fill))
+                per[int(j)] = [k, int(len(e)), int(len(fill)), int(k - len(e))]
+            self.diagnostics_ = {"cost_power": float(self.cost_power),
+                                 "edges_tree_total": int(sum(v[0] for v in per.values())),
+                                 "edges_entropy_total": int(sum(v[1] for v in per.values())),
+                                 "filler_total": int(sum(v[2] for v in per.values())),
+                                 "per_feature": per, "construction": "sklearn entropy tree per feature"}
         self.out_dim = len(self.channels_)
         return self
 

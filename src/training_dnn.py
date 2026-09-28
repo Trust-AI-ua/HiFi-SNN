@@ -170,6 +170,8 @@ def run_experiment(cfg: Dict) -> Dict:
     N, bs = len(Xtr), cfg["batch_size"]
     zero_rate = torch.zeros((), device=device)
     curve = []
+    from src.selection import ValSelector, precision_scores
+    sel = ValSelector(cfg.get("select_on_val", False))   # Part B A1; off by default
     for ep in range(cfg["epochs"]):
         student.train()
         perm = torch.randperm(N); running = 0.0; nb = 0; parts = {}
@@ -185,10 +187,20 @@ def run_experiment(cfg: Dict) -> Dict:
             running += float(loss.item()); nb += 1
         vp, _ = _forward_batches(student, encoder, Xval, bs, device)
         val_acc = float((vp == yval).mean())
+        vf1 = sel.update(ep + 1, yval, vp, student)
         curve.append({"epoch": ep + 1, "train_loss": running / max(nb, 1), "val_accuracy": val_acc})
+        if vf1 is not None:
+            curve[-1]["val_macro_f1"] = vf1
         print(f"[epoch {ep+1}/{cfg['epochs']}] loss={running/max(nb,1):.4f} "
               f"ce={parts.get('ce',0):.3f} kd={parts.get('kd',0):.3f} val_acc={val_acc:.4f}")
     train_time_s = time.time() - train_start
+    selection = sel.finalize(student)          # selected checkpoint for everything below
+    precisions = None
+    if cfg.get("record_precisions"):
+        precisions = precision_scores(student, lambda m: _forward_batches(m, encoder, Xte, bs, device), yte,
+                                      bundle.class_names)
+        results_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(student.state_dict(), results_dir / "checkpoint_fp32.pt")
 
     # ---------- optional: fp32 test metrics, captured BEFORE the int8 projection ----------
     fp32_record = None
@@ -270,6 +282,10 @@ def run_experiment(cfg: Dict) -> Dict:
         "training": {"train_time_s": train_time_s, "training_curve": curve},
         "test_plus": test_record, "test_minus_21": None,
     }
+    if selection.get("enabled"):
+        record["training"]["selection"] = selection
+    if precisions is not None:
+        record["test_plus"]["precisions"] = precisions
     with open(rj, "w") as f:
         json.dump(record, f, indent=2)
     torch.save(student.state_dict(), results_dir / "checkpoint.pt")

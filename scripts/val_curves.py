@@ -76,15 +76,17 @@ def main():
     ap.add_argument("model", choices=["DNN-Tree", "Tree-to-Spike"])
     ap.add_argument("dataset")
     ap.add_argument("--seed", type=int, required=True)
+    ap.add_argument("--out-root", default="results/diagnostics/val_curves",
+                    help="output root (Part B A5 reruns write elsewhere; default unchanged)")
     a = ap.parse_args()
 
-    out = REPO / "results/diagnostics/val_curves" / a.model / a.dataset
+    out = REPO / a.out_root / a.model / a.dataset
     out.mkdir(parents=True, exist_ok=True)
     if (out / "runs" / f"seed_{a.seed}" / "test_fp32_int8.json").exists():
         print(f"[skip] {a.model}/{a.dataset}/seed_{a.seed} already captured")
         return
     from src.joblock import claim
-    lock = REPO / f"results/diagnostics/val_curves/.locks/{a.model}_{a.dataset}_{a.seed}.lock"
+    lock = REPO / a.out_root / f".locks/{a.model}_{a.dataset}_{a.seed}.lock"
     _claim = claim(lock)
     if not _claim.__enter__():
         print(f"[busy] {a.model}/{a.dataset}/seed_{a.seed} claimed by another worker")

@@ -299,6 +299,8 @@ def run_experiment(cfg: Dict) -> Dict:
     N = len(Xtr)
     bs = cfg["batch_size"]
     training_curve = []
+    from src.selection import ValSelector, precision_scores
+    sel = ValSelector(cfg.get("select_on_val", False))   # Part B A1; off by default
     for ep in range(cfg["epochs"]):
         student.train()
         perm = torch.randperm(N)
@@ -317,12 +319,22 @@ def run_experiment(cfg: Dict) -> Dict:
         # val accuracy (standard forward)
         vp, _, _, _, _, _ = _encode_forward_in_batches(student, encoder, Xval, bs, device)
         val_acc = float((vp == yval).mean())
+        vf1 = sel.update(ep + 1, yval, vp, student)
         training_curve.append({"epoch": ep + 1, "train_loss": running / max(n_batches, 1),
                                "val_accuracy": val_acc, **{f"loss_{k}": v for k, v in last_parts.items()}})
+        if vf1 is not None:
+            training_curve[-1]["val_macro_f1"] = vf1
         print(f"[epoch {ep+1}/{cfg['epochs']}] loss={running/max(n_batches,1):.4f} "
               f"ce={last_parts.get('ce',0):.3f} kd={last_parts.get('kd',0):.3f} "
               f"val_acc={val_acc:.4f}")
     train_time_s = time.time() - train_start
+    selection = sel.finalize(student)          # selected checkpoint for everything below
+    precisions = None
+    if cfg.get("record_precisions"):
+        precisions = precision_scores(student, lambda m: _encode_forward_in_batches(m, encoder, Xte, bs, device)[:2],
+                                      yte, bundle.class_names)
+        results_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(student.state_dict(), results_dir / "checkpoint_fp32.pt")
 
     # ---------- 4) deploy: int8 quantize (SNN-only inference) ----------
     if cfg["quantize"]:
@@ -428,6 +440,10 @@ def run_experiment(cfg: Dict) -> Dict:
         "test_minus_21": None,
     }
 
+    if selection.get("enabled"):
+        record["training"]["selection"] = selection
+    if precisions is not None:
+        record["test_plus"]["precisions"] = precisions
     with open(results_dir / "results.json", "w") as f:
         json.dump(record, f, indent=2)
     torch.save(student.state_dict(), results_dir / "checkpoint.pt")
