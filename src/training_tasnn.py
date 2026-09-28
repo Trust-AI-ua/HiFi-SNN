@@ -303,7 +303,10 @@ def run_experiment(cfg: Dict) -> Dict:
     precisions = None
     if cfg.get("record_precisions"):
         def _score(m):
-            e = _eval(m, bundle.test_loader, device)
+            # the pipeline's exact test call: TASNN samples at inference and the early-exit
+            # predictor draws between batches, so the capture must make the same calls to
+            # see the same draws
+            e = _eval(m, bundle.test_loader, device, loss_fn=loss_fn, early_exit_conf=cfg["early_exit_conf"])
             return e["y_pred"], e.get("y_score")
         precisions = precision_scores(model, _score, bundle.test_loader.dataset.tensors[1].numpy().astype(np.int64),
                                       bundle.class_names)
