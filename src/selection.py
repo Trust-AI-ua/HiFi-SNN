@@ -44,14 +44,31 @@ class ValSelector:
 
 
 def precision_scores(model, score_fn, y_true, class_names) -> dict:
-    """score_fn(model) -> (y_pred, y_score); returns metrics at fp32, per-tensor and per-channel int8."""
+    """score_fn(model) -> (y_pred, y_score); returns metrics at fp32, per-tensor and per-channel int8.
+
+    The random-number state is saved on entry, restored before each of the three passes and
+    restored again on exit. A model that samples at inference (TASNN draws Bernoulli spikes)
+    therefore sees, in every captured pass, exactly the draws the pipeline's own test pass
+    sees afterwards, and the capture leaves the pipeline's stream untouched. Deterministic
+    models are unaffected."""
+    import torch
     from src.metrics import compute_metrics, compute_binary_ids_metrics
     from src.models.tree_to_spike import quantize_int8_, quantize_int8_per_channel_
+    cpu = torch.get_rng_state()
+    cuda = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+
+    def restore():
+        torch.set_rng_state(cpu)
+        if cuda is not None:
+            torch.cuda.set_rng_state_all(cuda)
+
     out = {}
     for name, fn in (("fp32", None), ("per_tensor_int8", quantize_int8_),
                      ("per_channel_int8", quantize_int8_per_channel_)):
         m = model if fn is None else fn(copy.deepcopy(model))
+        restore()
         pred, score = score_fn(m)
         out[name] = {"metrics": compute_metrics(y_true, pred, y_score=score, class_names=class_names),
                      "binary_ids_metrics": compute_binary_ids_metrics(y_true, pred, normal_class_index=0)}
+    restore()
     return out

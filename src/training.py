@@ -266,7 +266,7 @@ def run_experiment(cfg: Dict) -> Dict:
         def _score(m):
             e = _eval(m, bundle.test_loader, encoder, num_steps, device)
             return e["y_pred"], e.get("y_score")
-        precisions = precision_scores(model, _score, _eval(model, bundle.test_loader, encoder, num_steps, device)["y_true"],
+        precisions = precision_scores(model, _score, bundle.test_loader.dataset.tensors[1].numpy().astype(np.int64),
                                       bundle.class_names)
 
     # ---------- final evaluation on both test sets ----------
