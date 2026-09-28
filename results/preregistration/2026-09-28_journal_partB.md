@@ -231,3 +231,56 @@ gate (D9).
 4. After the queue drains: B3 latency and B8 memory under the gate.
 5. Aggregation, macros, one clean regeneration of `numbers.tex`, tag
    `tnnls-journal-r1`.
+
+## Amendment 1 (2026-09-28, after the no-training results, before any GPU run)
+
+The no-training outcomes were committed and pushed at 5d9baff before this amendment.
+The reviewer's decisions on them:
+
+**A1. B6 fired: run as registered.** The reported CICIoT2023 values become the
+20-epoch, validation-selected runs. The fixed-budget cells move to the appendix,
+labelled "original fixed-budget protocol". "The full affected block" means every arm
+that appears in a main-text CICIoT2023 cell, seeds 42-46:
+Tree-to-Spike, DNN-Tree, Vanilla SNN, TASNN, quantile, uniform, all, no-KD, raw
+(m8_raw), entropy, entropy-tree (the B2 arm, A2) and the spike-time-input dense twin
+(DNN-TQ): 12 arms, 60 runs. Protocol: 20 epochs; after every epoch, macro-F1 of the
+fp32 model on the loop's own validation pass; the best epoch's weights are kept (ties:
+earliest); fp32 weights are captured before the deployed int8 projection, so Table
+VIII's per-tensor and per-channel columns regenerate from the same runs. Regenerated
+from the new CICIoT2023 runs: Tree-to-Spike's early-exit threshold selection, the
+operation counts, the M8 decomposition and the exit audit. Every table caption labels
+CICIoT2023 as trained under the 20-epoch budget. Guard: for each trainer (Tree-to-Spike
+family, DNN-Tree/DNN-TQ, Vanilla SNN, TASNN) the new code path, run with selection off
+and 10 epochs, reproduces a stored run exactly before any block run. The block starts
+after the reviewer has seen its arm list and run count.
+
+**A2. B2 fired: the fourth arm runs**, 20 runs (IoT four, seeds 42-46, 10 epochs) under
+the E2 protocol and guards, plus its CICIoT2023 cells in the A1 block. Encoder mode
+"entropy_tree": the tree's channels and per-feature edge count |E_j| as in "entropy";
+the cuts are the thresholds of `DecisionTreeClassifier(criterion="entropy",
+max_leaf_nodes=|E_j|+1)` fitted per feature with the teacher's class weights, each
+converted to the encoder's convention as the smallest distinct training value above
+the threshold (the same partition of the training values); when the tree stops early,
+the cutter's median fillers complete the count. Guards: the existing encoder modes stay
+bitwise identical to the encoder at 5d9baff; the sample weights equal the teacher's.
+
+**A3. B4 CICIoMT2024 adopted as the non-random evaluation**, described as: "the
+provider's pcap-file-level partition: test flows come from capture files never used in
+training; whether these files are separate recording sessions is not documented." The
+existing Tree-to-Spike, DNN-Tree and entropy runs are used as they are. Added: the
+validation-selected GBDT (cost-weighted XGBoost, rounds {50, 100, 200} x depth
+{3, 4, 6}, selected on validation macro-F1, seeds 42-46).
+
+**A4. B4 TON-IoT host-disjoint split: recorded as not usable.** On every seed 1 to 5
+classes have no test rows (results/journal_partB/B4), so macro-F1 would cover a
+different class set on each seed. The decision rests on feasibility data only; no model
+was run on this split.
+
+**A5. M3 Edge-IIoTset reruns.** The four M3 cells that do not reproduce the stored runs
+(Tree-to-Spike and DNN-Tree, seeds 45 and 46) are rerun in the default environment.
+If they reproduce the stored runs, Table VIII is regenerated from them; if not, the
+per-seed disagreement and its cause are reported in the appendix.
+
+**A6. B5 dominated classes.** Per-class results with and without the cross-partition
+duplicates, for CIC-IDS2017 probe, CSE-CIC-IDS2018 r2l and DoS, and KDDCup99 DoS, from
+the stored models only (no training), in the appendix.
