@@ -19,10 +19,12 @@ for p in partB_b1_prop1.py partB_b3_ple.py partB_b6_stalled.py val_curves.py par
   if running $p; then log "ABORT B6 block: $p still running"; exit 1; fi
 done
 guard_ok || { log "ABORT B6 block: no passing reproduction guard"; exit 1; }
-log "START B6 CICIoT2023 block (60 runs, MAX=$MAX); previous scheduler stopped: its drain check matched other users' processes (idle since 2026-09-29T00:47Z)"
+log "START B6 CICIoT2023 block scheduler (60 runs, MAX=$MAX; finished runs and runs held by a live worker are skipped)"
 for arm in tree entropy entropy_tree quantile nokd raw all uniform tasnn vanilla dnn_tq dnn; do
   for s in 42 43 44 45 46; do
     [ -f results/journal_partB/B6/block/$arm/ciciot2023/seed_$s/results.json ] && continue
+    lk=results/journal_partB/B6/block/.locks/${arm}_$s.lock      # held by a live worker: skip, and
+    [ -f "$lk" ] && kill -0 "$(cat "$lk")" 2>/dev/null && continue   # never reopen its log
     launch ".venv/bin/python -u scripts/partB_b6_block.py $arm $s" $L/B6block_${arm}_$s.log
   done
 done
