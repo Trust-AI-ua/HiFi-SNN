@@ -96,7 +96,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--datasets", nargs="+", default=None)
     ap.add_argument("--seeds", nargs="+", type=int, default=None)
+    ap.add_argument("--prefix-root", default="results/prefix_outputs")
+    ap.add_argument("--out-root", default="results/early_exit",
+                    help="the published CSVs live at the default; a filtered run must write elsewhere")
     args = ap.parse_args()
+    global PREFIX, OUT
+    PREFIX, OUT = REPO / args.prefix_root, REPO / args.out_root
+    if (args.datasets or args.seeds) and OUT == REPO / "results" / "early_exit":
+        sys.exit("a filtered run would overwrite the published results/early_exit CSVs; pass --out-root")
     OUT.mkdir(parents=True, exist_ok=True)
 
     cells = sorted({(p.parts[-4], int(p.parts[-2].split("_")[1]))

@@ -31,13 +31,14 @@ DATASETS = ["nslkdd", "kddcup99", "unswnb15", "cicids2017", "cse-cic-ids2018",
             "iscxids2012", "ctu13", "toniot", "edgeiiot", "ciciomt2024", "ciciot2023"]
 SEEDS = [42, 43, 44, 45, 46]
 OUTROOT = REPO / "results" / "prefix_outputs"
+RESULTS_ROOT = "results/Tree-to-Spike"   # --results-root (Part B A1 block runs live elsewhere)
 TOL = 1e-9
 
 
 def load_cfg(dataset: str, seed: int) -> dict:
     """Config as the run actually used it: stored record first, yaml for the rest."""
     import yaml
-    rec_p = REPO / f"results/Tree-to-Spike/{dataset}/seed_{seed}/results.json"
+    rec_p = REPO / f"{RESULTS_ROOT}/{dataset}/seed_{seed}/results.json"
     rec = json.load(open(rec_p))
     cfg = dict(yaml.safe_load(open(REPO / f"experiments/Tree-to-Spike/{dataset}/config.yaml")))
     cfg.update(rec["config"])          # stored values win
@@ -73,7 +74,7 @@ def build(dataset: str, seed: int):
     ).fit(teacher, Xtr.shape[1], X=Xtr)
     st = SNNStudent(enc.out_dim, bundle.num_classes, hidden=tuple(cfg["hidden"]),
                     beta=cfg["beta"], leaky=cfg["leaky"]).to(dev)
-    ck = REPO / f"results/Tree-to-Spike/{dataset}/seed_{seed}/checkpoint.pt"
+    ck = REPO / f"{RESULTS_ROOT}/{dataset}/seed_{seed}/checkpoint.pt"
     st.load_state_dict(torch.load(ck, map_location=dev))
     st.eval()
     return st, enc, bundle, cfg, rec, dev, (Xva, yva, Xte, yte)
@@ -105,7 +106,11 @@ def main():
     ap.add_argument("--datasets", nargs="+", default=DATASETS)
     ap.add_argument("--seeds", nargs="+", type=int, default=SEEDS)
     ap.add_argument("--dtype", default="float32", choices=["float32", "float16"])
+    ap.add_argument("--results-root", default="results/Tree-to-Spike")
+    ap.add_argument("--out-root", default="results/prefix_outputs")
     args = ap.parse_args()
+    global RESULTS_ROOT, OUTROOT
+    RESULTS_ROOT, OUTROOT = args.results_root, REPO / args.out_root
 
     report, t0 = [], time.time()
     for ds in args.datasets:
