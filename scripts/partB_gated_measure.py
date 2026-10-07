@@ -51,13 +51,17 @@ FU = "results/journal_partB/B6/followup"
 TIMING = {"p50_ms", "mean_ms", "p95_ms", "p99_ms", "n_timed"}
 
 
+REF = "374e7d4a"   # last commit of scripts/deployment_measure.py before the Part B patch (9647f430)
+
+
 def committed_measure_module():
-    src = subprocess.check_output(["git", "show", "HEAD:scripts/deployment_measure.py"], cwd=REPO, text=True)
+    src = subprocess.check_output(["git", "show", f"{REF}:scripts/deployment_measure.py"], cwd=REPO, text=True)
     tmp = Path(tempfile.mkdtemp()) / "deployment_measure_committed.py"
     tmp.write_text(src)
     spec = importlib.util.spec_from_file_location("dm_committed", tmp)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    mod.REPO, mod.OUT = REPO, REPO / "results" / "deployment"   # it would derive both from its temp path
     return mod
 
 
@@ -81,7 +85,7 @@ def guard_a(DM):
                 bad.append((o["system"], k, o.get(k), n.get(k)))
     if bad:
         sys.exit(f"Ga failed: {bad[:5]}")
-    return f"patched deployment_measure reproduces the committed version on toniot/42 ({len(new)} systems, all non-timing fields)"
+    return f"patched deployment_measure reproduces the pre-patch version (374e7d4a) on toniot/42 ({len(new)} systems, all non-timing fields)"
 
 
 def f1(y, p):
