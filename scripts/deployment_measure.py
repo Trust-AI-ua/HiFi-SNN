@@ -82,6 +82,12 @@ OUT = REPO / "results" / "deployment"
 
 DATASETS = ["nslkdd", "kddcup99", "unswnb15", "cicids2017", "cse-cic-ids2018",
             "iscxids2012", "ctu13", "toniot", "edgeiiot", "ciciomt2024", "ciciot2023"]
+# Model and artifact roots (Part B A1: the CICIoT2023 block models live elsewhere). Defaults
+# are the production paths; {d} is the dataset.
+ROOTS = {"t2s": "results/Tree-to-Spike/{d}", "dnn": "results/DNN-Tree/{d}",
+         "vanilla": "results/{d}/SNN_LeakyParallel/latency", "tasnn": "results/TASNN/{d}",
+         "prefix": "results/prefix_outputs/{d}/treespike", "exit_csv": "results/early_exit/selected_test.csv",
+         "out_csv": "results/deployment/deployment_measurements.csv"}
 N_WARMUP = 500
 N_TIMED = 2000
 
@@ -182,7 +188,10 @@ def time_fn(fn, X, n_warm=N_WARMUP, n_timed=N_TIMED) -> dict:
 GBDT_SYSTEMS = ("full_gbdt", "compact_gbdt")
 
 
-def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
+def measure(dataset: str, seed: int, only_gbdt: bool = False, artifact_dir=None) -> list:
+    """artifact_dir (Part B, B8): if set, each system's runtime artifact (weights, encoder,
+    the timed input subset) is pickled there, for peak-memory measurement in a fresh
+    process. Measurements are unchanged."""
     from src.data import get_dataset, DATASET_LOADERS
     from src.models import (TreeGuidedSpikeEncoder, SNNStudent, DNNStudent,
                             quantize_int8_)
@@ -195,7 +204,7 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
     rows = []
 
     cfg = yaml.safe_load(open(REPO / f"experiments/Tree-to-Spike/{dataset}/config.yaml"))
-    rp = REPO / f"results/Tree-to-Spike/{dataset}/seed_{seed}/results.json"
+    rp = REPO / ROOTS["t2s"].format(d=dataset) / f"seed_{seed}/results.json"
     if rp.exists():
         cfg.update(json.load(open(rp))["config"])
     cfg["dataset"], cfg["seed"] = dataset, seed
@@ -212,6 +221,11 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
     K, F = b.num_classes, Xtr.shape[1]
     # deterministic common subset, identical for every system
     Xsub = Xte[:max(N_WARMUP, N_TIMED)]
+    def dump(tag, **art):
+        if artifact_dir is not None:
+            Path(artifact_dir).mkdir(parents=True, exist_ok=True)
+            with open(Path(artifact_dir) / f"{dataset}_{tag}.pkl", "wb") as fh:
+                pickle.dump(dict(system=tag, dataset=dataset, seed=seed, Xsub=Xsub, **art), fh, protocol=4)
 
     teacher, _, present = _fit_teacher(Xtr, ytr, K, cfg)
     # ONE prediction thread, like every neural system (torch.set_num_threads(1) above).
@@ -256,6 +270,7 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
             d = pd.DataFrame(x, columns=[f"f{i}" for i in range(F)])
             return teacher.predict(d, iteration_range=ir)
 
+        dump(tag, kind="gbdt", teacher=teacher, iteration_range=ir, F=F)
         lat = time_fn(gb_fn, Xsub)
         # the teacher is fit on the classes PRESENT in training (CSE-CIC-IDS2018
         # declares five and exhibits four), so the packing and the label mapping
@@ -299,7 +314,7 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
 
     # ---------------- Vanilla SNN and TASNN (float32, as reported) ----------------
     import json as _json
-    vck = REPO / f"results/{dataset}/SNN_LeakyParallel/latency/seed_{seed}/checkpoint.pt"
+    vck = REPO / ROOTS["vanilla"].format(d=dataset) / f"seed_{seed}/checkpoint.pt"
     if vck.exists():
         from src.models import SNN
         from src.encoding import get_encoder
@@ -314,9 +329,10 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
             with torch.no_grad():
                 return vm(venc(torch.from_numpy(x), vT))
 
+        dump("vanilla_snn", kind="vanilla", sd=vm.state_dict(), F=F, K=K, vcfg=dict(vcfg))
         lat = time_fn(van_fn, Xsub)
         vb = student_bytes(vm.state_dict(), int8_grid=False)
-        rj = REPO / f"results/{dataset}/SNN_LeakyParallel/latency/seed_{seed}/results.json"
+        rj = REPO / ROOTS["vanilla"].format(d=dataset) / f"seed_{seed}/results.json"
         _vss = _json.load(open(rj))["test_plus"]["spike_stats"]
         spk = float(_vss["energy_spikes_per_sample"])
         # Its own run counts BOTH synaptic layers (input spikes x hidden, hidden
@@ -354,11 +370,11 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
                          tree_nodes_visited=np.nan, tree_comparisons=np.nan,
                          n_trees=0, n_nodes=0, **lat))
 
-    tack = REPO / f"results/TASNN/{dataset}/seed_{seed}/checkpoint.pt"
+    tack = REPO / ROOTS["tasnn"].format(d=dataset) / f"seed_{seed}/checkpoint.pt"
     if tack.exists():
         from src.models import TASNN
         tcfg = yaml.safe_load(open(REPO / f"experiments/TASNN/{dataset}/config.yaml"))
-        tcfg.update(_json.load(open(REPO / f"results/TASNN/{dataset}/seed_{seed}/results.json"))["config"])
+        tcfg.update(_json.load(open(REPO / ROOTS["tasnn"].format(d=dataset) / f"seed_{seed}/results.json"))["config"])
         tm = TASNN(num_features=F, num_classes=K, num_steps=tcfg["num_steps"],
                    d_model=tcfg["d_model"], n_heads=tcfg["n_heads"], n_layers=tcfg["n_layers"],
                    ff=tcfg["ff"], dropout=tcfg["dropout"], pop_M=tcfg["pop_M"],
@@ -372,17 +388,18 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
             with torch.no_grad():
                 return tm(torch.from_numpy(x))
 
+        dump("tasnn", kind="tasnn", sd=tm.state_dict(), F=F, K=K, tcfg=dict(tcfg))
         lat = time_fn(tas_fn, Xsub)
         # TASNN records no operation count. It is priced by the SAME analytic
         # formula the published figures use (scripts/benchmark_4way.py), not by a
         # new path: hook-based counting misses MultiheadAttention's projections and
         # score products and lands at about half. This reproduces the paper.
         from src.tasnn_energy import tasnn_energy_pj
-        _rec_t = _json.load(open(REPO / f"results/TASNN/{dataset}/seed_{seed}/results.json"))
+        _rec_t = _json.load(open(REPO / ROOTS["tasnn"].format(d=dataset) / f"seed_{seed}/results.json"))
         _e_t, t_macs, t_sops = tasnn_energy_pj(_rec_t)
         t_macs, t_sops = float(t_macs), float(t_sops)
         tb2 = student_bytes(tm.state_dict(), int8_grid=False)
-        rj = REPO / f"results/TASNN/{dataset}/seed_{seed}/results.json"
+        rj = REPO / ROOTS["tasnn"].format(d=dataset) / f"seed_{seed}/results.json"
         spk = float(_json.load(open(rj))["test_plus"]["spike_stats"]["energy_spikes_per_sample"])
         rows.append(dict(dataset=dataset, seed=seed, system="tasnn",
                          representation="transformer + LIF core", precision="FP32",
@@ -397,7 +414,7 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
                          n_trees=0, n_nodes=0, **lat))
 
     # ---------------- DNN-Tree (int8-grid checkpoint) ----------------
-    dck = REPO / f"results/DNN-Tree/{dataset}/seed_{seed}/checkpoint.pt"
+    dck = REPO / ROOTS["dnn"].format(d=dataset) / f"seed_{seed}/checkpoint.pt"
     if dck.exists():
         dcfg = yaml.safe_load(open(REPO / f"experiments/DNN-Tree/{dataset}/config.yaml"))
         m = DNNStudent(enc.out_dim, K, hidden=tuple(dcfg["hidden"]),
@@ -408,6 +425,8 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
             with torch.no_grad():
                 return m(enc.encode_dense(x))
 
+        dump("dnn_tree", kind="dnn", sd=m.state_dict(), enc=enc, K=K, hidden=tuple(dcfg["hidden"]),
+             clip_relu=dcfg.get("clip_relu"))
         lat = time_fn(dnn_fn, Xsub)
         bb = student_bytes(m.state_dict(), int8_grid=True); mb = bb["model_bytes"]
         rows.append(dict(dataset=dataset, seed=seed, system="dnn_tree",
@@ -423,14 +442,14 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
                          n_trees=0, n_nodes=0, **eb, **lat))
 
     # ---------------- Tree-to-Spike: full window and selected exit ----------------
-    tck = REPO / f"results/Tree-to-Spike/{dataset}/seed_{seed}/checkpoint.pt"
+    tck = REPO / ROOTS["t2s"].format(d=dataset) / f"seed_{seed}/checkpoint.pt"
     if tck.exists():
         st = SNNStudent(enc.out_dim, K, hidden=tuple(cfg["hidden"]),
                         beta=cfg["beta"], leaky=cfg["leaky"]).to(dev)
         st.load_state_dict(torch.load(tck, map_location=dev)); st.eval()
         tbb = student_bytes(st.state_dict(), int8_grid=True); mb = tbb["model_bytes"]
 
-        sel = REPO / "results/early_exit/selected_test.csv"
+        sel = REPO / ROOTS["exit_csv"]
         theta, disabled, exec_sops, mean_exit = None, True, np.nan, float(cfg["T"])
         if sel.exists():
             s = pd.read_csv(sel)
@@ -458,9 +477,11 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False) -> list:
 
         for tag, fn, me in (("t2s_full", t2s_full_fn, float(cfg["T"])),
                             ("t2s_exit", t2s_exit_fn, mean_exit)):
+            dump(tag, kind="t2s", sd=st.state_dict(), enc=enc, K=K, hidden=tuple(cfg["hidden"]),
+                 beta=cfg["beta"], leaky=cfg["leaky"], theta=(theta if tag == "t2s_exit" else None))
             lat = time_fn(fn, Xsub)
             # measured executed SOPs from the cached prefix artifact at the mean exit step
-            pf = (REPO / f"results/prefix_outputs/{dataset}/treespike/seed_{seed}"
+            pf = (REPO / ROOTS["prefix"].format(d=dataset) / f"seed_{seed}"
                   / "test_prefix.npz")
             sops = np.nan
             if pf.exists():
@@ -498,7 +519,14 @@ if __name__ == "__main__":
     ap.add_argument("--systems", choices=["all", "gbdt"], default="all",
                     help="gbdt: re-measure only the GBDT rows and MERGE them into the existing "
                          "CSV, keeping every other row as measured")
+    for k in ROOTS:
+        ap.add_argument("--" + k.replace("_", "-") + ("-root" if k not in ("exit_csv", "out_csv") else ""),
+                        dest=k, default=ROOTS[k])
     args = ap.parse_args()
+    for k in ROOTS:
+        ROOTS[k] = getattr(args, k)
+    if ROOTS["out_csv"] == "results/deployment/deployment_measurements.csv" and set(args.datasets) != set(DATASETS):
+        sys.exit("a partial run would overwrite the published deployment_measurements.csv; pass --out-csv")
     OUT.mkdir(parents=True, exist_ok=True)
 
     load_at_start = wait_for_gate(REPO)
@@ -528,7 +556,8 @@ if __name__ == "__main__":
     df["serialization_format"] = df.get("serialization_format", SER.SERIALIZATION_FORMAT)
     df["serialization_format"] = df["serialization_format"].fillna(SER.SERIALIZATION_FORMAT)
     df["source_script"] = "scripts/deployment_measure.py"
-    csv = OUT / "deployment_measurements.csv"
+    csv = REPO / ROOTS["out_csv"]
+    csv.parent.mkdir(parents=True, exist_ok=True)
     header = []
     if args.systems == "gbdt":
         # merge: replace only the re-measured GBDT rows, keep the rest and their run IDs
@@ -545,4 +574,4 @@ if __name__ == "__main__":
     with open(csv, "w") as fh:
         fh.write("\n".join(header) + "\n")
         df.to_csv(fh, index=False)
-    print(f"\nwrote {OUT}/deployment_measurements.csv ({len(df)} rows)")
+    print(f"\nwrote {csv} ({len(df)} rows)")
