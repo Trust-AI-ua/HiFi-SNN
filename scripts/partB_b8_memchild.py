@@ -6,7 +6,7 @@ torch, xgboost, the repository's models and encoders), records the resident set 
 (VmRSS) after imports as the baseline, loads one artifact written by
 scripts/deployment_measure.py (artifact_dir), runs the deployment latency workload on one
 CPU thread (500 warm-up + 2,000 batch-1 calls on the same input subset), and reports the
-process's peak resident set size (ru_maxrss) and the increment over the baseline.
+peak resident set size of its own address space (VmHWM) and the increment over the baseline.
 
     python scripts/partB_b8_memchild.py <artifact.pkl>      # prints one JSON line
 """
@@ -32,11 +32,15 @@ from src.encoding import get_encoder  # noqa: E402
 N_WARMUP, N_TIMED = 500, 2000
 
 
-def rss_kb() -> int:
+def status_kb(field: str) -> int:
     for line in open("/proc/self/status"):
-        if line.startswith("VmRSS:"):
+        if line.startswith(field + ":"):
             return int(line.split()[1])
     return -1
+
+
+def rss_kb() -> int:
+    return status_kb("VmRSS")
 
 
 def build(a):
@@ -91,9 +95,13 @@ def main():
     with torch.no_grad():
         for i in range(min(N_WARMUP + N_TIMED, len(X))):
             fn(X[i:i + 1])
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # VmHWM is the peak RSS of THIS address space (it starts afresh at exec). ru_maxrss is not
+    # usable here: Linux carries it across fork and exec, so a child started from a large
+    # parent reports the parent's peak (the first B8 run read 18.6 GB for every system).
+    peak = status_kb("VmHWM")
     print(json.dumps(dict(dataset=a["dataset"], seed=a["seed"], system=a["system"], baseline_rss_kb=base,
                           after_load_rss_kb=loaded, peak_rss_kb=peak, peak_minus_baseline_kb=peak - base,
+                          ru_maxrss_kb_inherited=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
                           calls=int(min(N_WARMUP + N_TIMED, len(X))))))
 
 
