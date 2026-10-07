@@ -199,7 +199,13 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False, artifact_dir=None)
                                         _set_seed)
     import yaml, inspect, copy
 
-    torch.set_num_threads(1)          # single-thread CPU, as specified
+    # torch.set_num_threads(1) is set AFTER the teacher fit (below): it also caps the OpenMP
+    # threads XGBoost trains with, and a capped fit is not the production teacher on
+    # CICIoT2023, CICIoMT2024 and CSE-CIC-IDS2018 (Part B, 2026-10-07). It must also not be
+    # set by an earlier measure() in the same process: main() runs one process per cell.
+    if torch.get_num_threads() == 1 and (os.cpu_count() or 1) > 1:
+        raise SystemExit("torch is already single-threaded in this process; the teacher fit would be capped. "
+                         "Measure each cell in a fresh process.")
     dev = torch.device("cpu")
     rows = []
 
@@ -228,6 +234,14 @@ def measure(dataset: str, seed: int, only_gbdt: bool = False, artifact_dir=None)
                 pickle.dump(dict(system=tag, dataset=dataset, seed=seed, Xsub=Xsub, **art), fh, protocol=4)
 
     teacher, _, present = _fit_teacher(Xtr, ytr, K, cfg)
+    # guard: the refit teacher is the production teacher (its test macro-F1 equals the record's)
+    if rp.exists():
+        _want = json.load(open(rp))["test_plus"]["teacher_upper_bound"]["f1_macro"]
+        _got = compute_metrics(yte, present[teacher.predict(pd.DataFrame(Xte, columns=[f"f{i}" for i in range(F)]))],
+                               class_names=b.class_names)["f1_macro"]
+        if _got != _want:
+            raise SystemExit(f"{dataset}/{seed}: refit teacher {_got!r} is not the production teacher {_want!r}")
+    torch.set_num_threads(1)          # single-thread CPU, as specified (after the teacher fit)
     # ONE prediction thread, like every neural system (torch.set_num_threads(1) above).
     # The teacher is fitted with n_jobs=4, and XGBoost predicts with the model's own
     # thread count, so without this the GBDT rows were timed on four threads.
@@ -522,9 +536,16 @@ if __name__ == "__main__":
     for k in ROOTS:
         ap.add_argument("--" + k.replace("_", "-") + ("-root" if k not in ("exit_csv", "out_csv") else ""),
                         dest=k, default=ROOTS[k])
+    ap.add_argument("--artifact-dir", default=None, help="Part B B8: pickle each system's runtime artifact here")
+    ap.add_argument("--cell-out", default=None, help=argparse.SUPPRESS)   # internal: one cell, rows as JSON
     args = ap.parse_args()
     for k in ROOTS:
         ROOTS[k] = getattr(args, k)
+    if args.cell_out:                  # child: exactly one (dataset, seed), fresh process
+        rows = measure(args.datasets[0], args.seeds[0], only_gbdt=args.systems == "gbdt",
+                       artifact_dir=args.artifact_dir)
+        Path(args.cell_out).write_text(json.dumps(rows, default=lambda o: None if o is None else float(o)))
+        sys.exit(0)
     if ROOTS["out_csv"] == "results/deployment/deployment_measurements.csv" and set(args.datasets) != set(DATASETS):
         sys.exit("a partial run would overwrite the published deployment_measurements.csv; pass --out-csv")
     OUT.mkdir(parents=True, exist_ok=True)
@@ -534,7 +555,21 @@ if __name__ == "__main__":
     for ds in args.datasets:
         for seed in args.seeds:
             try:
-                r = measure(ds, seed, only_gbdt=args.systems == "gbdt")
+                # one fresh process per cell: measure() sets torch to one thread after its
+                # teacher fit, which would cap the next cell's teacher fit in this process
+                import subprocess as _sp
+                with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as _tf:
+                    cell_out = _tf.name
+                cmd = [sys.executable, "-u", __file__, "--datasets", ds, "--seeds", str(seed),
+                       "--systems", args.systems, "--cell-out", cell_out]
+                for k in ROOTS:
+                    cmd += ["--" + k.replace("_", "-") + ("-root" if k not in ("exit_csv", "out_csv") else ""), ROOTS[k]]
+                if args.artifact_dir:
+                    cmd += ["--artifact-dir", args.artifact_dir]
+                if _sp.run(cmd).returncode != 0:
+                    raise RuntimeError(f"cell process failed for {ds}/{seed}")
+                r = json.loads(Path(cell_out).read_text())
+                os.unlink(cell_out)
                 allrows += r
                 print(f"[{ds}/s{seed}] {len(r)} systems | {(time.time()-t0)/60:.1f} min",
                       flush=True)

@@ -15,16 +15,17 @@ quiet window, single-threaded CPU, batch 1, the deployment workload (500 warm-up
 timed calls on the first 2,500 test rows):
   1. deployment_measure on CICIoT2023 seed 42 with the block's selected-checkpoint models,
      the block's prefix outputs and early-exit selection;
-  2. deployment_measure on the other three IoT datasets, production models, to write the
-     memory artifacts (their latencies are recorded as a same-session consistency check, not
-     to replace published rows);
+  2. deployment_measure on the other ten datasets, production models: the whole deployment
+     table is re-measured in this session with the fixed procedure (teacher fitted before the
+     thread cap and checked against the production teacher; one fresh process per dataset),
+     on the user's decision of 2026-10-07; the published CSV is left as it was;
   3. B3: PLE-MLP latency per IoT dataset (selected configuration, seed 42, fp32);
   4. B8: peak resident memory per system and dataset, each in a fresh process
      (scripts/partB_b8_memchild.py).
 
     python scripts/partB_gated_measure.py
-Output: results/journal_partB/B8/<run_id>/{guards.json, deployment_ciciot2023_block.csv,
-        deployment_iot_same_session.csv, ple_latency.csv, peak_memory.csv, summary.json}
+Output: results/journal_partB/B8/<run_id>/{guards.json, deployment_measurements_partB.csv,
+        ple_latency.csv, peak_memory.csv, summary.json}
 """
 from __future__ import annotations
 
@@ -71,21 +72,43 @@ def same(a, b):
     return a == b
 
 
-def guard_a(DM):
-    old = committed_measure_module().measure("toniot", 42)
-    new = DM.measure("toniot", 42)
+def cell_rows(dataset, roots=None, artifact_dir=None, reference=False):
+    """measure() for one dataset at seed 42 in a fresh process (patched script, or the
+    pre-patch reference loaded from git); rows come back as JSON."""
+    fd, out = tempfile.mkstemp(suffix=".json"); os.close(fd)
+    env = {k: v for k, v in os.environ.items() if k not in C.THREAD_VARS}
+    if reference:
+        code = (f"import sys, json; sys.path.insert(0, {str(REPO)!r}); sys.path.insert(0, {str(REPO / 'scripts')!r}); "
+                f"import partB_gated_measure as G; m = G.committed_measure_module(); "
+                f"rows = m.measure({dataset!r}, 42); "
+                f"open({out!r}, 'w').write(json.dumps(rows, default=lambda o: None if o is None else float(o)))")
+        cmd = [sys.executable, "-c", code]
+    else:
+        cmd = [sys.executable, "-u", str(REPO / "scripts/deployment_measure.py"), "--datasets", dataset,
+               "--seeds", "42", "--cell-out", out]
+        for k, v in (roots or {}).items():
+            cmd += ["--" + k.replace("_", "-") + ("-root" if k not in ("exit_csv", "out_csv") else ""), v]
+        if artifact_dir:
+            cmd += ["--artifact-dir", str(artifact_dir)]
+    r = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(f"measurement process failed for {dataset}: {r.stdout[-800:]} {r.stderr[-1500:]}")
+    rows = json.loads(Path(out).read_text()); os.unlink(out)
+    return rows
+
+
+def guard_a():
+    old, new = cell_rows("toniot", reference=True), cell_rows("toniot")
     if [r["system"] for r in old] != [r["system"] for r in new]:
         sys.exit("Ga: system lists differ")
     bad = []
     for o, n in zip(old, new):
         for k in set(o) | set(n):
-            if k in TIMING:
-                continue
-            if not same(o.get(k), n.get(k)):
+            if k not in TIMING and not same(o.get(k), n.get(k)):
                 bad.append((o["system"], k, o.get(k), n.get(k)))
     if bad:
         sys.exit(f"Ga failed: {bad[:5]}")
-    return f"patched deployment_measure reproduces the pre-patch version (374e7d4a) on toniot/42 ({len(new)} systems, all non-timing fields)"
+    return f"patched deployment_measure reproduces the pre-patch version (374e7d4a) on toniot/42 ({len(new)} systems, all non-timing fields; fresh processes)"
 
 
 def f1(y, p):
@@ -179,13 +202,14 @@ def main():
     out = C.run_dir(st)
     art = out / "artifacts"
     import deployment_measure as DM
-    guards = {"Ga": guard_a(DM)}
-    print("Ga:", guards["Ga"], flush=True)
-    guards["Gb"] = guard_b()
+    guards = {}
+    guards["Gb"] = guard_b()                      # first: nothing has capped threads in this process yet
     print("Gb:", guards["Gb"], flush=True)
     ple = ple_models()
     guards["Gc"] = {ds: v["f1"] for ds, v in ple.items()}
     print("Gc: PLE-MLP seed-42 models reproduce their records", flush=True)
+    guards["Ga"] = guard_a()
+    print("Ga:", guards["Ga"], flush=True)
     (out / "guards.json").write_text(json.dumps(guards, indent=1, default=float))
 
     gate = REPO / DM.GATE_FILE
@@ -194,28 +218,25 @@ def main():
                     f"(run {st['run_id']}), on the user's instruction to stop other jobs\n")
     load0 = DM.wait_for_gate(REPO)
 
-    # 1. CICIoT2023, block models
-    for k, v in {"t2s": f"{BLOCK}/tree/{{d}}", "dnn": f"{BLOCK}/dnn/{{d}}", "vanilla": f"{BLOCK}/vanilla/{{d}}",
-                 "tasnn": f"{BLOCK}/tasnn/{{d}}", "prefix": f"{FU}/prefix_outputs/{{d}}/treespike",
-                 "exit_csv": f"{FU}/early_exit/selected_test.csv"}.items():
-        DM.ROOTS[k] = v
-    rows = DM.measure("ciciot2023", 42, artifact_dir=art)
-    pd.DataFrame(rows).assign(run_id=st["run_id"], load1_at_start=load0,
-                              models="CICIoT2023 block (A1: 20 epochs, validation-selected checkpoint)").to_csv(
-        out / "deployment_ciciot2023_block.csv", index=False)
-    print("1. CICIoT2023 block models measured", flush=True)
-
-    # 2. other IoT datasets, production models (memory artifacts; same-session latencies)
-    DM.ROOTS.update({"t2s": "results/Tree-to-Spike/{d}", "dnn": "results/DNN-Tree/{d}",
-                     "vanilla": "results/{d}/SNN_LeakyParallel/latency", "tasnn": "results/TASNN/{d}",
-                     "prefix": "results/prefix_outputs/{d}/treespike",
-                     "exit_csv": "results/early_exit/selected_test.csv"})
-    rows2 = []
-    for ds in ("ciciomt2024", "edgeiiot", "toniot"):
-        rows2 += DM.measure(ds, 42, artifact_dir=art)
-    pd.DataFrame(rows2).assign(run_id=st["run_id"], note="same-session consistency check; published rows unchanged").to_csv(
-        out / "deployment_iot_same_session.csv", index=False)
-    print("2. other IoT datasets measured", flush=True)
+    # 1-2. the whole deployment table, one fresh process per dataset; CICIoT2023 with the block models
+    block_roots = {"t2s": f"{BLOCK}/tree/{{d}}", "dnn": f"{BLOCK}/dnn/{{d}}", "vanilla": f"{BLOCK}/vanilla/{{d}}",
+                   "tasnn": f"{BLOCK}/tasnn/{{d}}", "prefix": f"{FU}/prefix_outputs/{{d}}/treespike",
+                   "exit_csv": f"{FU}/early_exit/selected_test.csv"}
+    rows = []
+    for ds in C.ALL:
+        r = cell_rows(ds, roots=block_roots if ds == "ciciot2023" else None,
+                      artifact_dir=art if ds in C.IOT else None)
+        for x in r:
+            x["models"] = ("CICIoT2023 block (A1: 20 epochs, validation-selected checkpoint)" if ds == "ciciot2023"
+                           else "production")
+        rows += r
+        print(f"   measured {ds}: {len(r)} systems", flush=True)
+    df = pd.DataFrame(rows).assign(run_id=st["run_id"], source_script="scripts/deployment_measure.py (Part B fixed procedure)")
+    with open(out / "deployment_measurements_partB.csv", "w") as fh:
+        fh.write(f"# run_id={st['run_id']} commit={st['commit']} load1_at_start={load0:.2f} teacher fitted before "
+                 f"the thread cap and checked against the production teacher; one process per dataset\n")
+        df.to_csv(fh, index=False)
+    print("1-2. deployment table re-measured (11 datasets)", flush=True)
 
     # 3. B3 PLE-MLP latency (same protocol: one thread, batch 1, 500 + 2,000 calls)
     torch.set_num_threads(1)
