@@ -4,9 +4,9 @@ Mean +/- std over 5 seeds. DNN-Tree is the dense iso-architecture twin: it emits
 
 | Dataset | Classes | Model | Architecture (in - hidden - out) | Params | Storage KB (fp32/int8) | Spikes/sample | TTFS | Exit | Rel.E |
 |---|--:|---|---|--:|--:|--:|--:|--:|--:|
-| CICIoT2023 | 8 | Vanilla SNN | 46 - 128 - 8 (LIF, T=25) | 23.6K | 92.0 / 23.0 | 217 +/- 16.4 | 11.2 +/- 0.0 /25 | 15.6 +/- 0.5 /25 | 0.30x |
-| CICIoT2023 | 8 | Tree-to-Spike | 37 - 64 - 64 - 8 (LIF, T=20) | 7.2K | 42.0 / 20.9 (incl. enc.) | 352 +/- 51.7 | 14.8 +/- 0.2 /20 | 4.7 +/- 1.8 /20 | 1.00x |
-| CICIoT2023 | 8 | DNN-Tree | 37 - 64 - 64 - 8 (ReLU) | 7.2K | 42.0 / 20.9 (incl. enc.) | 31 +/- 3.5 (act.) | -- | -- | 2.82x |
+| CICIoT2023 | 8 | Vanilla SNN | 46 - 128 - 8 (LIF, T=25) | 23.6K | 92.0 / 23.0 | 222 +/- 17.7 | -- | 15.7 +/- 0.4 /25 | 0.31x |
+| CICIoT2023 | 8 | Tree-to-Spike | 37 - 64 - 64 - 8 (LIF, T=20) | 7.2K | 42.0 / 20.9 (incl. enc.) | 342 +/- 48.1 | -- | 6.0 +/- 2.2 /20 | 1.00x |
+| CICIoT2023 | 8 | DNN-Tree | 37 - 64 - 64 - 8 (ReLU) | 7.2K | 42.0 / 20.9 (incl. enc.) | --- | -- | -- | 2.85x |
 | CICIoT2023 | 8 | TASNN | 46 - Tr(d=128x3) - STC64 - 128 - 64 - 8 (T=16) | 491.7K | 1,920.7 / 480.2 | 13 +/- 1.1 | -- | -- | 8kx (analytic) |
 | CICIoMT2024 | 6 | Vanilla SNN | 45 - 128 - 6 (LIF, T=25) | 23.2K | 90.5 / 22.6 | 171 +/- 15.4 | 10.2 +/- 0.0 /25 | 21.3 +/- 2.7 /25 | 0.37x |
 | CICIoMT2024 | 6 | Tree-to-Spike | 37 - 64 - 64 - 6 (LIF, T=20) | 7.0K | 40.7 / 20.2 (incl. enc.) | 208 +/- 16.3 | 14.5 +/- 0.3 /20 | 4.8 +/- 1.6 /20 | 1.00x |

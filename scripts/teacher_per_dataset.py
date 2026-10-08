@@ -61,8 +61,15 @@ if __name__ == "__main__":
     # single seed-42 deployment run. Mixing the two aggregations in one table
     # without saying which applies per column group is what this fixes.
     _ap.add_argument("--seeds", nargs="+", type=int, default=[SEED])
+    # --rejoin keeps the quality columns of the existing table (teacher refits; they do not
+    # depend on the deployment table) and redoes only the deployment join. Guarded: run with
+    # --deployment-csv <the table it was built from> --out <elsewhere>, it must reproduce
+    # the existing table exactly.
+    _ap.add_argument("--rejoin", action="store_true")
+    _ap.add_argument("--deployment-csv", default="results/deployment/deployment_measurements.csv")
+    _ap.add_argument("--out", default="results/tables/tab_teacher_per_dataset.csv")
     _a = _ap.parse_args()
-    meas = pd.read_csv(REPO/"results/deployment/deployment_measurements.csv", comment="#")
+    meas = pd.read_csv(REPO/_a.deployment_csv, comment="#")
     meas = meas[meas.seed == SEED]
     comp_all = pd.read_csv(REPO/"results/deployment/compact_gbdt.csv")
     # Each seed's compact arm uses THAT seed's validation-selected round count. An
@@ -72,20 +79,31 @@ if __name__ == "__main__":
                                 .selected_rounds.iloc[0])
     rows = []
     for ds in NAME:
-        per_seed = {}
-        for _s in _a.seeds:
-            try:
-                per_seed[_s] = evaluate(ds, sel_of(ds, _s), seed=_s)
-            except Exception as e:
-                print(f"[fail] {ds} seed {_s}: {e}", flush=True)
-        if not per_seed:
-            continue
         q, qsd = {}, {}
-        for arm in ("full", "compact"):
-            vals = [v[arm] for v in per_seed.values() if arm in v]
-            q[arm] = {k: float(np.mean([x[k] for x in vals])) for k in vals[0]}
-            qsd[arm] = {k + "_sd": float(np.std([x[k] for x in vals], ddof=1))
-                        if len(vals) > 1 else 0.0 for k in vals[0]}
+        if _a.rejoin:
+            old = pd.read_csv(REPO/"results/tables/tab_teacher_per_dataset.csv")
+            old = old[old.dataset == ds].set_index("arm")
+            if old.empty:
+                continue
+            QK = ["ACC", "BACC", "F1M", "MCC", "DR", "FAR"]
+            per_seed = range(int(old.n_seeds.iloc[0]))
+            for arm in ("full", "compact"):
+                q[arm] = {k: float(old.loc[arm, k]) for k in QK}
+                qsd[arm] = {k + "_sd": float(old.loc[arm, k + "_sd"]) for k in QK}
+        else:
+            per_seed = {}
+            for _s in _a.seeds:
+                try:
+                    per_seed[_s] = evaluate(ds, sel_of(ds, _s), seed=_s)
+                except Exception as e:
+                    print(f"[fail] {ds} seed {_s}: {e}", flush=True)
+            if not per_seed:
+                continue
+            for arm in ("full", "compact"):
+                vals = [v[arm] for v in per_seed.values() if arm in v]
+                q[arm] = {k: float(np.mean([x[k] for x in vals])) for k in vals[0]}
+                qsd[arm] = {k + "_sd": float(np.std([x[k] for x in vals], ddof=1))
+                            if len(vals) > 1 else 0.0 for k in vals[0]}
         sub = meas[meas.dataset == ds].set_index("system")
         t2s_e = float(sub.loc["t2s_exit", "sops"]) * E_ADD
         for arm, sysname in (("full", "full_gbdt"), ("compact", "compact_gbdt")):
@@ -103,5 +121,5 @@ if __name__ == "__main__":
                   f"FAR={q[arm]['FAR']:5.2f} {r.model_bytes/1024:8.1f}KB "
                   f"{r.p50_ms:6.3f}ms E={e:8.0f}pJ ({e/t2s_e:.2f}x)", flush=True)
     d = pd.DataFrame(rows)
-    d.to_csv(REPO/"results/tables/tab_teacher_per_dataset.csv", index=False)
-    print(f"\n[wrote] results/tables/tab_teacher_per_dataset.csv ({len(d)} rows)")
+    d.to_csv(REPO/_a.out, index=False)
+    print(f"\n[wrote] {_a.out} ({len(d)} rows)")
