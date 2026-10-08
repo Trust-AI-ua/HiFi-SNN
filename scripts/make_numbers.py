@@ -280,20 +280,34 @@ def others():
 def tsweep():
     """Window sweep from the ladder: T = 10, 40, 80 against production T = 20.
 
-    Three IoT datasets only: the Edge-IIoTset arms were run on the pre-repair corpus
-    and are retired to results/superseded/. The arms differ from production only
-    in T (checked: encoder_mode and class_weighted resolve to the same defaults).
+    The four IoT datasets. The first Edge-IIoTset arms were run on the pre-repair corpus
+    and are retired to results/superseded/; its arms here are the 2026-10-08 rerun on the
+    repaired corpus (all 175 ladder runs: production teacher and split). The arms differ
+    from production only in T (checked: encoder_mode and class_weighted resolve to the
+    same defaults; the Edge-IIoTset rerun's configs differ only in T).
     Pre-committed criterion, not met: every T within 1.0 point of T = 20.
+    The ladder arms are 10-epoch runs, so CICIoT2023's T = 20 reference is the
+    fixed-budget run (results/fixed_budget_ciciot2023), not the 20-epoch block (A1).
     """
     word = {10: "Ten", 40: "Forty", 80: "Eighty"}
     def f1s(paths):
         return np.array([100 * json.loads(Path(x).read_text())["test_plus"]["metrics"]["f1_macro"] for x in paths])
-    for ds in ["ciciot2023", "ciciomt2024", "toniot"]:
-        base = f1s([REPO / f"results/Tree-to-Spike/{ds}/seed_{s}/results.json" for s in range(42, 47)]).mean()
+    for ds in IOT:
+        root = "results/fixed_budget_ciciot2023" if ds == "ciciot2023" else "results"
+        recs = [json.loads((REPO / f"{root}/Tree-to-Spike/{ds}/seed_{s}/results.json").read_text()) for s in range(42, 47)]
+        if any(r["training"].get("selection", {}).get("enabled") or len(r["training"]["training_curve"]) != 10 for r in recs):
+            raise SystemExit(f"T sweep: {ds} reference is not the 10-epoch fixed-budget run")
+        base = np.mean([100 * r["test_plus"]["metrics"]["f1_macro"] for r in recs])
+        defaults = {"encoder_mode": "tree", "class_weighted": False}
         for T, w in word.items():
+            for s, r in zip(range(42, 47), recs):
+                c, p = json.loads((REPO / f"results/ladder/{ds}/T{T}/seed_{s}/results.json").read_text())["config"], r["config"]
+                extra = {k for k in set(c) | set(p) if c.get(k, "absent") != p.get(k, "absent")} - {"T"}
+                if c["T"] != T or any(k in p or c[k] != defaults.get(k, "no default") for k in extra):
+                    raise SystemExit(f"T sweep: {ds} T{T} seed {s} differs from production in more than T")
             v = f1s([REPO / f"results/ladder/{ds}/T{T}/seed_{s}/results.json" for s in range(42, 47)])
-            add(f"JNTsweep{DS[ds]}{w}", sgn(v.mean() - base), f"results/ladder/{ds}/T{T}",
-                "five-seed mean difference vs production T = 20", f"macro-F1 at T = {T} minus T = 20, {ds}")
+            add(f"JNTsweep{DS[ds]}{w}", sgn(v.mean() - base), f"results/ladder/{ds}/T{T}; {root}/Tree-to-Spike/{ds}",
+                "five-seed mean difference vs the 10-epoch T = 20 run", f"macro-F1 at T = {T} minus T = 20, {ds}")
 
 
 def compact():
@@ -578,6 +592,19 @@ def results_extras():
     add("JNTtsOverVanTotalMax", f(1 / dv.min(), 1), "results/deployment/energy_crossover_iot.csv", "same", "max")
 
 
+def _reported_val_acc(r):
+    """Validation accuracy of the reported checkpoint: the selected epoch where checkpoint
+    selection is on (the CICIoT2023 block, amendment A1), else the last epoch."""
+    tc = r["training"]["training_curve"]
+    sel = r["training"].get("selection") or {}
+    if sel.get("enabled"):
+        e = sel["selected_epoch"]
+        if tc[e - 1]["epoch"] != e:
+            raise SystemExit("training curve is not indexed by epoch")
+        return tc[e - 1]["val_accuracy"]
+    return tc[-1]["val_accuracy"]
+
+
 def _tprime(ds, seed):
     z = np.load(REPO / f"results/prefix_outputs/{ds}/treespike/seed_{seed}/test_prefix.npz", allow_pickle=True)
     pl = z["prefix_logits"].astype(np.float32)
@@ -652,9 +679,19 @@ def e1_e2():
     # E1: fp32, per-tensor int8, per-channel int8
     E1 = "results/DNN-TQ/{d}/seed_{s}/results.json"
     tq = load(E1)
-    get = {"Fp": lambda r: 100 * r["test_plus"]["fp32_before_projection"]["metrics"]["f1_macro"],
-           "PerTensor": lambda r: 100 * r["test_plus"]["metrics"]["f1_macro"],
-           "PerChannel": lambda r: 100 * r["test_plus"]["fp32_before_projection"]["per_channel_int8"]["metrics"]["f1_macro"]}
+    # The CICIoT2023 block records (amendment A1) store the three precisions under
+    # test_plus.precisions; the 10-epoch records under fp32_before_projection.
+    def prec(r, k):
+        t = r["test_plus"]
+        if "precisions" in t:
+            return 100 * t["precisions"][k]["metrics"]["f1_macro"]
+        return 100 * {"fp32": t["fp32_before_projection"], "per_tensor_int8": t,
+                      "per_channel_int8": t["fp32_before_projection"].get("per_channel_int8")}[k]["metrics"]["f1_macro"]
+    for r in tq.values():
+        if "precisions" in r["test_plus"] and prec(r, "per_tensor_int8") != 100 * r["test_plus"]["metrics"]["f1_macro"]:
+            raise SystemExit("E1: a block record's per-tensor precision is not its deployed score")
+    get = {"Fp": lambda r: prec(r, "fp32"), "PerTensor": lambda r: prec(r, "per_tensor_int8"),
+           "PerChannel": lambda r: prec(r, "per_channel_int8")}
     pc = pd.read_csv(REPO / "results/tables/tab_perchannel.csv")
     ref = {"Fp": "fp32_f1", "PerTensor": "per_tensor_f1", "PerChannel": "per_channel_f1"}
     src1 = E1.format(d="*", s="*")
@@ -740,8 +777,9 @@ def e1_e2():
         "E2: largest per-dataset share of median fallback cuts (percent)")
     # Stalled runs (post hoc, disclosed; not a registered analysis): final validation
     # accuracy more than 5 points below the median final validation accuracy of the ten
-    # runs (tree and entropy arms) on the same dataset.
-    fva = lambda r: r["training"]["training_curve"][-1]["val_accuracy"]
+    # runs (tree and entropy arms) on the same dataset. "Final" is the reported
+    # checkpoint: the selected epoch in the CICIoT2023 block, the last epoch elsewhere.
+    fva = _reported_val_acc
     stalled = {"tree": set(), "entropy": set()}
     for ds in IOT:
         med = np.median([fva(t2s[(ds, sd)]) for sd in seeds] + [fva(ent[(ds, sd)]) for sd in seeds])
@@ -787,16 +825,498 @@ def e1_e2():
         add(f"JNAbl{v}IotMeanFone", f(m), patt.format(d="*", s="*"), "IoT mean of five-seed means", f"macro-F1, {v}")
 
 
+# ------------------------------------------------------------------ Part B (pre-registered)
+# results/preregistration/2026-09-28_journal_partB.md with amendment 1. Each item reads
+# the committed output of its own script. The run folders are fixed here, so adopting a
+# rerun means editing this table, and the change shows in the diff.
+PB = REPO / "results/journal_partB"
+PB_RUN = {"B1": "B1/20260928T052115Z-228a55", "B2": "B2/20260928T051838Z-70742c",
+          "B4": "B4/20260928T051907Z-3f9ad4", "B4gbdt": "B4_gbdt/20260928T053446Z-0364e8",
+          "B5": "B5/20260928T051420Z-5888c1", "B6": "B6/20260928T051655Z-c9f47f",
+          "A6": "A6/20261006T155717Z-0a37dd", "B8": "B8/20261007T041558Z-66406a"}
+SEEDS = range(42, 47)
+FIXED = "results/fixed_budget_ciciot2023"
+# the twelve arms of the CICIoT2023 block (A1): code, record path under results/
+BLOCK_ARMS = {"tree": ("Tts", "Tree-to-Spike/{d}/seed_{s}/results.json"),
+              "dnn": ("Dnn", "DNN-Tree/{d}/seed_{s}/results.json"),
+              "vanilla": ("Van", "{d}/SNN_LeakyParallel/latency/seed_{s}/results.json"),
+              "tasnn": ("Tasnn", "TASNN/{d}/seed_{s}/results.json"),
+              "dnn_tq": ("Tq", "DNN-TQ/{d}/seed_{s}/results.json"),
+              "raw": ("Raw", "encoder_ablation/{d}/m8_raw/seed_{s}/results.json"),
+              **{a: (c, f"encoder_ablation/{{d}}/{a}/seed_{{s}}/results.json") for a, c in
+                 (("quantile", "Quantile"), ("uniform", "Uniform"), ("all", "All"), ("nokd", "Nokd"),
+                  ("entropy", "Entropy"), ("entropy_tree", "EntTree"))}}
+CLS = {"dos": "Dos", "r2l": "RtwoL", "probe": "Probe"}
+
+
+def _pb(item):
+    return PB / PB_RUN[item]
+
+
+def _rj(p):
+    return json.loads(Path(p).read_text())
+
+
+def _int(v):
+    return f"{int(round(v)):,}".replace(",", "{,}")
+
+
+def _sci(v, d=1):
+    if v == 0:
+        return "0"
+    m, e = f"{v:.{d}e}".split("e")
+    return rf"\ensuremath{{{m}\times10^{{{int(e)}}}}}"
+
+
+def _f1(r):
+    return 100 * r["test_plus"]["metrics"]["f1_macro"]
+
+
+def _far(r):
+    return 100 * r["test_plus"]["binary_ids_metrics"]["false_alarm_rate"]
+
+
+def _ksops(r):
+    return (r["test_plus"]["spike_stats"]["synops_per_sample"]
+            + r["data"]["encoder_channels"] * r["config"]["hidden"][0]) / 1000
+
+
+def _split(r):
+    n = r["test_plus"]["n_samples"] if "test_plus" in r else r["data"]["n_test"]
+    return n, json.dumps(r["data"]["class_counts_train"], sort_keys=True)
+
+
+def _arm(patt, datasets=IOT, root="results", teacher=True):
+    """Five seeds of one arm. Refuses unless each run shares its split, and its teacher
+    where it records one, with the Tree-to-Spike run under the same root."""
+    out = {}
+    for ds in datasets:
+        for sd in SEEDS:
+            p = f"{root}/{patt.format(d=ds, s=sd)}"
+            r, t = _rj(REPO / p), _rj(REPO / f"{root}/Tree-to-Spike/{ds}/seed_{sd}/results.json")
+            if _split(r) != _split(t):
+                raise SystemExit(f"{p}: split differs from Tree-to-Spike")
+            tb = r["test_plus"].get("teacher_upper_bound")
+            if teacher and tb is not None and tb["f1_macro"] != t["test_plus"]["teacher_upper_bound"]["f1_macro"]:
+                raise SystemExit(f"{p}: teacher differs from Tree-to-Spike")
+            out[(ds, sd)] = r
+    return out
+
+
+def partB_b1():
+    """B1: Proposition 1 on 55 cells (eleven datasets, seeds 42-46) and the encoder audit."""
+    d = _pb("B1")
+    s, c = _rj(d / "summary.json"), pd.read_csv(d / "cells.csv")
+    if len(c) != 55 or c.groupby("dataset").seed.nunique().ne(5).any() or set(c.dataset) != set(DS) \
+            or not s["guard_352_767"] or not c.table_match.all():
+        raise SystemExit("B1: not the complete 55-cell run, or its guard failed")
+    src = rel(d / "cells.csv")
+    agree = min(c.agree_dump.min(), c.agree_exact.min())
+    add("JNPropCells", str(len(c)), src, "count", "B1: dataset-seed cells checked")
+    add("JNPropFlows", _int(c.n_test.sum()), src, "sum over the 55 cells", "B1: test flows compared with their surrogates")
+    add("JNPropAgreePct", "100" if agree == 1.0 else f(100 * agree, 3), src,
+        "minimum over cells and both threshold sources", "B1: percent of test flows whose teacher label equals the surrogate's")
+    add("JNPropDisagree", str(int(c.disagree_dump.sum() + c.disagree_exact.sum())), src, "sum over cells",
+        "B1: flows whose label differs from the surrogate's")
+    add("JNPropMaxDproba", f"{max(c.max_dproba_dump.max(), c.max_dproba_exact.max()):g}", src, "max over cells",
+        "B1: largest absolute difference in a predicted probability")
+    add("JNPropThresholdMismatch", str(int(c.thresholds_dump_vs_exact_mismatch.sum())), src, "sum over cells",
+        "B1: thresholds where the text dump differs from the model JSON's float32 value")
+    for ds in DS:
+        g = c[c.dataset == ds]
+        over, gain = 100 * g.violating.sum() / g.retained.sum(), 100 * g.pruned_gain_share.mean()
+        if abs(over - s["share_exceeding_bound_by_dataset"][ds]) > 0.006 or abs(gain - s["pruned_gain_share_by_dataset"][ds]) > 0.0006:
+            raise SystemExit(f"B1: cells.csv and summary.json disagree on {ds}")
+        add(f"JNPropOver{DS[ds]}", pct(over), src, "pooled over five seeds",
+            f"B1: percent of retained features with |E_j| >= T = 20, {ds}")
+        add(f"JNPropMedianEdges{DS[ds]}", f(s["median_E_by_dataset"][ds], 1), rel(d / "summary.json"),
+            "five-seed mean of per-seed medians", f"B1: median |E_j| of retained features, {ds}")
+        add(f"JNPropPrunedGain{DS[ds]}", f(gain), src, "five-seed mean", f"B1: percent of total gain removed by pruning, {ds}")
+    add("JNPropOverAll", pct(100 * c.violating.sum() / c.retained.sum()), src, "pooled over 55 cells",
+        "B1: percent of retained features over the bound, eleven datasets")
+    add("JNPropViolatingAll", _int(c.violating.sum()), src, "pooled over 55 cells", "B1: retained features over the bound")
+    add("JNPropRetainedAll", _int(c.retained.sum()), src, "pooled over 55 cells", "B1: retained features")
+
+
+def partB_b2():
+    """B2: entropy cutter vs per-feature entropy tree (seed 42), and the fourth arm (A2)."""
+    d = _pb("B2")
+    s, pf = _rj(d / "summary.json"), pd.read_csv(d / "per_feature.csv")
+    if set(pf.seed) != {42} or set(pf.dataset) != set(IOT):
+        raise SystemExit("B2: per_feature.csv is not seed 42 on the IoT four")
+    src = rel(d / "per_feature.csv")
+    co = 100 * pf.coincide.sum() / pf.ig_cuts.sum()
+    if abs(co - s["pooled_coincide_pct"]) > 1e-9:
+        raise SystemExit("B2: per_feature.csv and summary.json disagree")
+    add("JNCutsRule", f"{s['rule_pct']:.0f}", rel(d / "summary.json"), "registered rule", "B2: coincidence share that ends B2")
+    add("JNCutsCoincidePooled", f(co), src, "seed 42, pooled IoT", "B2: percent of information-gain cuts that coincide")
+    add("JNCutsExactPooled", f(100 * pf.exact.sum() / pf.ig_cuts.sum()), src, "seed 42, pooled IoT", "B2: percent matching exactly")
+    add("JNCutsCoincideCount", _int(pf.coincide.sum()), src, "seed 42, pooled IoT", "B2: coinciding cuts")
+    add("JNCutsTotal", _int(pf.ig_cuts.sum()), src, "seed 42, pooled IoT", "B2: information-gain cuts compared")
+    add("JNCutsFillers", str(int(pf.fillers.sum())), src, "seed 42, pooled IoT", "B2: the cutter's median filler cuts (not compared, D3)")
+    for ds in IOT:
+        g = pf[pf.dataset == ds]
+        add(f"JNCutsCoincide{DS[ds]}", pct(100 * g.coincide.sum() / g.ig_cuts.sum()), src, "seed 42", f"B2: percent coinciding, {ds}")
+        add(f"JNCutsExact{DS[ds]}", pct(100 * g.exact.sum() / g.ig_cuts.sum()), src, "seed 42", f"B2: percent exact, {ds}")
+        add(f"JNCutsMedianOffset{DS[ds]}", _sci(s["per_dataset"][ds]["median_offset"]), rel(d / "summary.json"), "seed 42",
+            f"B2: median absolute offset in scaled [0, 1] units, {ds}")
+    # fourth arm (A2): per-feature entropy-tree cuts, E2 protocol; CICIoT2023 from the block
+    t2s = _arm("Tree-to-Spike/{d}/seed_{s}/results.json")
+    et = _arm("encoder_ablation/{d}/entropy_tree/seed_{s}/results.json")
+    ent = _arm("encoder_ablation/{d}/entropy/seed_{s}/results.json")
+    src = "results/encoder_ablation/*/entropy_tree/seed_*/results.json"
+    rule = "post hoc (E2's): reported-checkpoint val. accuracy > 5 points below the dataset's ten-run median (tree and entropy tree)"
+    st_et, st_tree = set(), set()
+    for ds in IOT:
+        med = np.median([_reported_val_acc(t2s[(ds, sd)]) for sd in SEEDS] + [_reported_val_acc(et[(ds, sd)]) for sd in SEEDS])
+        st_et |= {(ds, sd) for sd in SEEDS if _reported_val_acc(et[(ds, sd)]) < med - 0.05}
+        st_tree |= {(ds, sd) for sd in SEEDS if _reported_val_acc(t2s[(ds, sd)]) < med - 0.05}
+    d_ds, d_ns, over, fone = {}, {}, {}, {}
+    for ds in IOT:
+        e = np.array([_f1(et[(ds, sd)]) for sd in SEEDS])
+        t = np.array([_f1(t2s[(ds, sd)]) for sd in SEEDS])
+        n = np.array([_f1(ent[(ds, sd)]) for sd in SEEDS])
+        dd = t - e
+        d_ds[ds], over[ds], fone[ds] = dd.mean(), e.mean() - n.mean(), e.mean()
+        add(f"JNAblEntTree{DS[ds]}Fone", f(e.mean()), src, "five-seed mean", f"macro-F1, entropy tree, {ds}")
+        add(f"JNAblEntTree{DS[ds]}FoneSd", f(e.std(ddof=1)), src, "five-seed sample SD", f"macro-F1, entropy tree, {ds}")
+        add(f"JNAblEntTree{DS[ds]}Ksops", f(np.mean([_ksops(et[(ds, sd)]) for sd in SEEDS]), 1), src,
+            "five-seed mean, full window, input-inclusive", f"SOPs per sample (thousands), entropy tree, {ds}")
+        add(f"JNAblEntTree{DS[ds]}Far", f(np.mean([_far(et[(ds, sd)]) for sd in SEEDS])), src, "five-seed mean",
+            f"FAR %, entropy tree, {ds}")
+        add(f"JNFourthD{DS[ds]}", sgn(dd.mean()), src, "five-seed means", f"A2: tree minus entropy tree macro-F1, {ds}")
+        add(f"JNFourthSeedsAhead{DS[ds]}", str(int((dd > 0).sum())), src, "count of five seeds",
+            f"A2: seeds where tree beats entropy tree, {ds}")
+        add(f"JNFourthOverEnt{DS[ds]}", sgn(over[ds]), src, "five-seed means", f"A2: entropy tree minus entropy cutter, {ds}")
+        keep = [i for i, sd in enumerate(SEEDS) if (ds, sd) not in st_et | st_tree]
+        d_ns[ds] = dd[keep].mean()
+        add(f"JNFourthD{DS[ds]}NoStall", sgn(d_ns[ds]), src, f"mean over non-stalled seeds ({rule})",
+            f"A2: tree minus entropy tree without stalled runs, {ds}")
+    add("JNFourthDIotMean", sgn(np.mean(list(d_ds.values()))), src, "IoT mean", "A2: tree minus entropy tree macro-F1")
+    add("JNFourthAhead", str(sum(v > 0 for v in d_ds.values())), src, "count of four", "A2: datasets where tree beats entropy tree")
+    add("JNAblEntTreeIotMeanFone", f(np.mean(list(fone.values()))), src, "IoT mean of five-seed means", "macro-F1, entropy tree")
+    add("JNFourthStalled", str(len(st_et)), src, rule, "A2: stalled entropy-tree runs (of 20)")
+    add("JNFourthStalledTree", str(len(st_tree)), "results/Tree-to-Spike/*/seed_*/results.json", rule,
+        "A2: stalled tree runs under the same rule (of 20)")
+    add("JNFourthDIotMeanNoStall", sgn(np.mean(list(d_ns.values()))), src, f"IoT mean ({rule})",
+        "A2: tree minus entropy tree without stalled runs")
+    add("JNFourthAheadNoStall", str(sum(v > 0 for v in d_ns.values())), src, f"count of four ({rule})",
+        "A2: datasets where tree beats entropy tree without stalled runs")
+    add("JNFourthOverEntMin", sgn(min(over.values())), src, "five-seed means, IoT min", "A2: entropy tree minus entropy cutter, smallest")
+    add("JNFourthOverEntMax", sgn(max(over.values())), src, "five-seed means, IoT max", "A2: entropy tree minus entropy cutter, largest")
+
+
+def partB_b3():
+    """B3: PLE-MLP (rtdl_num_embeddings), selected configuration, five seeds; latency (B8 run)."""
+    sel = _rj(PB / "B3/selection.json")["selection"]
+    recs = {}
+    for ds in IOT:
+        for sd in SEEDS:
+            d = PB / f"B3/final/{ds}/seed_{sd}"
+            if (d / "REUSED_FROM.txt").exists():
+                d = REPO / (d / "REUSED_FROM.txt").read_text().strip()
+            r = _rj(d / "results.json")
+            if r["config"] != sel[ds]["config"] or r["seed"] != sd or r["dataset"] != ds:
+                raise SystemExit(f"B3: {d} is not the selected configuration's seed-{sd} run")
+            if _split(r) != _split(_rj(REPO / f"results/Tree-to-Spike/{ds}/seed_{sd}/results.json")):
+                raise SystemExit(f"B3: {d} split differs from Tree-to-Spike")
+            recs[(ds, sd)] = r
+    src = "results/journal_partB/B3/final/*/seed_*/results.json"
+    P = {"Fp": "fp32", "PerTensor": "per_tensor_int8", "PerChannel": "per_channel_int8"}
+    means = {}
+    for cc, k in P.items():
+        for ds in IOT:
+            v = np.array([100 * recs[(ds, sd)]["test"][k]["metrics"]["f1_macro"] for sd in SEEDS])
+            means[(cc, ds)] = v.mean()
+            add(f"JNPle{cc}{DS[ds]}", f(v.mean()), src, "five-seed mean", f"B3: PLE-MLP macro-F1, {k}, {ds}")
+            add(f"JNPle{cc}{DS[ds]}Sd", f(v.std(ddof=1)), src, "five-seed sample SD", f"B3: PLE-MLP, {k}, {ds}")
+        add(f"JNPle{cc}IotMean", f(np.mean([means[(cc, ds)] for ds in IOT])), src, "IoT mean of five-seed means",
+            f"B3: PLE-MLP macro-F1, {k}")
+    for ds in IOT:
+        v = np.array([100 * recs[(ds, sd)]["test"]["fp32"]["binary_ids_metrics"]["false_alarm_rate"] for sd in SEEDS])
+        add(f"JNPleFar{DS[ds]}", f(v.mean()), src, "five-seed mean, fp32", f"B3: PLE-MLP FAR %, {ds}")
+        add(f"JNPleFar{DS[ds]}Sd", f(v.std(ddof=1)), src, "five-seed sample SD, fp32", f"B3: PLE-MLP FAR %, {ds}")
+        m = recs[(ds, 42)]["model"]
+        add(f"JNPleParams{DS[ds]}", _int(m["parameters"]), src, "seed 42", f"B3: PLE-MLP parameters, {ds}")
+        add(f"JNPleEncBytes{DS[ds]}", _int(m["encoder_storage_bytes"]), src, "seed 42", f"B3: bin edges at 4 B, {ds}")
+        add(f"JNPleMacs{DS[ds]}", _int(m["macs_total"]), src, "seed 42", f"B3: MACs incl. encoding (features x bins), {ds}")
+        add(f"JNPleNj{DS[ds]}", _int(m["energy_pj_32bit"] / 1000), src, "seed 42, 4.6 pJ per MAC", f"B3: arithmetic nJ, 32-bit, {ds}")
+        add(f"JNPleNjInt{DS[ds]}", f(m["energy_pj_int8"] / 1000, 1), src, "seed 42, 0.23 pJ per MAC", f"B3: arithmetic nJ, int8, {ds}")
+    pc = pd.read_csv(REPO / "results/tables/tab_perchannel.csv")
+    ref = {"Fp": "fp32_f1", "PerTensor": "per_tensor_f1", "PerChannel": "per_channel_f1"}
+    for cc in P:
+        ple = np.mean([means[(cc, ds)] for ds in IOT])
+        for model, mc in (("Tree-to-Spike", "Tts"), ("DNN-Tree", "Dnn")):
+            o = np.mean([pc[(pc.model == model) & (pc.dataset == ds)][ref[cc]].mean() for ds in IOT])
+            add(f"JNPleMinus{mc}{cc}IotMean", sgn(ple - o), f"{src}; results/tables/tab_perchannel.csv",
+                "IoT means of five-seed means (M3 reruns)", f"B3: PLE-MLP minus {model}, {P[cc]}")
+    tt = pd.read_csv(REPO / "results/tables/tab_teacher_per_dataset.csv")
+    gf = tt[(tt.arm == "full") & tt.dataset.isin(IOT)].F1M.mean()
+    add("JNPleMinusGbdtFullIotMean", sgn(np.mean([means[("Fp", ds)] for ds in IOT]) - gf),
+        f"{src}; results/tables/tab_teacher_per_dataset.csv", "IoT means", "B3: PLE-MLP (fp32) minus the full GBDT")
+    # selection (D4, D5)
+    c0 = {k: {sel[ds]["config"][k] for ds in IOT} for k in ("n_bins", "width", "epochs")}
+    if any(len(v) != 1 for v in c0.values()):
+        raise SystemExit("B3: datasets differ in bins, width or epochs; the macros below assume one value")
+    add("JNPleBins", str(c0["n_bins"].pop()), "results/journal_partB/B3/selection.json", "selected on every dataset", "B3: bins")
+    add("JNPleWidth", str(c0["width"].pop()), "results/journal_partB/B3/selection.json", "selected on every dataset", "B3: width")
+    add("JNPleEpochs", str(c0["epochs"].pop()), "results/journal_partB/B3/selection.json", "selected on every dataset", "B3: epoch budget")
+    for ds in IOT:
+        add(f"JNPleLr{DS[ds]}", _sci(sel[ds]["config"]["lr"], 0), "results/journal_partB/B3/selection.json", "selected", f"B3: learning rate, {ds}")
+    n_search = len(list((PB / "B3/search").glob("*/cfg_*/results.json")))
+    add("JNPleSearchRuns", str(n_search), "results/journal_partB/B3/search", "count", "B3: search runs (seed 42)")
+    be = [r["training"]["best_epoch"] for r in recs.values()]
+    add("JNPleBestEpochMin", str(min(be)), src, "min over 20 runs", "B3: earliest selected epoch")
+    add("JNPleBestEpochMax", str(max(be)), src, "max over 20 runs", "B3: latest selected epoch")
+    lat = pd.read_csv(_pb("B8") / "ple_latency.csv").set_index("dataset")
+    lsrc = rel(_pb("B8") / "ple_latency.csv")
+    for ds in IOT:
+        add(f"JNLatMsPle{DS[ds]}", f(lat.loc[ds, "p50_ms"], 3), lsrc, "single seed-42 run, batch-1 CPU", f"B3: PLE-MLP p50 latency ms, {ds}")
+    add("JNLatMsPle", f(lat.loc[IOT, "p50_ms"].mean(), 3), lsrc, "single seed-42 run, IoT mean, batch-1 CPU", "B3: PLE-MLP p50 latency ms")
+
+
+def partB_b4():
+    """B4 and A3: CICIoMT2024 provider split with the validation-selected GBDT; A4 feasibility."""
+    ds = "ciciomt2024"
+    g = pd.read_csv(_pb("B4gbdt") / "selected.csv").set_index("seed").loc[list(SEEDS)]
+    pcl = pd.read_csv(_pb("B4gbdt") / "per_class.csv")
+    src = rel(_pb("B4gbdt") / "selected.csv")
+    t2s = _arm("Tree-to-Spike/{d}/seed_{s}/results.json", [ds])
+    dnn = _arm("DNN-Tree/{d}/seed_{s}/results.json", [ds])
+    ent = _arm("encoder_ablation/{d}/entropy/seed_{s}/results.json", [ds])
+    f1 = lambda recs: np.array([_f1(recs[(ds, sd)]) for sd in SEEDS])
+    T, D, E, G = f1(t2s), f1(dnn), f1(ent), g.test_macro_f1.values
+    add("JNNrGbdtFone", f(G.mean()), src, "five-seed mean", "A3: validation-selected GBDT macro-F1, CICIoMT2024")
+    add("JNNrGbdtFoneSd", f(G.std(ddof=1)), src, "five-seed sample SD", "")
+    add("JNNrGbdtFar", f(g.FAR.mean()), src, "five-seed mean", "A3: GBDT FAR %")
+    add("JNNrGbdtFarSd", f(g.FAR.std(ddof=1)), src, "five-seed sample SD", "")
+    add("JNNrGbdtDr", f(g.DR.mean()), src, "five-seed mean", "A3: GBDT detection rate %")
+    modal = g.groupby(["rounds", "depth"]).size().idxmax()
+    add("JNNrGbdtRounds", str(int(modal[0])), src, "modal selection", "A3: selected boosting rounds")
+    add("JNNrGbdtDepth", str(int(modal[1])), src, "modal selection", "A3: selected depth")
+    add("JNNrGbdtSameConfig", str(int(((g.rounds == modal[0]) & (g.depth == modal[1])).sum())), src, "count of five seeds",
+        "A3: seeds selecting that configuration")
+    for nm, a, b in (("TtsMinusEnt", T, E), ("TtsMinusDnn", T, D), ("GbdtMinusTts", G, T)):
+        add(f"JNNr{nm}", sgn((a - b).mean()), f"{src}; stored CICIoMT2024 runs", "paired by seed, five-seed mean",
+            f"B4: {nm}, macro-F1, CICIoMT2024 provider split")
+        add(f"JNNr{nm}Seeds", str(int(((a - b) > 0).sum())), f"{src}; stored CICIoMT2024 runs", "count of five seeds",
+            f"B4: seeds where {nm} is positive")
+    for nm, recs in (("Tts", t2s), ("Dnn", dnn), ("Ent", ent)):
+        add(f"JNNrFar{nm}", f(np.mean([_far(recs[(ds, sd)]) for sd in SEEDS])), "stored CICIoMT2024 runs", "five-seed mean",
+            f"B4: FAR %, {nm}")
+    for cls, code in (("Benign", "Benign"), ("DDoS", "Ddos"), ("DoS", "Dos"), ("MQTT", "Mqtt"), ("Recon", "Recon"),
+                      ("Spoofing", "Spoofing")):
+        c = pcl[pcl.cls == cls]
+        if c.seed.nunique() != 5:
+            raise SystemExit(f"B4: per-class {cls} incomplete")
+        add(f"JNNrGbdtRecall{code}", pct(c.recall.mean()), rel(_pb("B4gbdt") / "per_class.csv"), "five-seed mean",
+            f"A3: GBDT recall %, {cls}")
+        add(f"JNNrSupport{code}", _int(c.support_test.mean()), rel(_pb("B4gbdt") / "per_class.csv"), "five-seed mean",
+            f"A3: test support, {cls}")
+    # A4: TON-IoT host-disjoint split, feasibility only
+    s = _rj(_pb("B4") / "summary.json")["ton_host_disjoint"]
+    h = pd.read_csv(_pb("B4") / "ton_host_split.csv")
+    ssrc = rel(_pb("B4") / "summary.json")
+    hosts = {k: v for k, v in s["hosts_per_class"].items() if k != "normal"}
+    top = {k: v for k, v in s["top_host_share_per_class"].items() if k != "normal"}
+    absent = pd.DataFrame(s["classes_absent_from_test"]).groupby("seed").size().reindex(list(SEEDS), fill_value=0)
+    share = h.groupby("seed").test_rows_pct.first()
+    add("JNTonHosts", str(s["n_hosts"]), ssrc, "TON-IoT", "A4: source hosts")
+    add("JNTonHostsPerAttackMin", str(min(hosts.values())), ssrc, "min over attack classes", "A4: hosts carrying an attack class")
+    add("JNTonHostsPerAttackMax", str(max(hosts.values())), ssrc, "max over attack classes", "")
+    add("JNTonTopHostMin", pct(100 * min(top.values()), 0), ssrc, "min over attack classes", "A4: share of a class on its largest host, %")
+    add("JNTonTopHostMax", pct(100 * max(top.values()), 0), ssrc, "max over attack classes", "")
+    add("JNTonAbsentMin", str(int(absent.min())), ssrc, "min over seeds", "A4: classes with no test rows")
+    add("JNTonAbsentMax", str(int(absent.max())), ssrc, "max over seeds", "")
+    add("JNTonTestShareMin", pct(share.min(), 0), rel(_pb("B4") / "ton_host_split.csv"), "min over seeds", "A4: test share of rows, %")
+    add("JNTonTestShareMax", pct(share.max(), 0), rel(_pb("B4") / "ton_host_split.csv"), "max over seeds", "")
+
+
+def partB_b5():
+    """B5: train-only vocabulary, cross-partition duplicates, Edge-IIoTset label conflicts."""
+    d = _pb("B5")
+    s, dup = _rj(d / "summary.json"), pd.read_csv(d / "duplicates.csv")
+    ssrc, dsrc = rel(d / "summary.json"), rel(d / "duplicates.csv")
+    add("JNVocabTrigger", f"{s['trigger_pct']:g}", ssrc, "registered rule", "B5: percent of test rows that triggers a rerun")
+    add("JNVocabFired", str(len(s["vocabulary_trigger_fired_for"])), ssrc, "count", "B5: datasets triggering the vocabulary rerun")
+    for ds in ("toniot", "edgeiiot"):
+        add(f"JNVocabMax{DS[ds]}", f(s["max_affected_pct_by_dataset"][ds], 3), ssrc, "max over seeds",
+            f"B5: percent of test rows with a category unseen in training, {ds}")
+    for ds in DS:
+        add(f"JNDup{DS[ds]}", pct(s["dup_pct_by_dataset"][ds]), ssrc, "pooled over seeds",
+            f"B5: percent of test rows duplicated in training, {ds}")
+    gp = [s["dup_pct_by_dataset"][ds] for ds in DS if ds not in IOT]
+    add("JNDupGpMin", pct(min(gp)), ssrc, "min over GP datasets", "B5: duplicated test rows %, general purpose")
+    add("JNDupGpMax", pct(max(gp)), ssrc, "max over GP datasets", "")
+    cm = dup.groupby(["dataset", "cls"]).dup_pct.mean()
+    for ds in IOT:
+        top = cm[ds]
+        add(f"JNDupClassMax{DS[ds]}", pct(top.max()), dsrc, "five-seed mean, max over classes",
+            f"B5: most-duplicated class ({top.idxmax()}), % of its test rows, {ds}")
+    dom = pd.DataFrame(s["dominated_classes"])
+    add("JNDomRule", "50", "results/preregistration/2026-09-28_journal_partB.md (D7)", "registered rule",
+        "B5: percent of a class's test rows duplicated in training that makes it dominated")
+    add("JNDomIot", str(int(dom.dataset.isin(IOT).sum())), ssrc, "count", "B5: dominated IoT classes")
+    add("JNDomGroups", str(dom.groupby(["dataset", "cls"]).ngroups), ssrc, "count", "B5: dominated dataset-class pairs")
+    for (ds, cls), gg in dom.groupby(["dataset", "cls"]):
+        a = dup[(dup.dataset == ds) & (dup.cls == cls)].dup_pct
+        code = f"{DS[ds]}{CLS[cls]}"
+        add(f"JNDomShare{code}", pct(a.mean()), dsrc, "five-seed mean", f"B5: duplicated share of {ds} {cls} test rows, %")
+        add(f"JNDomShare{code}Min", pct(a.min()), dsrc, "min over seeds", "")
+        add(f"JNDomShare{code}Max", pct(a.max()), dsrc, "max over seeds", "")
+        add(f"JNDomSeeds{code}", str(len(gg)), ssrc, "count of five seeds", f"B5: seeds on which {ds} {cls} is dominated")
+    e = dup[dup.dataset == "edgeiiot"].groupby("seed").agg(c=("n_label_conflict", "sum"), n=("n_test", "sum"))
+    add("JNEdgeConflictRows", _int(e.c.mean()), dsrc, "five-seed mean",
+        "B5: Edge-IIoTset test rows with an identical training vector of another label")
+    add("JNEdgeConflictPct", pct(100 * (e.c / e.n).mean()), dsrc, "five-seed mean", "same, % of test rows")
+
+
+def partB_a6():
+    """A6: per-class F1 of the dominated classes, with and without the duplicated rows."""
+    d = _pb("A6")
+    pc, gd = pd.read_csv(d / "per_class.csv"), pd.read_csv(d / "guards.csv")
+    if not gd.ok.all():
+        raise SystemExit("A6: a stored model did not reproduce its score")
+    code = {"Tree-to-Spike": "Tts", "DNN-Tree": "Dnn", "Vanilla SNN": "Van", "TASNN": "Tasnn"}
+    src = rel(d / "per_class.csv")
+    for (ds, cls, model), g in pc.groupby(["dataset", "cls", "model"]):
+        if g.seed.nunique() != 5 or set(g.subset) != {"full", "without_duplicates"}:
+            raise SystemExit(f"A6: {ds} {cls} {model} incomplete")
+        nm = f"JNDom{DS[ds]}{CLS[cls]}{code[model]}"
+        add(nm + "Full", f(g[g.subset == "full"].f1.mean()), src, "five-seed mean", f"A6: class F1, all test rows, {model}, {ds} {cls}")
+        add(nm + "NoDup", f(g[g.subset == "without_duplicates"].f1.mean()), src, "five-seed mean",
+            f"A6: class F1 without the rows duplicated in training, {model}, {ds} {cls}")
+
+
+def partB_b6():
+    """B6: convergence trigger, the CICIoT2023 block (A1) against the fixed-budget runs it
+    replaces (appendix: "original fixed-budget protocol"), and the stalled-run diagnosis."""
+    import make_results_table as MRT
+    d = _pb("B6")
+    s, tr = _rj(d / "summary.json"), pd.read_csv(d / "trigger.csv")
+    ssrc = rel(d / "summary.json")
+    if len(s["fired"]) != 1 or (s["fired"][0]["arm"], s["fired"][0]["dataset"]) != ("dnn", "ciciot2023"):
+        raise SystemExit("B6: the trigger outcome differs from the one these macros describe")
+    add("JNConvThreshold", f(s["threshold_points"], 1), ssrc, "registered rule", "B6: epoch-8-to-10 gain that fires the rerun")
+    add("JNConvGainDnnCicIoT", f(s["fired"][0]["mean_gain"]), ssrc, "mean over five seeds", "B6: DNN-Tree, CICIoT2023, val. macro-F1 gain")
+    prim = tr[~tr.metric.str.contains("cross-check") & ~tr.fires]
+    nx = prim.loc[prim.mean_gain.idxmax()]
+    add("JNConvGainNextMax", f(nx.mean_gain), rel(d / "trigger.csv"), "mean over seeds",
+        f"B6: largest gain that did not fire ({nx.arm}, {nx.dataset}, {nx.metric})")
+    add("JNConvExcludedStalled", str(len(s["excluded_stalled"])), ssrc, "count", "B6: stalled entropy runs excluded")
+    # the block and the runs it replaces
+    ds = "ciciot2023"
+    blk, fix = {}, {}
+    for arm, (_, patt) in BLOCK_ARMS.items():
+        blk[arm] = _arm(patt, [ds])
+        # the replaced m8_raw runs record the single-thread pool's teacher; the arm does not use it
+        fix[arm] = _arm(patt, [ds], root=FIXED, teacher=arm != "raw")
+        for r in blk[arm].values():
+            if not r["training"]["selection"]["enabled"] or len(r["training"]["training_curve"]) != 20:
+                raise SystemExit(f"B6: {arm} block record is not a 20-epoch selected run")
+        for r in fix[arm].values():
+            if (r["training"].get("selection") or {}).get("enabled") or len(r["training"]["training_curve"]) != 10:
+                raise SystemExit(f"B6: {arm} fixed-budget record is not a 10-epoch run")
+    bsrc = "results/journal_partB/B6/block (= the CICIoT2023 production records)"
+    eps = [r["training"]["selection"]["selected_epoch"] for a in blk for r in blk[a].values()]
+    add("JNBlockRuns", str(len(eps)), bsrc, "count", "A1: block runs")
+    add("JNBlockArms", str(len(blk)), bsrc, "count", "A1: block arms")
+    add("JNBlockSelEpochMedian", f(np.median(eps), 0), bsrc, "median over runs", "A1: selected epoch")
+    add("JNBlockSelEpochMin", str(min(eps)), bsrc, "min over runs", "A1: selected epoch")
+    add("JNBlockSelEpochMax", str(max(eps)), bsrc, "max over runs", "A1: selected epoch")
+    add("JNBlockSelEpochAboveTen", str(sum(e > 10 for e in eps)), bsrc, "count of runs", "A1: runs selecting an epoch after 10")
+    add("JNBlockSelEpochTwenty", str(sum(e == 20 for e in eps)), bsrc, "count of runs", "A1: runs selecting the last epoch")
+    ten = [(a, sd) for a in blk for (_, sd), r in blk[a].items() if r["training"]["selection"]["selected_epoch"] == 10]
+    same = sum(_f1(blk[a][(ds, sd)]) == _f1(fix[a][(ds, sd)]) for a, sd in ten)
+    add("JNBlockEpochTenRuns", str(len(ten)), bsrc, "count of runs", "A1: runs selecting epoch 10")
+    add("JNBlockEpochTenIdentical", str(same), f"{bsrc}; {FIXED}", "count of runs",
+        "A1: of those, runs whose test macro-F1 equals the fixed-budget run's exactly")
+    for arm, (code, patt) in BLOCK_ARMS.items():
+        b = np.array([_f1(blk[arm][(ds, sd)]) for sd in SEEDS])
+        x = np.array([_f1(fix[arm][(ds, sd)]) for sd in SEEDS])
+        fsrc = f"{FIXED}/{patt.format(d=ds, s='*')}"
+        add(f"JNBlockGain{code}", sgn(b.mean() - x.mean()), f"{bsrc}; {fsrc}", "five-seed means",
+            f"A1: 20-epoch selected minus fixed-budget macro-F1, {arm}, CICIoT2023")
+        add(f"JNFixedFone{code}CicIoT", f(x.mean()), fsrc, "five-seed mean, original fixed-budget protocol",
+            f"macro-F1, {arm}, CICIoT2023")
+        add(f"JNFixedFone{code}CicIoTSd", f(x.std(ddof=1)), fsrc, "five-seed sample SD", "")
+        if arm not in ("dnn", "dnn_tq", "vanilla", "tasnn", "raw"):
+            add(f"JNFixedKsops{code}CicIoT", f(np.mean([_ksops(r) for r in fix[arm].values()]), 1), fsrc,
+                "five-seed mean, full window, input-inclusive", f"SOPs per sample (thousands), {arm}, fixed budget")
+    mk = {"vanilla": "vanilla", "tree": "tree", "dnn": "dnn", "tasnn": "tasnn"}
+    for arm in mk:
+        c = MRT.cell(arm, [fix[arm][(ds, sd)] for sd in SEEDS])
+        code = BLOCK_ARMS[arm][0]
+        for m, mc in (("acc", "Acc"), ("bacc", "Bacc"), ("mcc", "Mcc"), ("dr", "Dr"), ("far", "Far")):
+            add(f"JNFixed{mc}{code}CicIoT", f(100 * c[m]), f"{FIXED}/{BLOCK_ARMS[arm][1].format(d=ds, s='*')}",
+                "five-seed mean, original fixed-budget protocol", f"{m} x100, {arm}, CICIoT2023")
+            add(f"JNFixed{mc}{code}CicIoTSd", f(100 * c[m + "_sd"]), f"{FIXED}/{BLOCK_ARMS[arm][1].format(d=ds, s='*')}",
+                "five-seed sample SD", "")
+    for model, mc in (("Tree-to-Spike", "Tts"), ("DNN-Tree", "Dnn")):
+        pcs = [_rj(REPO / f"{FIXED}/diagnostics/perchannel/{model}_{ds}_seed{sd}.json") for sd in SEEDS]
+        for k, cc in (("fp32_f1", "Fp"), ("per_tensor_f1", "PerTensor"), ("per_channel_f1", "PerChannel")):
+            add(f"JNFixedPc{mc}{cc}CicIoT", f(np.mean([p[k] for p in pcs])), f"{FIXED}/diagnostics/perchannel",
+                "five-seed mean, M3 reruns, original fixed-budget protocol", f"{model} macro-F1, {cc}, CICIoT2023")
+    fq = fix["dnn_tq"]
+    for cc, g in (("Fp", lambda r: r["test_plus"]["fp32_before_projection"]["metrics"]["f1_macro"]),
+                  ("PerChannel", lambda r: r["test_plus"]["fp32_before_projection"]["per_channel_int8"]["metrics"]["f1_macro"])):
+        add(f"JNFixedTq{cc}CicIoT", f(100 * np.mean([g(r) for r in fq.values()])), f"{FIXED}/DNN-TQ/{ds}",
+            "five-seed mean, original fixed-budget protocol", f"DNN-TQ macro-F1, {cc}, CICIoT2023 (per-tensor: JNFixedFoneTqCicIoT)")
+    # stalled entropy runs (10-epoch protocol): reruns with an observer
+    obs = {k: _rj(PB / f"B6/stalled/{k}/observer.json") for k in ("ciciot2023_seed44", "ciciot2023_seed45", "ciciomt2024_seed46")}
+    osrc = "results/journal_partB/B6/stalled/*/observer.json"
+    add("JNStallReruns", str(len(obs)), osrc, "count", "B6: stalled runs rerun with the observer")
+    add("JNStallReproduced", str(sum(bool(o["reproduces_stored"] and o["curve_identical"] and o["test_identical"])
+                                     for o in obs.values())), osrc, "count", "B6: reruns reproducing curve and test score exactly")
+    for lay, key in (("One", "firing_rate_l1"), ("Two", "firing_rate_l2")):
+        v = [e[key] for o in obs.values() for e in o["epochs"]]
+        add(f"JNStallFire{lay}Min", pct(100 * min(v)), osrc, "min over runs and epochs", f"B6: layer-{lay.lower()} firing rate, %")
+        add(f"JNStallFire{lay}Max", pct(100 * max(v)), osrc, "max over runs and epochs", "")
+    for dsx in ("ciciot2023", "ciciomt2024"):
+        os_ = [o for k, o in obs.items() if k.startswith(dsx)]
+        for cls, cc in (("DDoS", "Ddos"), ("DoS", "Dos")):
+            for key, kc in (("pred_dist", "Pred"), ("true_dist", "True")):
+                v = [100 * e[key][o["class_names"].index(cls)] / sum(e[key]) for o in os_ for e in o["epochs"]]
+                add(f"JNStall{kc}{cc}{DS[dsx]}", pct(np.mean(v), 0), osrc, "mean over all epochs of the stalled runs",
+                    f"B6: {'predicted' if kc == 'Pred' else 'true'} {cls} share of validation flows, %, {dsx}")
+        va = [e["val_accuracy"] for o in os_ for e in o["epochs"]]
+        add(f"JNStallValAcc{DS[dsx]}Min", f(min(va)), osrc, "min over runs and epochs", f"B6: validation accuracy, {dsx}")
+        add(f"JNStallValAcc{DS[dsx]}Max", f(max(va)), osrc, "max over runs and epochs", "")
+
+
+def partB_b8():
+    """B8: peak resident memory over the latency workload (VmHWM, seed 42, gated run)."""
+    d = _pb("B8")
+    m = pd.read_csv(d / "peak_memory.csv")
+    names = {"t2s_exit": "Tts", "t2s_full": "TtsFull", "dnn_tree": "Dnn", "vanilla_snn": "Van", "tasnn": "Tasnn",
+             "compact_gbdt": "GbdtCompact", "full_gbdt": "GbdtFull", "ple_mlp": "Ple"}
+    if set(m.system) != set(names) or set(m.dataset) != set(IOT) or len(m) != len(names) * len(IOT) or (m.seed != 42).any():
+        raise SystemExit("B8: peak_memory.csv is not one seed-42 row per IoT dataset and system")
+    src = rel(d / "peak_memory.csv")
+    for s, c in names.items():
+        g = m[m.system == s].set_index("dataset")
+        add(f"JNMemMb{c}", f(g.peak_minus_baseline_kb.mean() / 1024, 1), src, "single seed-42 run, IoT mean",
+            f"B8: peak RSS above the common-import baseline, MB, {s}")
+        for ds in IOT:
+            add(f"JNMemMb{c}{DS[ds]}", f(g.loc[ds, "peak_minus_baseline_kb"] / 1024, 1), src, "single seed-42 run",
+                f"B8: peak RSS above baseline, MB, {s}, {ds}")
+    add("JNMemBaselineMb", f(m.baseline_rss_kb.mean() / 1024, 0), src, "mean over the 32 processes",
+        "B8: resident set after the common imports (numpy, pandas, torch, xgboost, models), MB")
+
+
 def main():
     for fn in (quality, precision, statistics, energy, deployment, others, tsweep, compact, perchannel,
-               results_section, results_extras, general_purpose, pooled, e1_e2):
+               results_section, results_extras, general_purpose, pooled, e1_e2,
+               partB_b1, partB_b2, partB_b3, partB_b4, partB_b5, partB_a6, partB_b6, partB_b8):
         fn()
     sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip()
     # The generator's own two outputs are excluded: once tracked, the previous
     # generation is always "modified" at this point and would mark every run dirty.
+    # conference/ is excluded too: a separate paper with its own numbers pipeline,
+    # nothing here reads it, and its work in progress says nothing about these values.
     dirty = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", ".",
                             ":!results/tables/numbers.tex",
-                            ":!results/tables/numbers_provenance.json"], cwd=REPO).returncode != 0
+                            ":!results/tables/numbers_provenance.json", ":!conference"], cwd=REPO).returncode != 0
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     head = [
         "% " + "=" * 70,
