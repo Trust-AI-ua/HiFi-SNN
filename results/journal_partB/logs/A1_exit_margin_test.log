@@ -1,0 +1,24 @@
+# scripts/exit_margin_test.py --dataset ciciot2023 at 10ca119c, 2026-10-08T11:47:39Z; CICIoT2023 seed 42 = the A1 block's selected checkpoint (results/Tree-to-Spike/ciciot2023/seed_42)
+ciciot2023: full acc 98.95 | theta=0.9 exit 99.1% | wrong exits 243176 (52.1% of all)
+
+--- D1: does the prediction recover if the window runs? ---
+  wrong-exit samples whose argmax reaches the true class later: 99.5%
+  ...and does so AFTER the exit step:                          53.6%
+  mean exit step t*        : 4.87
+  mean recovery step t'    : 10.76
+  -> usable exit lower bound for this dataset: ~10.8/20
+
+--- D2: margin (top1-top2) at exit, right vs wrong ---
+  right exits: margin mean 0.8924  median 0.8961
+  wrong exits: margin mean 0.8847  median 0.8805
+  separation (right-wrong): +0.0078
+
+--- remedy: margin gate (exit when top1-top2 >= m) ---
+       m   exit%  mean_exit      acc      gap  saving_kept
+    0.10  100.0%       1.95    53.41   -45.53       134.0%
+    0.25  100.0%       2.22    55.14   -43.80       131.9%
+    0.50   99.8%       3.84    45.64   -53.31       120.0%
+    0.75   99.4%       5.38    46.95   -51.99       108.5%
+    0.90   98.8%       8.04    63.46   -35.48        88.8%
+    0.95   98.1%       9.77    72.86   -26.09        75.9%
+    0.99   84.9%      14.44    92.18    -6.77        41.3%
