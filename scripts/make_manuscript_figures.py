@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Figures and appendix tables for manuscript_tnnls.tex -> Figures/.
+"""Manuscript figures and appendix tables -> Figures/.
 
-Every value comes from results/tables/numbers.tex or from the run records and
-artifacts at tag tnnls-submission (2adfc77). Before any new (general-purpose) value is
-written, the same code path must reproduce the published IoT macros exactly; a
-mismatch stops the script (part-3 rule: a new measurement path reproduces the old one
-on unchanged cells first). Guards are logged to Figures/README.md.
+Every value comes from results/tables/numbers.tex (write it first with
+scripts/make_numbers.py) or from the committed run records and artifacts. Before any
+new (general-purpose) value is written, the same code path must reproduce the published
+IoT macros exactly; a mismatch stops the script. Guards are logged to Figures/README.md.
+The script also refuses unless the sources it reads equal the committed ones (--ref).
 
-  Main text   pareto_iot.pdf, exit_anatomy_ciciot.pdf, tree-to-spike.pdf
-  Appendix    cd_diagram.pdf, memory_band.pdf, margin_sweep.pdf,
-              tab_results_general.tex, tab_encoder_ablation_general.tex,
-              tab_envelope.tex, tab_exit_general.tex
+  Main text   precision_profile.pdf, memory_band_sensitivity.pdf
+              (scripts/make_precision_memory_figures.py), exit_anatomy_ciciot.pdf,
+              tree-to-spike.pdf
+  Appendix    cd_diagram.pdf, margin_sweep.pdf; tab_*.tex (written locally, not tracked)
   Data        Figures/data/*.csv, the plotted values
 
-    python scripts/make_manuscript_figures.py [--preview DIR]   # DIR: PNG previews
+    python scripts/make_manuscript_figures.py [--preview DIR] [--ref COMMIT]
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 OUT = REPO / "Figures"
 DATA = OUT / "data"
 TAG = "tnnls-journal-r1"
-REF = TAG   # --ref: the commit to check against and stamp, before the tag exists
+REF = "HEAD"   # --ref: the commit whose committed sources the figures must come from
 SEEDS = range(42, 47)
 
 IOT = ["ciciot2023", "ciciomt2024", "edgeiiot", "toniot"]
@@ -66,7 +66,7 @@ def git(*a):
 
 def check_tag():
     sha = git("rev-parse", "--short", f"{REF}^{{commit}}")
-    tag = f"tag {TAG} ({sha})" if REF == TAG else f"commit {sha}, tagged {TAG} afterwards"
+    tag = f"tag {TAG} ({sha})" if REF == TAG else f"commit {sha}"
     for p in ("results/tables/numbers.tex", "results", "scripts/make_results_table.py",
               "scripts/deployment_energy2.py", "scripts/make_dep_systems_table.py"):
         if subprocess.run(["git", "diff", "--quiet", REF, "--", p], cwd=REPO).returncode != 0:
@@ -138,87 +138,6 @@ def save(fig, name):
 def records(patt):
     return [json.loads(Path(x).read_text()) for x in sorted(glob.glob(str(REPO / patt)))
             if int(Path(x).parent.name.split("_")[1]) in SEEDS]
-
-
-# ------------------------------------------------------------------ 1. Pareto (main text)
-def energy_memory_seed42():
-    """Memory-inclusive energy per sample, reuse-aware, SRAM 20 pJ (DRAM 1300), deployed,
-    seed 42, IoT, from deployment_measurements.csv through deployment_energy2.row_energy."""
-    import deployment_energy2 as E2
-    from make_dep_systems_table import deployed
-    d = deployed(pd.read_csv(REPO / "results/deployment/deployment_measurements.csv", comment="#"))
-    d = d[d.dataset.isin(IOT)]
-    rows = []
-    for _, r in d.iterrows():
-        a, m = E2.row_energy(r, 20, 1300, True)
-        rows.append(dict(dataset=r.dataset, system=r.system, nJ=(a + m) / 1000))
-    return pd.DataFrame(rows)
-
-
-def pareto():
-    plt = plt_setup()
-    mem = energy_memory_seed42()
-    rows = []
-    for key, mc, sysname, lab in MODELS:
-        for ds in IOT:
-            e = mem[(mem.dataset == ds) & (mem.system == sysname)].nJ
-            rows.append(dict(model=lab, code=mc, dataset=ds, f1=num(f"JNFone{mc}{DS[ds]}"),
-                             arith_nJ=num(f"JNEnergy{mc}{DS[ds]}") / 1000,
-                             mem_nJ=float(e.iloc[0]) if len(e) else np.nan))
-    t = pd.DataFrame(rows)
-    means = t.groupby(["model", "code"], sort=False)[["arith_nJ", "mem_nJ"]].mean().reset_index()
-    means["f1"] = [num(f"JNFone{c}IotMean") for c in means.code]
-    t.to_csv(DATA / "pareto_iot_points.csv", index=False)
-    means.to_csv(DATA / "pareto_iot_means.csv", index=False)
-    cells = pd.read_csv(REPO / "results/diagnostics/per_seed_all_cells.csv")
-    mkey = {"Tts": "treespike", "Dnn": "dnn", "Van": "vanilla", "Tasnn": "tasnn"}
-    iot_mean = lambda c: cells[cells.dataset.isin(IOT) & (cells.model == mkey[c])].groupby("dataset").f1.mean().mean()
-    guard("pareto y = Table III macro-F1 (per dataset and IoT mean, unrounded source)",
-          [(f"JNFone{c}IotMean", f(iot_mean(c))) for c in means.code]
-          + [(f"JNFone{c}{DS[d]}", f(cells[(cells.dataset == d) & (cells.model == mkey[c])].f1.mean()))
-             for c in means.code for d in IOT])
-
-    def energy_label(v_nj):
-        return f"{v_nj/1e6:.1f} mJ" if v_nj >= 1e6 else f"{v_nj/1e3:.0f} µJ"
-
-    fig, axes = plt.subplots(2, 1, figsize=(COL_W, 4.4), sharey=True)
-    panels = [("arith_nJ", "Arithmetic energy per sample (nJ), 32-bit, full window\n(Table VII(a); five-seed mean)", (2, 100),
-               {"Tts": (-4, 7), "Dnn": (7, -3), "Van": (0, 9)}),
-              ("mem_nJ", "Memory-inclusive energy per sample (nJ), reuse-aware,\n20 pJ SRAM, deployed (seed 42)", (50, 400),
-               {"Tts": (-6, 8), "Dnn": (8, -9), "Van": (-8, 6)})]
-    for ax, (col, xl, xlim, offs), tag in zip(axes, panels, "ab"):
-        ax.set_xscale("log")
-        for key, mc, sysname, lab in MODELS:
-            g, mm = t[t.code == mc], means[means.code == mc].iloc[0]
-            off = g[col] > xlim[1]
-            xm = min(mm[col], xlim[1] * 0.93)
-            ax.scatter([xm], [mm.f1], s=62, marker=MARKER[mc], color=COLOR[mc], edgecolors="white",
-                       linewidths=1.0, zorder=3, clip_on=False, label=lab)
-            ax.scatter(g[col].where(~off, xlim[1] * 0.93), g.f1, s=15, marker=MARKER[mc], color=COLOR[mc],
-                       alpha=0.6, linewidths=0, zorder=4, clip_on=False)
-            if off.any():
-                ax.annotate(f"{lab} off scale:\n{energy_label(g[col].min())}–{energy_label(g[col].max())}",
-                            xy=(xlim[1] * 0.99, mm.f1), xytext=(xlim[1] ** 0.62 * xlim[0] ** 0.38, 61.5),
-                            fontsize=6.5, color=INK2, ha="center", va="center",
-                            arrowprops=dict(arrowstyle="->", color=INK2, lw=0.7, connectionstyle="arc3,rad=0.25"))
-            elif mc in offs:
-                dx, dy = offs[mc]
-                ax.annotate(lab, xy=(xm, mm.f1), xytext=(dx, dy), textcoords="offset points", fontsize=6.5,
-                            color=INK, ha="right" if dx < 0 else ("left" if dx > 0 else "center"), va="center")
-        ax.set_xlim(*xlim)
-        ax.set_xlabel(xl, fontsize=7.5)
-        ax.set_ylabel("Macro-F1 (%), five-seed mean")
-        ax.text(0.01, 0.98, f"({tag})", transform=ax.transAxes, va="top", fontsize=8, color=INK)
-    from matplotlib.ticker import FixedLocator, NullFormatter
-    for ax, ticks in ((axes[0], [2, 5, 10, 20, 50, 100]), (axes[1], [50, 100, 200, 400])):
-        ax.xaxis.set_major_locator(FixedLocator(ticks))
-        ax.xaxis.set_minor_formatter(NullFormatter())
-        ax.set_xticklabels([str(v) for v in ticks])
-    axes[0].legend(loc="lower center", bbox_to_anchor=(0.5, 1.02), ncol=4, frameon=False,
-                   handletextpad=0.2, columnspacing=0.9)
-    fig.text(0.99, 0.005, "small: one IoT dataset; large: IoT mean", ha="right", fontsize=6.5, color=MUTED)
-    fig.tight_layout(h_pad=1.0)
-    save(fig, "pareto_iot.pdf")
 
 
 # ------------------------------------------------------------------ prefix helpers
@@ -317,7 +236,7 @@ def exit_anatomy():
     save(fig, "exit_anatomy_ciciot.pdf")
     GUARDS.append(f"exit anatomy: DDoS is {share_ddos_wrong:.1f}% of CICIoT2023 seed-42 wrong exits at 0.90; "
                   f"median t' of full-window-correct samples {np.median(tprime):.0f}")
-    return share_ddos_wrong
+    return share_ddos_wrong, ts, tp_rec
 
 
 # ------------------------------------------------------------------ 3. schematic (main text, redrawn)
@@ -434,56 +353,6 @@ def cd_diagram():
         ax.plot([rk[a] - 0.04, rk[b] + 0.04], [y, y], color=INK, lw=2.4, solid_capstyle="round")
     save(fig, "cd_diagram.pdf")
     return joined
-
-
-# ------------------------------------------------------------------ 5. memory band (appendix)
-def memory_band():
-    plt = plt_setup()
-    import deployment_energy2 as E2
-    from make_dep_systems_table import deployed
-    raw = pd.read_csv(REPO / "results/deployment/deployment_measurements.csv", comment="#")
-    dep = deployed(raw)
-    dep = dep[dep.dataset.isin(IOT)]
-    fw = raw[raw.dataset.isin(IOT) & raw.system.isin(["dnn_tree", "vanilla_snn", "t2s_full"])].copy()
-    fw.loc[fw.system == "t2s_full", "system"] = "t2s_deployed"
-    ref = pd.read_csv(REPO / "results/deployment/energy_crossover_iot.csv")
-    grid = np.unique(np.concatenate([np.geomspace(5, 100, 60), [5, 10, 20, 50, 100]]))
-    rows = []
-    for cfg, d in (("deployed", dep), ("full_window", fw)):
-        for reuse in (False, True):
-            for s in grid:
-                t = E2.table(d, sram=s, reuse=reuse)
-                rows.append(dict(config=cfg, model="reuse" if reuse else "cold", sram_pJ=s,
-                                 dnn=t["dnn_tree"] / t["t2s_deployed"], van=t["vanilla_snn"] / t["t2s_deployed"]))
-    b = pd.DataFrame(rows)
-    chk = b[b.sram_pJ.isin([5, 10, 20, 50, 100])].merge(ref, on=["config", "model", "sram_pJ"])
-    bad = chk[(chk.dnn.round(2) != chk.ratio) | (chk.van.round(2) != chk.vs_vanilla_snn)]
-    if len(chk) != 20 or len(bad):
-        sys.exit(f"GUARD FAILED (memory band vs energy_crossover_iot.csv): {len(chk)} matched, {len(bad)} differ")
-    GUARDS.append("memory band: recomputed ratios equal energy_crossover_iot.csv at all 20 tabulated points")
-    b.to_csv(DATA / "memory_band_iot.csv", index=False)
-    fig, ax = plt.subplots(figsize=(COL_W, 2.45))
-    lines = [("dnn", "deployed", "cold", "DNN-Tree, cold, deployed"), ("dnn", "deployed", "reuse", "DNN-Tree, reuse, deployed"),
-             ("van", "deployed", "reuse", "Vanilla SNN, reuse, deployed"),
-             ("dnn", "full_window", "cold", "DNN-Tree, cold, full window"), ("dnn", "full_window", "reuse", "DNN-Tree, reuse, full window")]
-    for col, cfg, mdl, lab in lines:
-        g = b[(b.config == cfg) & (b.model == mdl)]
-        code = "Dnn" if col == "dnn" else "Van"
-        ax.plot(g.sram_pJ, g[col], color=COLOR[code], lw=1.6 if mdl == "reuse" else 1.1,
-                ls="-" if cfg == "deployed" else (0, (4, 2)), label=lab,
-                marker="o" if mdl == "reuse" else None, markevery=[0, len(g) - 1], ms=3)
-    ax.axhline(1.0, color=INK, lw=0.8)
-    ax.text(98, 1.02, "parity", fontsize=6.3, color=INK2, va="bottom", ha="right")
-    ax.set_xscale("log")
-    ax.set_xticks([5, 10, 20, 50, 100])
-    ax.set_xticklabels(["5", "10", "20", "50", "100"])
-    ax.set_xlabel("SRAM access energy (pJ)")
-    ax.set_ylabel("Baseline / Tree-to-Spike energy\n(above 1: Tree-to-Spike cheaper)")
-    ax.set_ylim(0, max(1.5, b[["dnn", "van"]].max().max() * 1.08))
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.24), ncol=2, frameon=False, fontsize=6.3,
-              handlelength=2.6, columnspacing=1.0)
-    ax.text(0.99, 0.97, "IoT means, seed 42", transform=ax.transAxes, ha="right", va="top", fontsize=6.5, color=MUTED)
-    save(fig, "memory_band.pdf")
 
 
 # ------------------------------------------------------------------ 6. margin sweep (appendix)
@@ -757,21 +626,23 @@ def exit_general(tag):
 # ------------------------------------------------------------------ README
 def readme(tag, extras):
     items = [
-        ("pareto_iot.pdf", "fig:pareto", "main", "numbers.tex (JNEnergy*, JNFone*); deployment_measurements.csv via deployment_energy2.row_energy (SRAM 20 pJ, DRAM 1300 pJ, reuse-aware, deployed, seed 42)"),
+        ("precision_profile.pdf", "fig:precision_profile (fig:pareto)", "main", "numbers.tex (JNPc{Tts,Dnn}*IotMean, JNPle*IotMean); scripts/make_precision_memory_figures.py"),
         ("exit_anatomy_ciciot.pdf", "fig:exit_anatomy", "main", "prefix outputs, CICIoT2023 seed 42 (results/prefix_outputs, not tracked)"),
         ("tree-to-spike.pdf", "Fig. 1", "main", "REDRAWN from the method description; the original source file is not in the repository"),
         ("cd_diagram.pdf", "fig:cd_diagram", "appendix", "numbers.tex (JNPooledRank*, JNPooledCD)"),
-        ("memory_band.pdf", "fig:memory_band", "appendix", "deployment_measurements.csv via deployment_energy2.table"),
+        ("memory_band_sensitivity.pdf", "fig:memory_band", "main", "numbers.tex (JNBand*), from results/deployment/energy_crossover_iot.csv; scripts/make_precision_memory_figures.py"),
         ("margin_sweep.pdf", "fig:margin_sweep", "appendix", "prefix outputs, CICIoT2023 seed 42"),
         ("tab_results_general.tex", "tab:results_general", "appendix", "run records via make_results_table.cell; per_seed_all_cells.csv"),
         ("tab_encoder_ablation_general.tex", "tab:encoder_ablation_general", "appendix", "run records (results/encoder_ablation, results/Tree-to-Spike)"),
         ("tab_envelope.tex", "tab:envelope", "appendix", "results/deployment/gbdt_compression_repriced.csv"),
         ("tab_exit_general.tex", "tab:exit_general", "appendix", "prefix outputs; tab_m4_flags.csv; selected_test.csv"),
     ]
-    lines = ["# Figures and tables for manuscript_tnnls.tex", "",
+    lines = ["# Manuscript figures", "",
              f"Generated by `scripts/make_manuscript_figures.py` from {tag}. Regenerate with",
-             "`python scripts/make_manuscript_figures.py`. Tables are typed values (no macros), as the manuscript requires.",
-             "The plotted values are in `data/`.", "", "| File | Label | Where | Source |", "|---|---|---|---|"]
+             "`python scripts/make_numbers.py && python scripts/make_manuscript_figures.py` (it refuses unless the sources",
+             "equal the committed ones). The plotted values are in `data/`. The appendix tables (`tab_*.tex`) are written",
+             "locally for typesetting and are not tracked; their values are in the result tables under `results/`.", "",
+             "| File | Label | Where | Source |", "|---|---|---|---|"]
     lines += [f"| `{a}` | `{b}` | {c} | {d} |" for a, b, c, d in items]
     lines += ["", "## Guards (all passed; the script stops on any failure)", ""] + [f"- {g}" for g in GUARDS]
     lines += ["", "## Notes", ""] + [f"- {x}" for x in extras]
@@ -783,7 +654,7 @@ def main():
     global PREVIEW, M, REF
     ap = argparse.ArgumentParser()
     ap.add_argument("--preview", type=Path)
-    ap.add_argument("--ref", default=TAG, help="commit to check against and stamp (default: the tag)")
+    ap.add_argument("--ref", default="HEAD", help="commit whose sources must equal the working tree (default: HEAD)")
     a = ap.parse_args()
     REF = a.ref
     if a.preview:
@@ -793,18 +664,19 @@ def main():
     M = macros()
     OUT.mkdir(exist_ok=True)
     DATA.mkdir(exist_ok=True)
-    pareto()
-    share = exit_anatomy()
+    share, ts, tp = exit_anatomy()
     schematic()
     joined = cd_diagram()
-    memory_band()
     margin_sweep()
+    import make_precision_memory_figures as PM   # fig:precision_profile and fig:memory_band
+    PM.main()
+    GUARDS.append("precision profile and memory band drawn from numbers.tex (JNPc*IotMean, JNPle*IotMean, JNBand*)")
     results_general(tag)
     ablation_general(tag)
     envelope(tag)
     exit_general(tag)
     readme(tag, [
-        "Exit anatomy: the two vertical lines are the mean exit step (2.25) and mean recovery step (11.16) of the "
+        f"Exit anatomy: the two vertical lines are the mean exit step ({ts:.2f}) and mean recovery step ({tp:.2f}) of the "
         "wrong exits at 0.90 whose argmax later becomes correct (scripts/exit_margin_test.py). The bars are a "
         "different population: t' of all full-window-correct samples. Label them separately in the caption.",
         f"Exit anatomy: DDoS accounts for {share:.1f}% of the wrong exits at 0.90 (CICIoT2023, seed 42).",
@@ -813,7 +685,6 @@ def main():
         f"CD diagram cliques (mean-rank gap below CD): {joined}.",
         "Envelope: 'best' is the highest-scoring configuration within 128 KB, the main-text budget; counts use the "
         "same repriced bytes as \\JNEnvFitsIot.",
-        "Pareto (a): TASNN's arithmetic energy (92-260 uJ) is off scale and drawn at the right axis limit with an arrow.",
         "Dataset display names are set in NAME at the top of the script.",
     ])
 
