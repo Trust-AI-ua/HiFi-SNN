@@ -1312,8 +1312,9 @@ def main():
     sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip()
     # The generator's own two outputs are excluded: once tracked, the previous
     # generation is always "modified" at this point and would mark every run dirty.
-    # conference/ is excluded too: a separate paper with its own numbers pipeline,
-    # nothing here reads it, and its work in progress says nothing about these values.
+    # conference/ is excluded too: it is not part of this repository (local leftovers of the
+    # removed conference tree may exist), nothing here reads it, and it says nothing about
+    # these values.
     dirty = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", ".",
                             ":!results/tables/numbers.tex",
                             ":!results/tables/numbers_provenance.json", ":!conference"], cwd=REPO).returncode != 0
