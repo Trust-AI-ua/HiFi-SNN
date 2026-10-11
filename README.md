@@ -77,8 +77,9 @@ What the evidence supports:
 
 - **Parity with the dense twin, robust to int8.** Tree-to-Spike leads DNN-Tree by 0.72 points
   at per-tensor int8, the deployed precision. In floating point the dense twin leads by 1.19,
-  and with per-channel int8 by 0.65: Tree-to-Spike's int8 change is within ±0.33 on every
-  dataset, while DNN-Tree loses 6.53 points to per-tensor int8 on Edge-IIoTset.
+  and with per-channel int8 by 0.65. The difference is quantization: Tree-to-Spike's int8
+  change is within ±0.33 on every dataset, while DNN-Tree loses 6.53 points to per-tensor int8
+  on Edge-IIoTset.
 - **Clearly ahead of spiking baselines.** +9.70 over the Vanilla SNN and +9.66 over TASNN, on
   all four datasets (Friedman exact p = 0.0062).
 - **The encoder is the mechanism.** In a step-by-step decomposition from the Vanilla SNN, the
@@ -125,8 +126,8 @@ tests/          unit tests
 Tested with Python 3.12.3, PyTorch 2.12.0 (CUDA 13.0) and XGBoost 3.2.0 on an NVIDIA H200.
 
 ```bash
-git clone https://github.com/Trust-AI-ua/HiSNN.git
-cd HiSNN
+git clone https://github.com/Trust-AI-ua/HiFi-SNN.git
+cd HiFi-SNN
 python3.12 -m venv .venv && source .venv/bin/activate
 # PyTorch first, for your CUDA or CPU (see pytorch.org):
 pip install torch==2.12.0 --index-url https://download.pytorch.org/whl/cu130
@@ -143,12 +144,15 @@ The eleven datasets are public but not redistributed here. Download them into `d
 the class taxonomy, split, preprocessing and source of each. Loaders build a cache on first
 use.
 
-| Primary (IoT) | Classes | Test flows | General-purpose (appendix) |
-|---|--:|--:|---|
-| CICIoT2023 | 8 | 466,866 | CSE-CIC-IDS2018, CIC-IDS2017, CTU-13, |
-| CICIoMT2024 | 6 | 403,545 | KDDCup99, NSL-KDD, UNSW-NB15, |
-| Edge-IIoTset | 14 | 381,863 | ISCX-IDS2012 |
-| TON-IoT | 10 | 42,209 | |
+| Primary (IoT) | Classes | Test flows |
+|---|--:|--:|
+| CICIoT2023 | 8 | 466,866 |
+| CICIoMT2024 | 6 | 403,545 |
+| Edge-IIoTset | 14 | 381,863 |
+| TON-IoT | 10 | 42,209 |
+
+The appendix adds seven general-purpose benchmarks: CSE-CIC-IDS2018, CIC-IDS2017, CTU-13,
+KDDCup99, NSL-KDD, UNSW-NB15 and ISCX-IDS2012.
 
 Two corpora are repaired before use ([`src/data/repair.py`](src/data/repair.py)). The
 published Edge-IIoTset CSV reveals the class in two ways: the zero placeholder is spelled `0`
