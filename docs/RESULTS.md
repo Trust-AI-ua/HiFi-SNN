@@ -21,7 +21,7 @@ Model weights (`*.pt`) and per-timestep early-exit logits (`results/prefix_outpu
 | `DNN-TQ/<dataset>/seed_<S>/` | dense twin on spike-time input | E1 |
 | `ladder/<dataset>/<arm>/seed_<S>/` | sensitivity ladder, 10-epoch runs; `T10`, `T40`, `T80` are the window sweep | window length T |
 | `fixed_budget_ciciot2023/` | the 10-epoch CICIoT2023 runs that the 20-epoch block replaced (all twelve arms, with their per-channel files) | appendix, A1 |
-| `summary*.csv` | one row per run, appended by the trainers | |
+| `summary*.csv` | one row per run as the trainers appended it; the CICIoT2023 rows are the 10-epoch runs (the block runs are only in their records) | |
 
 CICIoT2023 records in the reported places are the 20-epoch, validation-selected block
 (amendment A1); `journal_partB/swap_manifest.json` lists every file that was moved or copied.
@@ -70,7 +70,7 @@ CICIoT2023 records in the reported places are the 20-epoch, validation-selected 
 |---|---|
 | `archive/pre_repair/` | runs on Edge-IIoTset and CSE-CIC-IDS2018 before the leakage repair |
 | `archive/leakage/` | the leakage-audit runs (host-disjoint and flow-level protocols) |
-| `archive/superseded/` | originals that later corrections replaced: thread-capped M3 cells (A5), the capped-teacher deployment table, the pre-repair Edge-IIoTset ladder, earlier deployment outputs |
+| `archive/superseded/` | originals that later corrections replaced: thread-capped M3 cells (A5), the capped-teacher deployment table, the pre-repair Edge-IIoTset ladder, earlier deployment outputs, a September snapshot of the summary tables |
 | `archive/repaired_runs/` | logs and driver output of the post-repair reruns |
 | `archive/logs/` | run logs of the reported experiments |
 | `archive/journal_partB_interim/`, `archive/notes/` | dated interim notes; their values are superseded by `numbers_provenance.json` |

@@ -6,7 +6,7 @@ position our **Tree-to-Spike** model against.
 
 - **Model:** [`src/models/tasnn.py`](../../src/models/tasnn.py)
 - **Trainer:** [`src/training_tasnn.py`](../../src/training_tasnn.py)
-- **Runner:** `scripts/run_tasnn.py` · `scripts/run_tasnn_tmux.sh`
+- **Runner:** `scripts/run_tasnn.py`
 - **Results:** `results/TASNN/<dataset>/seed_<S>/` → deduped into `results/summary_tasnn.csv`
 
 ## Source
@@ -103,9 +103,7 @@ Configs mirror the **Tree-to-Spike** dataset set 1-for-1, with identical
 | cse-cic-ids2018 | 0.5 | — | | | |
 
 ```bash
-# one dataset, multi-seed, in a detached tmux session
-./scripts/run_tasnn_tmux.sh nslkdd --seeds 42 43 44 45 46
-# or directly
+# one dataset, five seeds
 python scripts/run_tasnn.py unswnb15 --seeds 42 43 44 45 46
 ```
 

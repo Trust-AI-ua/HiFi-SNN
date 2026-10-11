@@ -57,8 +57,6 @@ python experiments/Tree-to-Spike/kddcup99/run.py
 # one dataset, multiple seeds
 python scripts/run_treespike.py kddcup99 --seeds 42 43 44 45 46
 
-# detached, survives disconnect (session hisnn-treespike-<dataset>)
-./scripts/run_treespike_tmux.sh kddcup99 --seeds 42 43 44 45 46
 
 # dry-run / force
 python scripts/run_treespike.py kddcup99 --dry-run
