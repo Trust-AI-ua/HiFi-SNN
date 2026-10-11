@@ -223,5 +223,5 @@ If you use this code, please cite the accompanying manuscript; citation details 
 
 ## License
 
-[MIT](LICENSE) © 2026 Trust-AI Lab, The University of Alabama. The datasets keep their own
+[MIT](LICENSE) © 2026. The datasets keep their own
 licenses; see their sources in [`docs/DATASETS.md`](docs/DATASETS.md).
