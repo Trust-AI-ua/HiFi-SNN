@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Run Tree-to-Spike (Design C) for one dataset over one or more seeds.
 
-Mirrors scripts/run_sweep.py / run_sxlstm.py / run_griffin.py / run_ssm.py: the
-dataset is a required positional argument, so each invocation targets a single
-dataset and datasets can be run in parallel in separate tmux sessions.
+Mirrors scripts/run_sweep.py: the dataset is a required positional argument, so each
+invocation targets a single dataset and datasets can run in parallel.
 
 Each seed writes to results/Tree-to-Spike/<dataset>/seed_<S>/; the summary
 results/summary_treespike.csv keys on (model, dataset, seed) for dedup. Runs

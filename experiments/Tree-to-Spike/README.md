@@ -1,8 +1,6 @@
 # Tree-to-Spike (Design C) — GBDT-guided spike encoder + compact SNN student
 
-The **fourth Phase-2 hybrid**, alongside [S-xLSTM](../S-xLSTM/),
-[Spiking-Griffin](../Spiking-Griffin/), and [Spiking-SSM](../Spiking-SSM/).
-It is **tabular** (no sequence windowing) and keeps its native design: a
+The method of this repository. It is **tabular** (no sequence windowing): a
 cost-sensitive gradient-boosted-tree teacher guides both a fixed spike encoder
 and a compact LIF MLP student trained by distillation. At deployment **only the
 encoder + SNN student run** (no tree), int8-quantized, with confidence-triggered
@@ -110,6 +108,6 @@ an auxiliary block.
 - int8 quantization is a per-tensor fake-quant stand-in for QAT; for production
   use `torch.ao.quantization`. The energy numbers (spikes/sample, SynOps,
   early-exit step) are **proxies**, not measured hardware energy.
-- Unlike the latency/LeakyParallel hybrids, this design uses its own encoder and
+- Unlike the Vanilla SNN (LeakyParallel + latency), this design uses its own encoder and
   `snn.Leaky` (fast-sigmoid surrogate); it is intentionally not constrained to
   the LeakyParallel/latency convention.
