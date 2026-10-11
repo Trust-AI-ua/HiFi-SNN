@@ -11,10 +11,10 @@ A1  CICIoT2023, 12 arms x seeds 42-46: the production run folders are moved to
     count), and the M8 arm's test_fp32_int8.json.
 A5  Edge-IIoTset seeds 45 and 46, Tree-to-Spike and DNN-Tree: the M3 run folders, curves and
     per-channel files are replaced by the default-environment reruns (which reproduce the
-    production runs); the thread-capped originals go to results/superseded/m3_edge_threadcapped/.
+    production runs); the thread-capped originals go to results/archive/superseded/m3_edge_threadcapped/.
 D   results/deployment/deployment_measurements.csv is replaced by the 2026-10-07
     re-measurement (fixed teacher procedure, 11 datasets); the old file goes to
-    results/superseded/deployment_2026-09-22_capped_teacher/.
+    results/archive/superseded/deployment_2026-09-22_capped_teacher/.
 
 Guards: every source exists; every block record has validation selection and three
 precisions; split and teacher equal the replaced record's; the M3 channel count equals the
@@ -38,7 +38,7 @@ DS = "ciciot2023"
 BLOCK = R / "results/journal_partB/B6/block"
 FU = R / "results/journal_partB/B6/followup"
 FIXED = R / "results/fixed_budget_ciciot2023"
-SUP = R / "results/superseded"
+SUP = R / "results/archive/superseded"
 ARMS = {"tree": "results/Tree-to-Spike/{d}", "dnn": "results/DNN-Tree/{d}",
         "vanilla": "results/{d}/SNN_LeakyParallel/latency", "tasnn": "results/TASNN/{d}",
         "dnn_tq": "results/DNN-TQ/{d}", "raw": "results/encoder_ablation/{d}/m8_raw",

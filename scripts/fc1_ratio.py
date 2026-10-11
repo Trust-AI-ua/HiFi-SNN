@@ -48,7 +48,7 @@ def main():
     ap.add_argument("--seeds", nargs="+", type=int, default=[42, 43, 44, 45, 46])
     a = ap.parse_args()
     rows = []
-    for arm, base in (("pre_repair", REPO / "results/pre_repair"), ("repaired", REPO / "results")):
+    for arm, base in (("pre_repair", REPO / "results/archive/pre_repair"), ("repaired", REPO / "results")):
         for m in a.models:
             for s in a.seeds:
                 ck = base / m / a.dataset / f"seed_{s}" / "checkpoint.pt"

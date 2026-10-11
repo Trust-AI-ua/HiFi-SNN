@@ -65,7 +65,7 @@ def build_cfg(model: str, protocol: str, fold: int, seed: int) -> dict:
         cfg = {"dataset": "toniot", "num_steps": 25, "hidden_size": 128,
                "neuron": "LeakyParallel", "encoding": "latency",
                "batch_size": 128, "epochs": 10, "lr": 1e-3}
-    rd = REPO / f"results/leakage/{protocol}/{model}/fold{fold}"
+    rd = REPO / f"results/archive/leakage/{protocol}/{model}/fold{fold}"
     cfg.update(dataset=f"{protocol}_f{fold}", seed=seed, results_dir=str(rd),
                summary_csv=str(rd / f"seed_{seed}" / "summary.csv"))
     cfg.pop("label_mode", None)          # protocol fixes the label space
@@ -107,7 +107,7 @@ def main():
 
     todo = [(m, p, f, s) for p in args.protocols for m in args.models
             for f in args.folds for s in args.seeds
-            if not (REPO / f"results/leakage/{p}/{m}/fold{f}/seed_{s}/results.json").exists()]
+            if not (REPO / f"results/archive/leakage/{p}/{m}/fold{f}/seed_{s}/results.json").exists()]
     print(f"[leakage] {len(todo)} runs pending", flush=True)
     if args.dry_run:
         for t in todo:

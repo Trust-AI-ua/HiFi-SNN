@@ -2,7 +2,7 @@
 """Flag every row of the summary CSVs with its provenance (never strip rows).
 
 After the leakage repair the summary rows live in two places:
-  results/pre_repair/summary_snapshot/summary*.csv  pre-repair state (snapshot
+  results/archive/pre_repair/summary_snapshot/summary*.csv  pre-repair state (snapshot
       taken before any re-run finished; identical to results/tables/ at the time)
   results/summary*.csv                             rows written by the re-runs
       (the experiment configs still name the pre-move path, so the re-runs wrote
@@ -29,7 +29,7 @@ from pathlib import Path
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[1]
-SNAP = REPO / "results/pre_repair/summary_snapshot"
+SNAP = REPO / "results/archive/pre_repair/summary_snapshot"
 NEW = REPO / "results"
 OUT = REPO / "results/tables"
 AFFECTED = {"cse-cic-ids2018", "edgeiiot"}

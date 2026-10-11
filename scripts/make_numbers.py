@@ -281,7 +281,7 @@ def tsweep():
     """Window sweep from the ladder: T = 10, 40, 80 against production T = 20.
 
     The four IoT datasets. The first Edge-IIoTset arms were run on the pre-repair corpus
-    and are retired to results/superseded/; its arms here are the 2026-10-08 rerun on the
+    and are retired to results/archive/superseded/; its arms here are the 2026-10-08 rerun on the
     repaired corpus (all 175 ladder runs: production teacher and split). The arms differ
     from production only in T (checked: encoder_mode and class_weighted resolve to the
     same defaults; the Edge-IIoTset rerun's configs differ only in T).

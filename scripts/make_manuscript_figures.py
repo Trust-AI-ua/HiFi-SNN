@@ -234,7 +234,7 @@ def prefix(ds, seed, split="test"):
 def margin_log_check(q, y):
     """The prefix outputs must reproduce scripts/exit_margin_test.py's logged numbers.
     CICIoT2023 is the A1 block since tnnls-journal-r1: its log is the rerun on the block's
-    selected checkpoint (the fixed-budget run's is results/repaired_runs/queue_exit_margin2.log)."""
+    selected checkpoint (the fixed-budget run's is results/archive/repaired_runs/queue_exit_margin2.log)."""
     log = (REPO / "results/journal_partB/logs/A1_exit_margin_test.log").read_text()
     pred = q.argmax(-1)
     s = np.sort(q, -1)
