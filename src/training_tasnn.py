@@ -7,8 +7,8 @@ See the fairness note in `src/models/tasnn.py` — TASNN's privileged preprocess
 (PAAN / Port-Role embeddings / CPSMOT-Tomek rebalancing) is deliberately omitted.
 
 Results go to a *separate* summary file (`results/summary_tasnn.csv`) so the
-competitor never pollutes the Vanilla-SNN / hybrid summaries. Mirrors
-`src/training_sxlstm.py` exactly except for the model and its config keys.
+competitor never pollutes the Vanilla-SNN summaries. It follows the shared
+training loop of `src/training.py` except for the model and its config keys.
 
 Config keys (with defaults):
     num_steps          25     latency time window T

@@ -49,23 +49,6 @@ for _ds in ("toniot", "edgeiiot"):
             label_mode="binary", fold_override=_f)
 
 
-# CTU-13 three-condition protocols (round-2 follow-up). The dataset name pins the
-# condition, the outer fold AND the feature block, so the trainer's `seed` stays a
-# pure optimisation seed and no trainer reconstructs a partition of its own.
-#   ctu13_<condition>_f<fold>_<base|combined>
-# The base/combined pair is what makes the host-context interaction measurable:
-#   d_host = (combined_scenario - base_scenario) - (combined_random - base_random)
-from src.data.ctu13_conditions import (load_ctu13_condition as _load_ctu13_cond,
-                                       CONDITIONS as _CTU13_CONDITIONS,
-                                       FEATURE_SETS as _CTU13_FEATURE_SETS)
-
-for _c in _CTU13_CONDITIONS:
-    for _f in range(4):
-        for _fs in _CTU13_FEATURE_SETS:
-            DATASET_LOADERS[f"ctu13_{_c}_f{_f}_{_fs}"] = _partial(
-                _load_ctu13_cond, condition=_c, fold=_f, feature_set=_fs)
-
-
 def get_dataset(name: str, **kwargs):
     if name not in DATASET_LOADERS:
         raise ValueError(f"Unknown dataset {name!r}. Available: {list(DATASET_LOADERS)}")

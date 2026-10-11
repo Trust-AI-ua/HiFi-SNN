@@ -493,8 +493,8 @@ class SNNStudent(nn.Module):
         ``stop_when_done`` leaves the loop once every sample in the batch has
         exited. Predictions, exit steps and the uncertainty flag are unchanged by
         it, but the spike counters stop accumulating, so it is off by default:
-        callers that report spike counts over the full window (scripts/backfill_snn_metrics.py,
-        scripts/backfill_snn_metrics.py) must keep counting to T. A latency
+        callers that report spike counts over the full window
+        (scripts/backfill_snn_metrics.py) must keep counting to T. A latency
         measurement is the opposite case. Without it this method computes all T
         steps and adds a per-step softmax, so the "early exit" path was strictly
         slower than the full-window path, by 0.55 ms at batch 1 even on CTU-13,
