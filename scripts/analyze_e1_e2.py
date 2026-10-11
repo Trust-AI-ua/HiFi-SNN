@@ -70,14 +70,24 @@ def e1():
     pc = pd.read_csv(REPO / "results/tables/tab_perchannel.csv")
     P = {"fp32": "fp32_f1", "pt": "per_tensor_f1", "pc": "per_channel_f1"}
     ref = pc.groupby(["model", "dataset"])[list(P.values())].mean()
+    # The CICIoT2023 block records (amendment A1) store the three precisions under
+    # test_plus.precisions; the 10-epoch records under fp32_before_projection.
+    def prec(r, k):
+        t_ = r["test_plus"]
+        if "precisions" in t_:
+            return 100 * t_["precisions"][k]["metrics"]["f1_macro"]
+        if k == "per_tensor_int8":
+            return 100 * t_["metrics"]["f1_macro"]
+        f = t_["fp32_before_projection"]
+        return 100 * (f if k == "fp32" else f["per_channel_int8"])["metrics"]["f1_macro"]
     rows = []
     for d in IOT:
         rs = [rj(REPO / E.format(d=d, s=s)) for s in SEEDS]
-        if any("per_channel_int8" not in r["test_plus"]["fp32_before_projection"] for r in rs):
+        if any("precisions" not in r["test_plus"] and "per_channel_int8" not in r["test_plus"]["fp32_before_projection"]
+               for r in rs):
             sys.exit(f"E1: {d} has cells without the per-channel score (pre-amendment runs); refused")
-        new = {"fp32": np.mean([100 * r["test_plus"]["fp32_before_projection"]["metrics"]["f1_macro"] for r in rs]),
-               "pt": np.mean([100 * r["test_plus"]["metrics"]["f1_macro"] for r in rs]),
-               "pc": np.mean([100 * r["test_plus"]["fp32_before_projection"]["per_channel_int8"]["metrics"]["f1_macro"] for r in rs])}
+        new = {"fp32": np.mean([prec(r, "fp32") for r in rs]), "pt": np.mean([prec(r, "per_tensor_int8") for r in rs]),
+               "pc": np.mean([prec(r, "per_channel_int8") for r in rs])}
         row = {"dataset": d}
         for k, col in P.items():
             t2s, lvl = ref.loc[("Tree-to-Spike", d), col], ref.loc[("DNN-Tree", d), col]
