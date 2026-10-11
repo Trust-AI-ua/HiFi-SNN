@@ -68,6 +68,11 @@ ARM_CFG = {
     "nokd":     {"encoder_mode": "tree", "a_kd": 0.0, "a_rank": 0.0},
     "uniform":  {"encoder_mode": "uniform"},
     "all":      {"encoder_mode": "all"},
+    # E2 (pre-registered 2026-09-24): class-supervised non-tree edges, tree channels and
+    # per-feature edge count held fixed. Run cells with scripts/run_encoder_variant.py.
+    "entropy":  {"encoder_mode": "entropy"},
+    # Part B fourth arm (B2 fired, amendment A2): per-feature sklearn entropy-tree cuts.
+    "entropy_tree": {"encoder_mode": "entropy_tree"},
 }
 # Paul Tol bright / Okabe-Ito (matches benchmark_4way).
 # display names must match the table arm names exactly
@@ -105,7 +110,7 @@ def _stat(patt, getter):
             vals.append(getter(json.load(open(f))))
         except Exception:
             pass
-    return (float(np.mean(vals)), float(np.std(vals))) if vals else (None, None)
+    return (float(np.mean(vals)), float(np.std(vals, ddof=1))) if vals else (None, None)   # sample SD
 
 
 PATHS = {

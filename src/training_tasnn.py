@@ -7,8 +7,8 @@ See the fairness note in `src/models/tasnn.py` — TASNN's privileged preprocess
 (PAAN / Port-Role embeddings / CPSMOT-Tomek rebalancing) is deliberately omitted.
 
 Results go to a *separate* summary file (`results/summary_tasnn.csv`) so the
-competitor never pollutes the Vanilla-SNN / hybrid summaries. Mirrors
-`src/training_sxlstm.py` exactly except for the model and its config keys.
+competitor never pollutes the Vanilla-SNN summaries. It follows the shared
+training loop of `src/training.py` except for the model and its config keys.
 
 Config keys (with defaults):
     num_steps          25     latency time window T
@@ -82,7 +82,7 @@ DEFAULTS = {
     "val_fraction": 0.1,
     "seed": 42,
     "device": None,
-    "summary_csv": "results/summary_tasnn.csv",
+    "summary_csv": "results/tables/summary_tasnn.csv",
     "force": False,
 }
 
@@ -270,6 +270,8 @@ def run_experiment(cfg: Dict) -> Dict:
 
     # ---------- training ----------
     training_curve = []
+    from src.selection import ValSelector, precision_scores
+    sel = ValSelector(cfg.get("select_on_val", False))   # Part B A1; off by default
     train_start = time.time()
     for epoch in range(cfg["epochs"]):
         model.train()
@@ -291,9 +293,23 @@ def run_experiment(cfg: Dict) -> Dict:
             "epoch": epoch + 1, "train_loss": train_loss,
             "val_loss": val_loss, "val_accuracy": val_acc,
         })
+        vf1 = sel.update(epoch + 1, val_eval["y_true"], val_eval["y_pred"], model)
+        if vf1 is not None:
+            training_curve[-1]["val_macro_f1"] = vf1
         print(f"[epoch {epoch+1}/{cfg['epochs']}] "
               f"train_loss={train_loss:.4f} val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
     train_time_s = time.time() - train_start
+    selection = sel.finalize(model)            # selected checkpoint for everything below
+    precisions = None
+    if cfg.get("record_precisions"):
+        def _score(m):
+            # the pipeline's exact test call: TASNN samples at inference and the early-exit
+            # predictor draws between batches, so the capture must make the same calls to
+            # see the same draws
+            e = _eval(m, bundle.test_loader, device, loss_fn=loss_fn, early_exit_conf=cfg["early_exit_conf"])
+            return e["y_pred"], e.get("y_score")
+        precisions = precision_scores(model, _score, bundle.test_loader.dataset.tensors[1].numpy().astype(np.int64),
+                                      bundle.class_names)
 
     # ---------- final evaluation (with early-exit on the headline test set) ----------
     test_eval = _eval(model, bundle.test_loader, device, loss_fn=loss_fn,
@@ -333,6 +349,10 @@ def run_experiment(cfg: Dict) -> Dict:
                     "focal_gamma", "kd_tau", "batch_size", "epochs", "lr",
                     "weight_decay", "class_weighted", "early_exit_conf",
                     "val_fraction", "seed", "device"]},
+        # The exact keyword arguments passed to get_dataset: subsample fraction, split,
+        # label granularity and seed. Earlier runs did not record them, so the config
+        # files were their only record (see results/diagnostics/loader_provenance.csv).
+        "loader_kwargs": dict(dataset_kwargs),
         "hardware": hw,
         "data": {
             "num_features": bundle.num_features,
@@ -356,6 +376,10 @@ def run_experiment(cfg: Dict) -> Dict:
         "test_minus_21": test21_record,
     }
 
+    if selection.get("enabled"):
+        record["training"]["selection"] = selection
+    if precisions is not None:
+        record["test_plus"]["precisions"] = precisions
     with open(results_dir / "results.json", "w") as f:
         json.dump(record, f, indent=2)
     torch.save(model.state_dict(), results_dir / "checkpoint.pt")

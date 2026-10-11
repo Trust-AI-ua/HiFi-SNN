@@ -2,8 +2,7 @@
 """Run TASNN (Transformer-Augmented Spiking NN competitor) for one dataset over seeds.
 
 Mirrors scripts/run_treespike.py: the dataset is a required positional argument, so
-each invocation targets a single dataset and datasets can run in parallel in separate
-tmux sessions.
+each invocation targets a single dataset and datasets can run in parallel.
 
 Each seed writes to results/TASNN/<dataset>/seed_<S>/; the summary
 results/summary_tasnn.csv keys on (model, dataset, seed) for dedup. Runs whose

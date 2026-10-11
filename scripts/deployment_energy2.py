@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Memory-inclusive energy, per dataset, under two reuse assumptions.
+
+Supersedes the aggregate model in deployment_energy.py on two counts.
+
+1. Energy is computed PER DATASET and then averaged. The previous version averaged
+   mean_exit across datasets first, which is wrong: 5 of 11 datasets have early exit
+   disabled by the validation gate and are scored at the full 20-step horizon, so the
+   13.29 aggregate is a mean effective horizon, not a mean exit step (enabled-only
+   mean is 7.69).
+
+2. Two memory variants, reported side by side rather than one chosen:
+
+   cold   one tier-priced access per operation. Pessimistic for every system, but
+          NOT equally: it is the only model under which a 5 MB tree walk and a 53 KB
+          weight matrix pay the same per-access price, which flatters the tree.
+   reuse  first touch of a distinct item at the tier price, subsequent touches at L1.
+          A 53 KB working set is L2-resident after the first pass; 76k tree nodes
+          visited 7.6k times are almost all cold.
+
+The truth is between them. The band is the result; neither point estimate is.
+"""
+from __future__ import annotations
+import numpy as np, pandas as pd
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]; OUT = REPO/"results"/"deployment"
+E_MAC, E_ADD = 4.6, 0.9            # Horowitz 45 nm fp32; comparison = add class
+E_L1 = 1.0                         # warm hit
+HIDDEN = 128
+
+def tier(b, sram, dram):
+    return sram if b <= 1024*1024 else dram
+
+def row_energy(r, sram, dram, reuse):
+    macs = 0.0 if pd.isna(r.macs) else r.macs
+    sops = 0.0 if pd.isna(r.sops) else r.sops
+    cmps = 0.0 if pd.isna(r.tree_comparisons) else r.tree_comparisons
+    is_snn, is_tree = sops > 0, str(r.system).endswith("gbdt")
+    e_arith = macs*E_MAC + sops*E_ADD + cmps*E_ADD
+
+    # A hybrid pays weight traffic for BOTH kinds. macs + sops reduces to the
+    # previous expression for every non-hybrid system (the other term is zero),
+    # and only TASNN, which is both, changes.
+    w_ops = cmps if is_tree else (macs + sops)
+    exit_t = r.mean_exit if not pd.isna(r.mean_exit) else 1.0
+    state = HIDDEN*exit_t*2 if is_snn else (0.0 if is_tree else HIDDEN)
+    inputs = r.n_channels if not pd.isna(r.n_channels) else 78.0
+    per = tier(r.total_bytes, sram, dram)
+
+    if not reuse:
+        e_mem = (w_ops + state + inputs) * per
+    else:
+        # distinct items: int8 weights ~ 1 B each; tree nodes counted directly
+        distinct = r.n_nodes if is_tree and r.n_nodes > 0 else max(r.model_bytes, 1)
+        cold = min(w_ops, distinct); warm = max(w_ops - cold, 0.0)
+        e_mem = cold*per + warm*E_L1 + (state + inputs)*E_L1
+    return e_arith, e_mem
+
+def table(d, sram=100, dram=1300, reuse=False):
+    out = []
+    for _, r in d.iterrows():
+        a, m = row_energy(r, sram, dram, reuse)
+        out.append(dict(dataset=r.dataset, system=r.system, e_arith=a, e_mem=m, e_tot=a+m))
+    return pd.DataFrame(out).groupby("system").e_tot.mean()
+
+IOT = ["ciciot2023", "ciciomt2024", "edgeiiot", "toniot"]
+
+if __name__ == "__main__":
+    import argparse, sys
+    sys.path.insert(0, str(REPO/"scripts"))
+    from make_dep_systems_table import deployed
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--iot", action="store_true",
+                    help="restrict to the four IoT benchmarks, the paper's primary scope")
+    a = ap.parse_args()
+    d = pd.read_csv(OUT/"deployment_measurements.csv", comment="#")
+    # The Tree-to-Spike row that ships: selected exit where admitted, full window
+    # where the validation gate rejected it. Raw MLP is gone; Vanilla SNN and
+    # TASNN are priced here for the first time.
+    d = deployed(d)
+    if a.iot:
+        d = d[d.dataset.isin(IOT)]
+        print(f"IoT subset: {sorted(d.dataset.unique())}")
+    # t2s_full / t2s_exit are folded into t2s_deployed by deployed(); listing them
+    # here only produced NaN rows.
+    # The band against the tree ensembles is DROPPED (decision 2026-09-23): no claim
+    # against the tree remains, and the tree's memory term is the most
+    # assumption-laden number in this model. The tree is compared on arithmetic
+    # only, in the teacher table.
+    order = ["tasnn","vanilla_snn","dnn_tree","t2s_deployed"]
+    print("="*74); print("Per-dataset total energy (nJ), two reuse assumptions"); print("="*74)
+    for reuse in (False, True):
+        t = table(d, reuse=reuse).reindex(order)/1000
+        print(f"\n-- {'REUSE-AWARE' if reuse else 'COLD (one access per op)'} @ SRAM 100 / DRAM 1300 pJ")
+        print(t.round(1).to_string())
+        print(f"   dnn_tree / t2s_deployed = {t['dnn_tree']/t['t2s_deployed']:.2f}x   "
+              f"vanilla_snn / t2s_deployed = {t['vanilla_snn']/t['t2s_deployed']:.2f}x")
+
+    print("\n" + "="*74)
+    print("Crossover sweep: dnn_tree / t2s_deployed ratio (>1 = SNN wins)")
+    print("="*74)
+    rec = []
+    for reuse in (False, True):
+        for s in (5, 10, 20, 50, 100):
+            t = table(d, sram=s, reuse=reuse)
+            rec.append(dict(model="reuse" if reuse else "cold", sram_pJ=s,
+                            ratio=round(t["dnn_tree"]/t["t2s_deployed"], 2),
+                            vs_vanilla_snn=round(t["vanilla_snn"]/t["t2s_deployed"], 2)))
+    s = pd.DataFrame(rec)
+    s.insert(0, "config", "deployed")
+    # The same sweep with the student at FULL WINDOW (no early exit), the
+    # configuration of the headline quality tables. Both rows are reported
+    # (decision 2026-09-23): early exit is what moves the student from winning in
+    # one memory regime to winning in two, so neither row may be quoted unlabelled.
+    raw = pd.read_csv(OUT/"deployment_measurements.csv", comment="#")
+    if a.iot:
+        raw = raw[raw.dataset.isin(IOT)]
+    fw = raw[raw.system.isin(["dnn_tree", "vanilla_snn", "t2s_full"])].copy()
+    fw.loc[fw.system == "t2s_full", "system"] = "t2s_deployed"   # reuse the ratio code
+    rec_fw = []
+    for reuse in (False, True):
+        for sp in (5, 10, 20, 50, 100):
+            t = table(fw, sram=sp, reuse=reuse)
+            rec_fw.append(dict(config="full_window", model="reuse" if reuse else "cold", sram_pJ=sp,
+                               ratio=round(t["dnn_tree"]/t["t2s_deployed"], 2),
+                               vs_vanilla_snn=round(t["vanilla_snn"]/t["t2s_deployed"], 2)))
+    s = pd.concat([s, pd.DataFrame(rec_fw)], ignore_index=True)
+    for cfg_name in ("deployed", "full_window"):
+        print(f"\n[{cfg_name}] dnn_tree / t2s")
+        print(s[s.config == cfg_name].pivot(index="sram_pJ", columns="model", values="ratio").to_string())
+    print("\nvanilla_snn / t2s_deployed (<1 = the conventional SNN is cheaper):")
+    print(s[s.config == "deployed"].pivot(index="sram_pJ", columns="model", values="vs_vanilla_snn").to_string())
+    s.to_csv(OUT/("energy_crossover_iot.csv" if a.iot else "energy_crossover.csv"), index=False)
+    print(f"\n[wrote] {OUT/('energy_crossover_iot.csv' if a.iot else 'energy_crossover.csv')}")

@@ -6,7 +6,7 @@ position our **Tree-to-Spike** model against.
 
 - **Model:** [`src/models/tasnn.py`](../../src/models/tasnn.py)
 - **Trainer:** [`src/training_tasnn.py`](../../src/training_tasnn.py)
-- **Runner:** `scripts/run_tasnn.py` · `scripts/run_tasnn_tmux.sh`
+- **Runner:** `scripts/run_tasnn.py`
 - **Results:** `results/TASNN/<dataset>/seed_<S>/` → deduped into `results/summary_tasnn.csv`
 
 ## Source
@@ -51,14 +51,14 @@ two heads whose softmaxes are ensembled at inference:
 
 Paper defaults are used: `d_model=128`, `heads=4`, `layers=3`, `FFN=256`, LIF
 `128→64`, `T=16`, `β=0.9`; loss weights `λ_TR=λ_SNN=1, λ_KD=0.5, λ_homeo=0.1,
-λ_energy=1e-3, λ_gate=1e-3`. Footprint ≈ **646k params** (vs **14.9k** for
-Tree-to-Spike / DNN-Tree) — TASNN is the heavyweight competitor, deliberately
-*not* size-matched. The defensible question is: *can a 14.9k-param tree-guided SNN
-match a 646k-param transformer-spiking SOTA at far lower energy?*
+λ_energy=1e-3, λ_gate=1e-3`. TASNN is the heavyweight competitor, deliberately *not*
+size-matched: about 0.5M parameters against a few thousand for Tree-to-Spike and DNN-Tree
+(per-dataset counts in `results/Journal_results/tables/table_architecture_full.md`). The
+question is whether a much smaller tree-guided SNN can match it at far lower energy.
 
 ## What we omitted — and why (fairness to Tree-to-Spike)
 
-Every model in this repo (Vanilla SNN, **Tree-to-Spike**, DNN-Tree, S-xLSTM, …) is
+Every model in this repo (Vanilla SNN, **Tree-to-Spike**, DNN-Tree, TASNN) is
 fed the **same features** from `src/data` (one-hot + log1p + MinMax→[0,1]), with
 **no resampling**, the **same splits**, and the same per-dataset `subsample_fraction`
 / `label_mode`. To keep TASNN on that identical footing we drop the reference's
@@ -103,9 +103,7 @@ Configs mirror the **Tree-to-Spike** dataset set 1-for-1, with identical
 | cse-cic-ids2018 | 0.5 | — | | | |
 
 ```bash
-# one dataset, multi-seed, in a detached tmux session
-./scripts/run_tasnn_tmux.sh nslkdd --seeds 42 43 44 45 46
-# or directly
+# one dataset, five seeds
 python scripts/run_tasnn.py unswnb15 --seeds 42 43 44 45 46
 ```
 

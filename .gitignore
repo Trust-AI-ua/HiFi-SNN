@@ -1,23 +1,33 @@
+# Data and environments
 dataset/
-.kaggle/
+.venv/
+venv/
 __pycache__/
 *.pyc
-*.pth
-*.pt
+.ipynb_checkpoints/
+.kaggle/
 .aws/
-*.tex
-# Ignore all per-run result artifacts; only keep the aggregate summary
-# Early-exit prefix artifacts: 12.85 GB of per-timestep logits, regenerable
-# with scripts/extract_prefix.py. Derived data, never source.
-results/prefix_outputs/
+
+# Model weights and large per-run arrays (regenerable from the run scripts)
+*.pt
+*.pth
 *.npz
+# Per-timestep logits for early exit, about 13 GB (scripts/extract_prefix.py)
+results/prefix_outputs/
+# Serialized artifacts the gated deployment measurement times
+results/journal_partB/B8/*/artifacts/
 
-# Generated journal deliverables are outputs, not manuscript sources: the blanket
-# *.tex rule above would silently drop them from version control.
-!results/Journal_results/new_run_results/*.tex
+# LaTeX is written locally for typesetting only; every value is also in a tracked
+# CSV, Markdown or JSON file (numbers: results/tables/numbers_provenance.json)
+*.tex
 
-# Conference tree: derived caches and the dataset symlink are never sources
-conference/dataset
-conference/results/cache/
-!conference/paper/*.tex
-!conference/paper/tables/*.tex
+# Logs of new runs (the logs behind the reported runs are in results/archive/logs/)
+results/*.log
+
+# Local leftovers of work removed from this branch
+conference/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/

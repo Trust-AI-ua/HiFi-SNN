@@ -1,0 +1,30 @@
+[2026-09-28T05:31:23Z] START B3 search (64 cells, 4 workers) and B6 stalled diagnostics (3)
+[2026-09-28T05:34:13Z] START A5 M3 Edge-IIoTset reruns (4 cells, default env)
+[2026-09-28T05:34:42Z] START A3 CICIoMT2024 validation-selected GBDT (5 seeds x 9 configs)
+[2026-09-28T06:43:57Z] STOPPED by operator: orchestrator (idle) and B3 search pool (edgeiiot cells 5,7,8,9 unfinished, no output written); load average ~110. Relaunching through a slot-limited scheduler (max 6 heavy jobs); no result depends on timing.
+[2026-09-28T06:46:03Z] START slot-limited queue (MAX=6 heavy processes)
+[2026-09-28T12:44:38Z] B2 arm guard passed; feeding B2 fourth arm (20 runs)
+[2026-09-28T15:50:20Z] block guard rerun on ef1c08b (TASNN capture fix); the queued relauncher did not survive the session restart
+[2026-09-28T22:00:33Z] B3 search complete (64); selection and final runs
+[2026-09-30T02:26:05Z] START B6 CICIoT2023 block (60 runs, MAX=6); previous scheduler stopped: its drain check matched other users' processes (idle since 2026-09-29T00:47Z)
+[2026-09-30T13:25:47Z] STOPPED by operator for a planned server shutdown: block scheduler and 6 in-progress runs (entropy 43-46, entropy_tree 42-43, all at epoch 3/20; no results written). 6/60 block runs complete (tree 42-46, entropy 42). Resume: see results/journal_partB/RESUME.md
+[2026-10-02T18:37:49Z] RESUME after reboot (kernel 6.8.0-142-generic): rerunning the block reproduction guard before the block
+[2026-10-02T18:57:44Z] post-reboot block guard PASSED; starting the block
+[2026-10-02T18:57:44Z] START B6 CICIoT2023 block (60 runs, MAX=6); previous scheduler stopped: its drain check matched other users' processes (idle since 2026-09-29T00:47Z)
+[2026-10-02T18:58:01Z] note: the START line above reuses run_partB_block.sh's fixed text; this start is the post-reboot resume (6/60 done before the shutdown), not the 2026-09-30 restart
+[2026-10-02T20:10:52Z] user: prioritize the block. Ladder sweep set to nice 19 (all threads; children inherit). Block scheduler restarted with MAX=8; the 6 in-progress runs keep running under their original wrappers
+[2026-10-02T20:10:53Z] START B6 CICIoT2023 block scheduler (60 runs, MAX=8; finished runs and runs held by a live worker are skipped)
+[2026-10-06T15:55:41Z] B6 block done
+[2026-10-06T15:57:15Z] START A6 (dominated classes with/without duplicates, stored models)
+[2026-10-06T15:59:10Z] START A1 follow-up: prefix extraction for block tree runs (CICIoT2023, seeds 42-46)
+[2026-10-06T16:33:02Z] A1 prefix extraction: 5/5 cells reproduce their block records exactly; early-exit selection
+[2026-10-06T16:34:35Z] A1 follow-up done (flags, exit audit, selection); committing locally
+[2026-10-06T16:34:35Z] A1 follow-up committed locally (95d7eb46)
+[2026-10-06T17:25:36Z] A6 committed locally (2b616378)
+[2026-10-06T17:25:36Z] offline follow-up chain finished; push when the network is back
+[2026-10-07T03:22:31Z] user: kill CPU/GPU jobs and run the gated measurements. Ladder sweep stopped by PID (22680 parent, 1424718 child: T10/edgeiiot/seed_42 lost, 75/175 complete and kept; the @reboot crontab line is unchanged)
+[2026-10-07T03:27:36Z] START gated measurements (guards Ga Gb Gc, then gate, then A1 deployment, B3 latency, B8 memory)
+[2026-10-07T03:28:01Z] gated measurements attempt 1 stopped in guard Ga (reference module path bug, nothing measured); relaunch
+[2026-10-07T04:02:58Z] gated measurements attempt 2 stopped in guard Gb before any measurement: deployment_measure fits the teacher after torch.set_num_threads(1), which changes the CICIoT2023 teacher (0.83136 vs stored 0.83392; confirmed in fresh processes). Scope check on all 11 datasets running; gated run on hold
+[2026-10-07T04:15:57Z] user: re-measure all 11 datasets with the fixed procedure. Launch gated run (attempt 3)
+[2026-10-07T04:50:29Z] gated run done (20261007T041558Z-66406a): 11-dataset deployment table, PLE latency. Peak memory first read ru_maxrss, which Linux carries across fork/exec (every system read the driver's 18.6 GB); file set aside as INVALID; memchild fixed to VmHWM and the 32 memory runs redone from the saved artifacts (load ~0.9)

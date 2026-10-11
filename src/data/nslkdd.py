@@ -92,6 +92,9 @@ class DatasetBundle:
     num_classes: int
     class_names: List[str]
     class_counts_train: dict
+    # per-row provenance for repaired corpora ({"train"/"val"/"test": str array});
+    # None for datasets that needed no repair. See src/data/repair.py.
+    row_provenance: Optional[dict] = None
 
 
 def _read_split(path: Path) -> pd.DataFrame:

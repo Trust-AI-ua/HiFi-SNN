@@ -83,7 +83,7 @@ def _ms(recs, getter):
             v = None
         if isinstance(v, (int, float)):
             vs.append(v)
-    return (float(np.mean(vs)), float(np.std(vs))) if vs else (None, None)
+    return (float(np.mean(vs)), float(np.std(vs, ddof=1))) if vs else (None, None)   # sample SD
 
 
 def build(DS=DS, suffix='full', group='all'):

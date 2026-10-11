@@ -77,7 +77,7 @@ DEFAULTS = {
     "val_fraction": 0.1,
     "seed": 42,
     "device": None,
-    "summary_csv": "results/summary_treespike.csv",
+    "summary_csv": "results/tables/summary_treespike.csv",
     "force": False,
 }
 
@@ -137,7 +137,9 @@ def distillation_loss(logits, y, teacher_proba, hidden_rate, benign_class=0,
     eps = 1e-8
     ce = F.cross_entropy(logits, y, weight=ce_weight)
 
-    # KD: soft cross-entropy from the (temperature-sharpened) teacher distribution
+    # KD: soft cross-entropy from the temperature-SOFTENED teacher distribution.
+    # q^(1/tau), renormalised, equals softmax(log q / tau); with tau = 2 > 1 it flattens
+    # the teacher. No temperature on the student logits and no tau^2 factor.
     t = teacher_proba.clamp_min(eps) ** (1.0 / tau)
     t = t / t.sum(-1, keepdim=True)
     kd = -(t * F.log_softmax(logits, dim=-1)).sum(-1).mean()
@@ -272,8 +274,9 @@ def run_experiment(cfg: Dict) -> Dict:
     # ---------- 2) tree-guided spike encoder ----------
     encoder = TreeGuidedSpikeEncoder(
         T=cfg["T"], pop_max=cfg["pop_max"], prune_quantile=cfg["prune_quantile"],
-        jitter=cfg["jitter"], encoder_mode=cfg["encoder_mode"]).fit(
-            teacher, Xtr.shape[1], X=Xtr)   # X used only by the "quantile" ruler-control mode
+        jitter=cfg["jitter"], encoder_mode=cfg["encoder_mode"],
+        cost_power=float(cfg.get("teacher_cost_power", 1.0))).fit(
+            teacher, Xtr.shape[1], X=Xtr, y=ytr)   # X: "quantile"/"entropy"; y: "entropy" only
     print(f"[encoder] kept {encoder.out_dim} spike channels from {Xtr.shape[1]} features")
 
     # ---------- 3) distillation training of the SNN student ----------
@@ -296,6 +299,8 @@ def run_experiment(cfg: Dict) -> Dict:
     N = len(Xtr)
     bs = cfg["batch_size"]
     training_curve = []
+    from src.selection import ValSelector, precision_scores
+    sel = ValSelector(cfg.get("select_on_val", False))   # Part B A1; off by default
     for ep in range(cfg["epochs"]):
         student.train()
         perm = torch.randperm(N)
@@ -314,12 +319,22 @@ def run_experiment(cfg: Dict) -> Dict:
         # val accuracy (standard forward)
         vp, _, _, _, _, _ = _encode_forward_in_batches(student, encoder, Xval, bs, device)
         val_acc = float((vp == yval).mean())
+        vf1 = sel.update(ep + 1, yval, vp, student)
         training_curve.append({"epoch": ep + 1, "train_loss": running / max(n_batches, 1),
                                "val_accuracy": val_acc, **{f"loss_{k}": v for k, v in last_parts.items()}})
+        if vf1 is not None:
+            training_curve[-1]["val_macro_f1"] = vf1
         print(f"[epoch {ep+1}/{cfg['epochs']}] loss={running/max(n_batches,1):.4f} "
               f"ce={last_parts.get('ce',0):.3f} kd={last_parts.get('kd',0):.3f} "
               f"val_acc={val_acc:.4f}")
     train_time_s = time.time() - train_start
+    selection = sel.finalize(student)          # selected checkpoint for everything below
+    precisions = None
+    if cfg.get("record_precisions"):
+        precisions = precision_scores(student, lambda m: _encode_forward_in_batches(m, encoder, Xte, bs, device)[:2],
+                                      yte, bundle.class_names)
+        results_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(student.state_dict(), results_dir / "checkpoint_fp32.pt")
 
     # ---------- 4) deploy: int8 quantize (SNN-only inference) ----------
     if cfg["quantize"]:
@@ -399,6 +414,10 @@ def run_experiment(cfg: Dict) -> Dict:
                     "tau", "a_kd", "a_rank", "a_sparse", "a_fp", "class_weighted", "quantize",
                     "theta_exit", "theta_uncertain", "epochs", "batch_size", "lr",
                     "weight_decay", "val_fraction", "seed", "device"]},
+        # The exact keyword arguments passed to get_dataset: subsample fraction, split,
+        # label granularity and seed. Earlier runs did not record them, so the config
+        # files were their only record (see results/diagnostics/loader_provenance.csv).
+        "loader_kwargs": dict(dataset_kwargs),
         "hardware": hw,
         "data": {
             "num_features": bundle.num_features,
@@ -406,6 +425,8 @@ def run_experiment(cfg: Dict) -> Dict:
             "class_names": bundle.class_names,
             "class_counts_train": bundle.class_counts_train,
             "encoder_channels": int(encoder.out_dim),
+            **({"entropy_edges": encoder.diagnostics_}
+               if getattr(encoder, "diagnostics_", None) is not None else {}),
             "splits": {
                 "train": len(bundle.train_loader.dataset),
                 "val": len(bundle.val_loader.dataset),
@@ -419,6 +440,10 @@ def run_experiment(cfg: Dict) -> Dict:
         "test_minus_21": None,
     }
 
+    if selection.get("enabled"):
+        record["training"]["selection"] = selection
+    if precisions is not None:
+        record["test_plus"]["precisions"] = precisions
     with open(results_dir / "results.json", "w") as f:
         json.dump(record, f, indent=2)
     torch.save(student.state_dict(), results_dir / "checkpoint.pt")

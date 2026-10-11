@@ -12,7 +12,9 @@ handled accordingly:
 
 The default configuration is NOT part of the ladder: it is the shipped Tree-to-Spike
 run for the same dataset and seed (`results/Tree-to-Spike/<ds>/seed_<s>/`), so the
-paired difference isolates exactly the parameter the arm overrides.
+paired difference isolates exactly the parameter the arm overrides. The ladder arms are
+10-epoch runs, so CICIoT2023's default is its 10-epoch run
+(`results/fixed_budget_ciciot2023/`), not the 20-epoch block of amendment A1.
 
 The question is robustness -- broad plateaus, catastrophic regions, cost trade-offs,
 and whether the default sits inside a stable region rather than on an isolated
@@ -76,7 +78,8 @@ def build() -> pd.DataFrame:
     rows = []
     for ds in DATASETS:
         for s in SEEDS:
-            d = load_cell(REPO / f"results/Tree-to-Spike/{ds}/seed_{s}/results.json")
+            root = "results/fixed_budget_ciciot2023" if ds == "ciciot2023" else "results"
+            d = load_cell(REPO / f"{root}/Tree-to-Spike/{ds}/seed_{s}/results.json")
             if d:
                 rows.append({"arm": "DEFAULT", "dataset": ds, "seed": s, **d})
             for a in ARMS:

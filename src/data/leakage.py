@@ -668,7 +668,7 @@ def load_leakage_bundle(dataset: str, split_mode: str = "host", seed: int = 42,
 # both single-endpoint validation sets and validation partitions holding most of
 # the available endpoints -- and was selected before any classifier was evaluated
 # on these protocols. No model metric entered its design.
-MANIFEST_DIR = REPO / "results" / "leakage" / "manifests"
+MANIFEST_DIR = REPO / "results" / "archive" / "leakage" / "manifests"
 
 
 def freeze_manifest(dataset: str, protocol: str, fold: int, n_folds: int = 4) -> Path:

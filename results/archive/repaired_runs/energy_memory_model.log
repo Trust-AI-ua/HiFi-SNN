@@ -1,0 +1,44 @@
+# Memory-aware, batch-aware total-energy model
+
+Does the SNN energy win survive memory access (the real reviewer test)? Compute = MAC 4.6 pJ / AC 0.9 pJ; memory = N_access x E_mem (32-bit). DNN amortises weight reads over the batch; the event-driven SNN does not, but only touches active synapses and (with early exit) only T_eff steps.
+
+Per-sample operation & memory profile (macro-avg):
+| Model | Compute ops | Op type | Mem accesses @B=1 (full-T / early-exit) | T / T_eff |
+|---|--:|:--|--:|--:|
+| Vanilla SNN | 5274 | SOPs | 11924 / 6033 | 25/12.6 |
+| Tree-to-Spike | 11805 | SOPs | 17186 / 5241 | 20/6.1 |
+| DNN-Tree | 8488 | MACs | 8878 | 1/1 |
+
+## Total energy: Tree-to-Spike (early-exit) vs DNN-Tree (iso-twin), batch-1
+| E_mem regime | E_DNN (pJ) | E_SNN full-T (pJ) | delta full-T | E_SNN early-exit (pJ) | delta early-exit |
+|---|--:|--:|--:|--:|--:|
+| compute-only (0 pJ) | 39043 | 10624 | 3.7x | 3240 | 12.1x |
+| on-chip SRAM (5 pJ) | 83433 | 96556 | 0.9x | 29444 | 2.8x |
+| large SRAM (50 pJ) | 482948 | 869940 | 0.6x | 265280 | 1.8x |
+| off-chip DRAM (640 pJ) | 5721033 | 11009870 | 0.5x | 3357355 | 1.7x |
+
+## Total energy: Vanilla SNN (early-exit) vs its analytic dense-ANN twin, batch-1
+| E_mem regime | E_DNN (pJ) | E_SNN early-exit (pJ) | delta |
+|---|--:|--:|--:|
+| compute-only (0 pJ) | 48870 | 2402 | 20.3x |
+| on-chip SRAM (5 pJ) | 103320 | 32569 | 3.2x |
+| large SRAM (50 pJ) | 593370 | 304073 | 2.0x |
+| off-chip DRAM (640 pJ) | 7018470 | 3863789 | 1.8x |
+
+## Batch-size sensitivity (on-chip SRAM 5 pJ): DNN per-sample energy vs batch
+Tree-to-Spike (early-exit) per-sample energy is batch-independent (event-driven).
+| Batch B | E_DNN/sample (pJ) | E_SNN/sample (pJ) | winner |
+|---|--:|--:|:--|
+| 1 | 83433 | 29444 | SNN |
+| 8 | 45712 | 29444 | SNN |
+| 64 | 40996 | 29444 | SNN |
+| 256 | 40491 | 29444 | SNN |
+| 1024 | 40365 | 29444 | SNN |
+
+## What this proves (the publication-grade takeaway)
+- **The SNN's total-energy win holds with memory access — but only because of early exit.** With early exit (T_eff ~ 4-7 of T), the SNN's memory accesses at batch-1 stay *below* the DNN's full weight read, so it wins across every memory regime (SRAM and DRAM).
+- **Without early exit (full T), the multi-timestep membrane re-fetch erodes or reverses the win once memory is expensive** (DRAM) — exactly the known objection. So early exit is load-bearing, not cosmetic: it is what makes the hybrid SNN energy-viable vs just deploying the DNN.
+- **Batch matters**: the DNN only amortises its weight reads at large batch, but its dense MAC *compute* alone still exceeds the SNN's whole budget, so at batch-1 (edge) the SNN wins decisively. This is the regime neuromorphic edge hardware targets.
+- **Caveats**: this is an analytical model (stated assumptions); off-chip vs on-chip placement, weight reuse, and spike-routing overhead need a hardware/dataflow simulator or Loihi/Akida measurement for a final number. Training energy and von-Neumann batch-1 latency remain DNN wins.
+
+[wrote results/energy_memory_model.md]

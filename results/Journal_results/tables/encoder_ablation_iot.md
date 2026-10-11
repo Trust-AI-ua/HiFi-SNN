@@ -4,11 +4,11 @@ Mean over 5 seeds. **SOPs include the input->layer-1 term** (channels x hidden[0
 
 | Dataset | Encoder | Channels | SOPs/sample | Energy (pJ) | Accuracy | Macro-F1 | TTFS (/20) | Exit step (/20) |
 |---|---|--:|--:|--:|--:|--:|--:|--:|
-| CICIoT2023 | **tree** | 39 | 12,830 | 11,547 | 99.1 | 72.2 | 14.8 | 4.7 |
-| CICIoT2023 | quantile | 39 | 15,631 | 14,068 | 98.7 | 61.4 | 9.4 | 10.2 |
-| CICIoT2023 | nokd | 39 | 11,893 | 10,704 | 99.0 | 72.8 | 14.8 | 2.1 |
-| CICIoT2023 | uniform | 40 | 12,770 | 11,493 | 98.2 | 69.5 | 14.5 | 1.4 |
-| CICIoT2023 | all | 119 | 16,681 | 15,013 | 99.3 | 72.2 | 14.2 | 5.6 |
+| CICIoT2023 | **tree** | 39 | 12,732 | 11,459 | 99.1 | 75.2 | -- | 6.0 |
+| CICIoT2023 | quantile | 39 | 15,722 | 14,150 | 98.8 | 62.7 | -- | 11.0 |
+| CICIoT2023 | nokd | 39 | 11,868 | 10,682 | 99.1 | 74.5 | -- | 2.0 |
+| CICIoT2023 | uniform | 40 | 13,102 | 11,792 | 98.3 | 71.2 | -- | 1.4 |
+| CICIoT2023 | all | 119 | 16,248 | 14,623 | 99.3 | 75.7 | -- | 8.9 |
 | CICIoT2023 | GBDT (teacher) | -- | -- | -- | 99.5 | 82.9 | -- | -- |
 | CICIoMT2024 | **tree** | 37 | 8,355 | 7,519 | 99.7 | 89.4 | 14.5 | 4.8 |
 | CICIoMT2024 | quantile | 37 | 10,048 | 9,043 | 99.7 | 87.7 | 11.4 | 8.4 |
@@ -16,12 +16,12 @@ Mean over 5 seeds. **SOPs include the input->layer-1 term** (channels x hidden[0
 | CICIoMT2024 | uniform | 42 | 8,562 | 7,706 | 99.7 | 89.4 | 14.8 | 4.6 |
 | CICIoMT2024 | all | 127 | 13,983 | 12,585 | 99.7 | 91.9 | 14.4 | 2.5 |
 | CICIoMT2024 | GBDT (teacher) | -- | -- | -- | 99.7 | 90.5 | -- | -- |
-| Edge-IIoTset | **tree** | 41 | 9,703 | 8,732 | 98.0 | 88.8 | 14.6 | 7.9 |
-| Edge-IIoTset | quantile | 41 | 11,058 | 9,952 | 96.8 | 82.3 | 3.0 | 8.0 |
-| Edge-IIoTset | nokd | 41 | 5,570 | 5,013 | 97.9 | 88.1 | 14.6 | 4.4 |
-| Edge-IIoTset | uniform | 46 | 10,040 | 9,036 | 98.0 | 88.8 | 15.1 | 9.0 |
-| Edge-IIoTset | all | 139 | 15,736 | 14,163 | 98.3 | 90.5 | 14.7 | 6.1 |
-| Edge-IIoTset | GBDT (teacher) | -- | -- | -- | 98.4 | 90.8 | -- | -- |
+| Edge-IIoTset | **tree** | 37 | 10,532 | 9,479 | 95.5 | 83.9 | -- | 9.3 |
+| Edge-IIoTset | quantile | 37 | 13,947 | 12,552 | 92.7 | 71.9 | -- | 12.2 |
+| Edge-IIoTset | nokd | 37 | 7,534 | 6,780 | 95.4 | 83.4 | -- | 6.1 |
+| Edge-IIoTset | uniform | 40 | 10,571 | 9,514 | 95.3 | 83.3 | -- | 12.1 |
+| Edge-IIoTset | all | 119 | 17,063 | 15,357 | 95.9 | 86.1 | -- | 12.0 |
+| Edge-IIoTset | GBDT (teacher) | -- | -- | -- | 86.1 | 74.7 | -- | -- |
 | TON-IoT | **tree** | 73 | 18,043 | 16,239 | 96.9 | 93.0 | 14.7 | 9.0 |
 | TON-IoT | quantile | 73 | 24,687 | 22,218 | 95.3 | 89.3 | 2.2 | 10.8 |
 | TON-IoT | nokd | 73 | 18,709 | 16,838 | 96.9 | 92.7 | 14.7 | 5.3 |

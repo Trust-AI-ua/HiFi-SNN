@@ -32,6 +32,7 @@ import torch.nn.functional as F
 from src.data import get_dataset, DATASET_LOADERS
 from src.metrics import (compute_metrics, compute_binary_ids_metrics, count_parameters)
 from src.models import TreeGuidedSpikeEncoder, DNNStudent, quantize_int8_
+from src.models.tree_to_spike import quantize_int8_per_channel_
 from src.training_treespike import (_fit_teacher, _teacher_proba_global,
                                     _arrays_from_bundle, distillation_loss)
 
@@ -48,7 +49,7 @@ DEFAULTS = {
     "val_fraction": 0.1, "seed": 42,
     "device": "cuda" if torch.cuda.is_available() else "cpu",
     "results_dir": "results/DNN-Tree",
-    "summary_csv": "results/summary_dnn.csv",
+    "summary_csv": "results/tables/summary_dnn.csv",
     "latency_samples": 1000,   # cap for the batch-1 latency probe on large test sets
     "quantize": False,         # int8 fake-quant before eval (matched precision vs the SNN student)
 }
@@ -150,6 +151,13 @@ def run_experiment(cfg: Dict) -> Dict:
     encoder = TreeGuidedSpikeEncoder(T=cfg["T"], pop_max=cfg["pop_max"],
                                      prune_quantile=cfg["prune_quantile"],
                                      jitter=cfg["jitter"]).fit(teacher, Xtr.shape[1])
+    # E1 (matched information): "spike_time" feeds the dense twin the levels exactly as
+    # the spike train carries them (see TreeGuidedSpikeEncoder.encode_dense). Default
+    # "level" is the production input, unchanged.
+    dense_input = cfg.get("dense_input", "level")
+    if dense_input not in ("level", "spike_time"):
+        raise ValueError(f"dense_input must be 'level' or 'spike_time', got {dense_input!r}")
+    encoder.dense_time_quantized = dense_input == "spike_time"
     print(f"[encoder] {encoder.out_dim} channels from {Xtr.shape[1]} features (in_dim shared with SNN)")
 
     # ---------- DNN student (iso-architecture twin) ----------
@@ -162,6 +170,8 @@ def run_experiment(cfg: Dict) -> Dict:
     N, bs = len(Xtr), cfg["batch_size"]
     zero_rate = torch.zeros((), device=device)
     curve = []
+    from src.selection import ValSelector, precision_scores
+    sel = ValSelector(cfg.get("select_on_val", False))   # Part B A1; off by default
     for ep in range(cfg["epochs"]):
         student.train()
         perm = torch.randperm(N); running = 0.0; nb = 0; parts = {}
@@ -177,10 +187,37 @@ def run_experiment(cfg: Dict) -> Dict:
             running += float(loss.item()); nb += 1
         vp, _ = _forward_batches(student, encoder, Xval, bs, device)
         val_acc = float((vp == yval).mean())
+        vf1 = sel.update(ep + 1, yval, vp, student)
         curve.append({"epoch": ep + 1, "train_loss": running / max(nb, 1), "val_accuracy": val_acc})
+        if vf1 is not None:
+            curve[-1]["val_macro_f1"] = vf1
         print(f"[epoch {ep+1}/{cfg['epochs']}] loss={running/max(nb,1):.4f} "
               f"ce={parts.get('ce',0):.3f} kd={parts.get('kd',0):.3f} val_acc={val_acc:.4f}")
     train_time_s = time.time() - train_start
+    selection = sel.finalize(student)          # selected checkpoint for everything below
+    precisions = None
+    if cfg.get("record_precisions"):
+        precisions = precision_scores(student, lambda m: _forward_batches(m, encoder, Xte, bs, device), yte,
+                                      bundle.class_names)
+        results_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(student.state_dict(), results_dir / "checkpoint_fp32.pt")
+
+    # ---------- optional: fp32 test metrics, captured BEFORE the int8 projection ----------
+    fp32_record = None
+    if cfg.get("record_fp32"):
+        fp_pred, fp_score = _forward_batches(student, encoder, Xte, bs, device)
+        fp32_record = {"metrics": compute_metrics(yte, fp_pred, y_score=fp_score,
+                                                  class_names=bundle.class_names),
+                       "binary_ids_metrics": compute_binary_ids_metrics(yte, fp_pred, normal_class_index=0)}
+        # per-channel int8 of the same fp32 weights (one scale per output row), on a copy,
+        # so E1 covers the three precisions of tab_perchannel.csv (fp32, per-tensor, per-channel)
+        import copy
+        pc = quantize_int8_per_channel_(copy.deepcopy(student)).eval()
+        pc_pred, pc_score = _forward_batches(pc, encoder, Xte, bs, device)
+        fp32_record["per_channel_int8"] = {
+            "metrics": compute_metrics(yte, pc_pred, y_score=pc_score, class_names=bundle.class_names),
+            "binary_ids_metrics": compute_binary_ids_metrics(yte, pc_pred, normal_class_index=0)}
+        del pc
 
     # ---------- deploy: int8 fake-quant (matched precision vs the int8 SNN student) ----------
     if cfg.get("quantize"):
@@ -213,6 +250,9 @@ def run_experiment(cfg: Dict) -> Dict:
         "inference_ms_per_sample_batch1": bs1_ms,
         "inference_ms_per_sample_batched": batched_ms,
     }
+    if fp32_record is not None:
+        test_record["fp32_before_projection"] = fp32_record
+    test_record["dense_input"] = dense_input
     param_info = count_parameters(student)
     hw = {"device": str(device)}
     if cuda:
@@ -230,6 +270,10 @@ def run_experiment(cfg: Dict) -> Dict:
                     "teacher_n_estimators", "teacher_max_depth", "teacher_lr",
                     "tau", "a_kd", "a_rank", "a_fp", "epochs", "batch_size", "lr",
                     "weight_decay", "quantize", "val_fraction", "seed", "device"]},
+        # The exact keyword arguments passed to get_dataset: subsample fraction, split,
+        # label granularity and seed. Earlier runs did not record them, so the config
+        # files were their only record (see results/diagnostics/loader_provenance.csv).
+        "loader_kwargs": dict(dk),
         "hardware": hw,
         "data": {"num_features": bundle.num_features, "num_classes": bundle.num_classes,
                  "class_names": bundle.class_names, "class_counts_train": bundle.class_counts_train,
@@ -238,6 +282,10 @@ def run_experiment(cfg: Dict) -> Dict:
         "training": {"train_time_s": train_time_s, "training_curve": curve},
         "test_plus": test_record, "test_minus_21": None,
     }
+    if selection.get("enabled"):
+        record["training"]["selection"] = selection
+    if precisions is not None:
+        record["test_plus"]["precisions"] = precisions
     with open(rj, "w") as f:
         json.dump(record, f, indent=2)
     torch.save(student.state_dict(), results_dir / "checkpoint.pt")

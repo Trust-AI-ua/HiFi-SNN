@@ -3,8 +3,10 @@
 for all 4 models, 11 datasets -> results/Journal_results/tables/table_results_full.tex (+ .md).
 
 Energy methodology (consistent with benchmark_4way.py, NOT the template's raw-spike example):
-  * Vanilla SNN / Tree-to-Spike: SOPs = measured synops_per_sample + input->layer-1 term
-    (channels x hidden[0]); Energy = SOPs x 0.9 pJ.
+  * Tree-to-Spike: SOPs = stored synops_per_sample (hidden layers only) + the
+    input->layer-1 term (channels x hidden[0]); Energy = SOPs x 0.9 pJ.
+  * Vanilla SNN: SOPs = stored synops_per_sample, which ALREADY includes its input
+    layer; nothing is added. Energy = SOPs x 0.9 pJ.
   * DNN-Tree: measured MACs; Energy = MACs x 4.6 pJ.
   * TASNN: analytic transformer-MAC + spike-AC estimate (its raw spike count excludes the
     dominant transformer front-end); ops = MAC+AC, Energy = MAC*4.6 + AC*0.9 pJ.  (marked †)
@@ -49,7 +51,7 @@ def cell(key, recs):
     if not recs:
         return None
     g = lambda fn: float(np.mean([fn(r) for r in recs]))
-    sd = lambda fn: float(np.std([fn(r) for r in recs]))   # population std across seeds
+    sd = lambda fn: float(np.std([fn(r) for r in recs], ddof=1))   # sample SD over 5 seeds (ddof=1)
     M = lambda k: (lambda r: r["test_plus"]["metrics"][k])
     B = lambda k: (lambda r: r["test_plus"]["binary_ids_metrics"][k])
     o = {}
@@ -84,7 +86,10 @@ def cell(key, recs):
             if key == "tree":
                 h = cfg["hidden"]; inp = data["encoder_channels"] * (h[0] if isinstance(h, list) else 64)
             else:
-                inp = data["num_features"] * cfg.get("hidden_size", 128)
+                # Vanilla SNN: its stored value already includes the input layer
+                # (see benchmark_4way._sops_total). Adding num_features * hidden
+                # counted it twice.
+                inp = 0
             return syn + inp
         sv = [sops(r) for r in recs]; sv = [v for v in sv if v is not None]
         if not sv:
@@ -119,7 +124,12 @@ def build(DS=DS, suffix='full', group='all'):
 
     # columns: (label, key, direction)  dir: +1 higher better, -1 lower better, 'E' by energy
     COLS = [("acc", +1), ("bacc", +1), ("f1", +1), ("mcc", +1), ("dr", +1),
-            ("far", -1), ("params", -1), ("energy", -1), ("efac", -1), ("lat", -1)]
+            ("far", -1), ("params", -1), ("energy", -1), ("efac", -1)]
+    # Latency is deliberately NOT a column (decision 2026-09-23). These are five-seed
+    # quality tables; the only valid latency is the seed-42 batch-1 CPU deployment
+    # measurement (results/deployment/deployment_measurements.csv), reported in the
+    # deployment table. The stored inference_ms_per_sample were training-time GPU
+    # timings with batching that differed between models.
     mkeys = [m[0] for m in MODELS]; mnames = {m[0]: m[1] for m in MODELS}
 
     def best(dk, col, direction):
@@ -185,19 +195,19 @@ def build(DS=DS, suffix='full', group='all'):
         r"count excludes the dominant dense transformer). \textbf{Rel.\,E} is each model's energy "
         r"relative to the Tree-to-Spike baseline on the same dataset ($E_{\mathrm{model}}/"
         r"E_{\mathrm{Tree}}$): a value of $n\times$ means the model uses $n$ times the energy "
-        r"of our approach (derived from Energy, so not highlighted). Latency is wall-clock (batching differs: "
-        r"batch-1 for DNN-Tree, batched per-sample otherwise).}",
+        r"of our approach (derived from Energy, so not highlighted). Energy is full-window "
+        r"(no early exit). Latency is reported only in the deployment table (seed 42, batch-1 CPU).}",
         rf"\label{{tab:results_{suffix}}}", r"{\scriptsize",
-        r"\begin{tabular}{l l r r r r r r r r r r}", r"\toprule",
+        r"\begin{tabular}{l l r r r r r r r r r}", r"\toprule",
         r"& & \multicolumn{6}{c}{\textbf{Classification \& Detection}} & "
-        r"\multicolumn{4}{c}{\textbf{Efficiency}} \\",
-        r"\cmidrule(lr){3-8} \cmidrule(lr){9-12}",
+        r"\multicolumn{3}{c}{\textbf{Efficiency}} \\",
+        r"\cmidrule(lr){3-8} \cmidrule(lr){9-11}",
         r"\textbf{Dataset} & \textbf{Model} & \textbf{ACC}\,$\uparrow$ & \textbf{BACC}\,$\uparrow$ & "
         r"\textbf{F1-M}\,$\uparrow$ & \textbf{MCC}\,$\uparrow$ & \textbf{DR}\,$\uparrow$ & "
         r"\textbf{FAR}\,$\downarrow$ & \textbf{Params}\,$\downarrow$ & \textbf{Energy}\,$\downarrow$ & "
-        r"\textbf{Rel.\,E}\,$\downarrow$ & \textbf{Latency}\,$\downarrow$ \\",
+        r"\textbf{Rel.\,E}\,$\downarrow$ \\",
         r"& & \textbf{(\%)} & \textbf{(\%)} & \textbf{(\%)} & & \textbf{(\%)} & \textbf{(\%)} & "
-        r"\textbf{(K)} & \textbf{(pJ)} & \textbf{($\times$)} & \textbf{(ms)} \\", r"\midrule",
+        r"\textbf{(K)} & \textbf{(pJ)} & \textbf{($\times$)} \\", r"\midrule",
     ]
     for dk, dn in DS:
         lines.append(rf"\multirow{{4}}{{*}}{{{dn}}}")
