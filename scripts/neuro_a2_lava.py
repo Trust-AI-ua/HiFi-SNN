@@ -21,7 +21,8 @@ voltage summed over the T aligned steps (Lava's monitor), argmax.
 Check: every Lava run must equal the NumPy emulation of the same arithmetic bit for bit.
 
     .venv-neuro/bin/python scripts/neuro_a2_lava.py <zero|subtract> [datasets...]
-Output: results/neuro/a2_lava/<ds>_<variant>.json, a2_lava.csv
+Output: results/neuro/a2_lava/<ds>_<variant>.json, <ds>_<variant>_perflow.npz (per-flow readout,
+        spikes per layer, prediction; the A3 consistency gate compares SANA-FE with these), a2_lava.csv
 """
 from __future__ import annotations
 
@@ -135,6 +136,7 @@ def main():
         r["delta_f1_vs_int_numpy"] = r["macro_f1"]["lava"] - r["macro_f1"]["int_numpy"]
         r["R7_pass"] = bool(r["agreement_int_numpy"] >= 0.99 and abs(r["delta_f1_vs_int_numpy"]) <= 0.5)
         (OUT / f"{ds}_{variant}.json").write_text(json.dumps(r, indent=1))
+        np.savez_compressed(OUT / f"{ds}_{variant}_perflow.npz", acc=acc, counts=cnt, pred=lp, sample=samp)
         rows.append(dict(dataset=ds, variant=variant, agree_int=100 * r["agreement_int_numpy"],
                          agree_snntorch=100 * r["agreement_snntorch"], f1_lava=r["macro_f1"]["lava"],
                          f1_int=r["macro_f1"]["int_numpy"], f1_snntorch=r["macro_f1"]["snntorch"],
