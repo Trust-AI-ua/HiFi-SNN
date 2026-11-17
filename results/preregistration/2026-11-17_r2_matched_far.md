@@ -53,3 +53,16 @@ The claim "matches a compact tree on macro-F1, with far fewer false alarms" is s
 the advantage holds on at least 3 of the 4 datasets and on the IoT mean. If it holds on fewer
 datasets, the paper reports the matched-FAR results and drops "far fewer false alarms" as a
 general claim. DR at matched FAR is reported beside macro-F1 but does not enter the rule.
+
+## Amendment 1 (2026-11-17, after (A) to (C) were scored)
+
+(A) tuned the GBDT's benign threshold and left Tree-to-Spike at its argmax, so the comparison
+is asymmetric. Added, descriptive, with no new decision rule (R5 stands as scored):
+
+- **(D) Symmetric threshold.** Tree-to-Spike gets the same benign-threshold rule on its own
+  softmax (`p_b` from the summed output membrane), tuned on validation to FAR <= 1%. Its test
+  macro-F1, FAR and DR are reported beside the GBDT's (B).
+- **(E) Macro-F1 against FAR.** For both models, thresholds tuned on validation to FAR targets
+  0.1, 0.25, 0.5, 1 and 2%; test macro-F1, FAR and DR at each target.
+
+Same guards; output `results/journal_r2/matched_far_sym/`.

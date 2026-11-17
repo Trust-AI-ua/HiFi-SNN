@@ -257,8 +257,12 @@ def run_experiment(cfg: Dict) -> Dict:
 
     # ---------- data (tabular, preprocessed) ----------
     loader_params = __import__("inspect").signature(DATASET_LOADERS[cfg["dataset"]]).parameters
+    # ``data_seed`` (optional) seeds only the loader: subsample, split, scaling. It
+    # defaults to ``seed``, as in every run before revision 2. ``seed`` drives the rest.
+    # loader_kwargs in the record holds the seed the loader actually received.
+    data_seed = cfg["seed"] if cfg.get("data_seed") is None else int(cfg["data_seed"])
     dataset_kwargs = dict(batch_size=cfg["batch_size"], val_fraction=cfg["val_fraction"],
-                          seed=cfg["seed"])
+                          seed=data_seed)
     for opt in ("subsample_fraction", "test_fraction", "label_mode"):
         if opt in cfg and opt in loader_params:
             dataset_kwargs[opt] = cfg[opt]
