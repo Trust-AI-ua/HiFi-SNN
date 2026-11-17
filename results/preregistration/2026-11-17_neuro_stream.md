@@ -170,3 +170,23 @@ At the matched point (validation FAR <= 1% for both):
 Add the CICIoMT2024 captures with the same B1 pipeline, run A2 (Lava check) on the stream
 model, and compute SANA-FE energy per packet. Planned after the go decision; not
 pre-registered in detail here.
+
+## Amendment 1 (2026-11-17, after the endpoint review of B1, before any flow tensor was built)
+
+The endpoint review (`results/neuro/b1_stream/endpoints.txt`) shows the attacker-IP rule
+above is too wide. In every attack capture the victim is 192.168.0.128 (also present in the
+normal captures). In the eleven non-flood captures 192.168.0.170 is the attacker (at least 95%
+of packets) and the other novel endpoints are background internet hosts and multicast groups
+(Google and Cloudflare addresses, 239.255.255.250), which the rule would label as attacks. In
+the three floods (ICMP, TCP SYN, UDP) the sources are spoofed, novel, and talk only to the
+victim. The labeling rule becomes:
+
+- A flow in an attack capture takes the capture's class if one endpoint is the victim
+  192.168.0.128 and the other is an attacker: 192.168.0.170 in the non-flood captures, any
+  endpoint never seen in a normal capture in the three floods. Every other flow in an attack
+  capture is dropped as ambiguous.
+- Normal captures: unchanged (flows with an endpoint seen only in attack captures are dropped).
+
+Also recorded: `Vulnerability scanner attack.pcap` is damaged at byte 111,714,300 of
+140,377,652 (a record header claims a 136 MB packet); the 265,827 frames before it are used
+and the remainder is not recovered (`*.truncated.json` beside the packet file).
