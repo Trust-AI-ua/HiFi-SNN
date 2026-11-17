@@ -1,0 +1,104 @@
+{
+ "dataset": "ciciot2023",
+ "n_test": 466866,
+ "T": 20,
+ "channels": 37,
+ "reference_vs_production": {
+  "agreement": 1.0,
+  "max_abs_readout": 0.0
+ },
+ "nir_nodes": {
+  "0": "Affine",
+  "1": "LIF",
+  "2": "Affine",
+  "3": "LIF",
+  "4": "Affine",
+  "5": "LIF",
+  "input": "Input",
+  "output": "Output"
+ },
+ "nir_lif": {
+  "1": {
+   "tau": [
+    0.0009999997615814777
+   ],
+   "r": [
+    9.999997615814776
+   ],
+   "v_threshold": [
+    1.0
+   ],
+   "v_reset": [
+    0.0
+   ]
+  },
+  "3": {
+   "tau": [
+    0.0009999997615814777
+   ],
+   "r": [
+    9.999997615814776
+   ],
+   "v_threshold": [
+    1.0
+   ],
+   "v_reset": [
+    0.0
+   ]
+  },
+  "5": {
+   "tau": [
+    0.0009999997615814777
+   ],
+   "r": [
+    9.999997615814776
+   ],
+   "v_threshold": [
+    1.0
+   ],
+   "v_reset": [
+    0.0
+   ]
+  }
+ },
+ "affine_parameters_bit_exact": true,
+ "imported_lif": {
+  "1": {
+   "beta": 0.8999999761581421,
+   "threshold": 1.0,
+   "reset": "zero",
+   "reset_delay": false
+  },
+  "3": {
+   "beta": 0.8999999761581421,
+   "threshold": 1.0,
+   "reset": "zero",
+   "reset_delay": false
+  },
+  "5": {
+   "beta": 0.8999999761581421,
+   "threshold": 1.0,
+   "reset": "zero",
+   "reset_delay": false
+  }
+ },
+ "export_workarounds": [
+  "export_to_nir(..., ignore_dims=[0]): without it the Input node keeps the batch dimension ([1, C]) and NIR 1.0.8's reader rejects the graph (type mismatch with the first Affine)",
+  "LIF parameters broadcast to one value per neuron (well_typed): snnTorch 0.9.4 exports them as scalars, from which NIR 1.0.8's reader cannot infer the node's type; values unchanged",
+  "nir.write(..., compression=None): nir 1.0.8 passes gzip options to h5py for 0-d parameters, which h5py 3.16 rejects"
+ ],
+ "imported": {
+  "agreement": 0.9659452605244331,
+  "max_abs_readout": 26.832374504441894
+ },
+ "restored": {
+  "n_lif_restored": 3,
+  "agreement": 1.0,
+  "max_abs_readout": 0.44944580406322565
+ },
+ "macro_f1": {
+  "reference": 79.28106270789787,
+  "imported": 58.018400699309446,
+  "restored": 79.28106270789787
+ }
+}
