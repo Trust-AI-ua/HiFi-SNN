@@ -209,3 +209,29 @@ and the remainder is not recovered (`*.truncated.json` beside the packet file).
   NMI, the classes ruled out or in with their P(active | class), and a one-line reason), with
   the class counts and one-packet shares.
 - **Neuro-environment runs** go through `scripts/neuro_guard.py` (results/neuro/DEVIATIONS.md, D1).
+
+## Amendment 3 (2026-11-17, PI instruction, before any B2 model was trained or scored)
+
+Secondary analyses, descriptive. The primary rule R9 (paper P7) is unchanged.
+
+**Attack-tool artifact classes**, fixed here from the B1 appendix evidence (seed-42 training
+split, first-packet length): DDoS_ICMP (one length, 28 B), DDoS_TCP (one length, 160 B),
+Port_Scanning (one length, 40 B), DDoS_UDP (two lengths, 28 B for 90% and 56 B; every flow has
+one packet). These classes may be decided after one packet by any model.
+
+1. **Per class.** For Tree-to-Spike-Stream, the per-packet tree and the compact GBDT at the
+   matched point (validation FAR <= 1%): per attack class, detection rate at decision and
+   packets-to-detection (median, 90th percentile) on that class's detected flows.
+2. **Without the artifact classes.** The primary table recomputed on the test flows of the
+   other ten classes: macro-F1 over those ten classes (a prediction of a removed class counts
+   as an error), FAR, DR, packets-to-detection (median, 90th percentile, flows detected by both),
+   and SOPs and node comparisons per packet. The thresholds are not refitted.
+3. **Host-stack check.** The first packet's length also differs between the normal devices and
+   the attacker host (98.9% of Normal flows start with a 52-byte packet; nearly every attack
+   flow from 192.168.0.170 starts with 60 bytes, the TCP options of its SYN). To show how much
+   of the benign/attack separation one packet size carries: a benign-versus-attack rule on the
+   first packet's length alone (lengths ordered by their validation attack share, threshold
+   tuned on validation to FAR <= 1%), its test FAR and DR, and the test DR of each model after
+   packet 1 at the matched point.
+
+Reported beside the primary results in `results/neuro/b2/SUMMARY.md`.

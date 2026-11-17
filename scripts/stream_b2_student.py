@@ -14,15 +14,27 @@ prefix. 10 epochs, batch 128, Adam lr 0.002 (the Edge-IIoTset production setting
 selection on validation macro-F1 at decision (src/stream_decision: per-packet temperatures and
 gate refitted on validation each epoch). Deployed int8 (production quantize_int8_).
 
-    python scripts/stream_b2_student.py <seed> [--device cuda] [--smoke]
+Shares the GPU with the revision-2 training queue (PI decision, 2026-11-17), so it keeps off the
+CPU: every tensor (prefix features, teacher posteriors, spike trains) is moved to the GPU once
+and batches are indexed there (no DataLoader, no workers); torch uses 2 CPU threads; GPU memory
+is capped with set_per_process_memory_fraction. Deterministic: production _set_seed (cuDNN
+deterministic, no benchmark) plus torch.use_deterministic_algorithms. Sharing the device does
+not change either job's results; B2 counts operations and does not time them. The device
+state at start is recorded in the report.
+
+    python scripts/stream_b2_student.py <seed> [--mem-fraction 0.12] [--smoke]
 Output: results/neuro/b2/seed_<S>/{student.pt, student_report.json}; outside git,
         dataset/edge-iiotset/_stream/b2/seed_<S>_student.npz (val/test running logits [n, 32, K],
         cumulative SOPs [n, 32] (input-inclusive), input spikes per packet [n, 32])
 """
 from __future__ import annotations
 
+import os
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")      # required by deterministic cuBLAS
+
 import argparse
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -42,21 +54,34 @@ P = 32
 
 
 class StreamEncoder:
-    def __init__(self, teacher, n_features):
+    """Level edges from the teacher; spike trains computed on the GPU (torch.searchsorted)."""
+
+    def __init__(self, teacher, n_features, device):
         from src.models.tree_to_spike import TreeGuidedSpikeEncoder
         cfg = yaml.safe_load(open(REPO / "experiments/Tree-to-Spike/edgeiiot/config.yaml"))
         enc = TreeGuidedSpikeEncoder(T=P, pop_max=cfg["pop_max"], prune_quantile=cfg["prune_quantile"],
                                      jitter=cfg["jitter"], encoder_mode="tree").fit(teacher, n_features)
         self.feats = sorted({j for j, _ in enc.channels_})
         self.edges = [np.asarray(enc.edges_[j], np.float32) for j in self.feats]
-        self.l0 = np.array([np.searchsorted(e, np.float32(0), side="right") for e in self.edges])
+        self.edges_t = [torch.from_numpy(e).to(device) for e in self.edges]
+        self.l0 = torch.tensor([int(np.searchsorted(e, np.float32(0), side="right")) for e in self.edges], device=device)
         self.out_dim = 2 * len(self.feats)
 
     def spikes(self, X, L):
+        """X [n, P, F] float32 (GPU), L [n] (GPU) -> [n, P, 2J] bool (GPU)."""
+        lv = torch.stack([torch.searchsorted(e, X[:, :, j].contiguous(), right=True)
+                          for j, e in zip(self.feats, self.edges_t)], -1)
+        prev = torch.cat([self.l0.view(1, 1, -1).expand(len(X), 1, -1), lv[:, :-1]], 1)
+        valid = (torch.arange(P, device=X.device)[None, :] < L[:, None])[:, :, None]
+        return torch.cat([(lv > prev) & valid, (lv < prev) & valid], -1)
+
+    def spikes_numpy(self, X, L):
+        """CPU reference of spikes(), for the guard."""
         lv = np.stack([np.searchsorted(e, X[:, :, j], side="right") for j, e in zip(self.feats, self.edges)], -1)
-        prev = np.concatenate([np.broadcast_to(self.l0, (len(X), 1, len(self.feats))), lv[:, :-1]], 1)
+        l0 = self.l0.cpu().numpy()
+        prev = np.concatenate([np.broadcast_to(l0, (len(X), 1, len(self.feats))), lv[:, :-1]], 1)
         valid = (np.arange(P)[None, :] < L[:, None])[:, :, None]
-        return np.concatenate([(lv > prev) & valid, (lv < prev) & valid], -1)        # [n, P, 2J] bool
+        return np.concatenate([(lv > prev) & valid, (lv < prev) & valid], -1)
 
 
 def unroll(st, spk):
@@ -75,13 +100,14 @@ def unroll(st, spk):
 
 
 @torch.no_grad()
-def infer(st, enc, X, L, device, bs=4096):
-    Z, S, I = [], [], []
-    for i in range(0, len(X), bs):
-        spk = torch.from_numpy(enc.spikes(X[i:i + bs], L[i:i + bs]).astype(np.float32)).to(device)
+def infer(st, S, bs=8192):
+    """S: GPU spike trains [n, P, C] bool. Returns numpy running logits, cumulative SOPs, input spikes per packet."""
+    Z, C, I = [], [], []
+    for i in range(0, len(S), bs):
+        spk = S[i:i + bs].float()
         z, _, _, sops = unroll(st, spk)
-        Z.append(z.cpu().numpy()); S.append(sops.cpu().numpy()); I.append(spk.sum(2).cpu().numpy())
-    return np.concatenate(Z), np.cumsum(np.concatenate(S), 1), np.concatenate(I)
+        Z.append(z.cpu().numpy()); C.append(torch.cumsum(sops, 1).cpu().numpy()); I.append(spk.sum(2).cpu().numpy())
+    return np.concatenate(Z), np.concatenate(C), np.concatenate(I)
 
 
 def decision_f1(Z, y, L, cum):
@@ -92,55 +118,84 @@ def decision_f1(Z, y, L, cum):
     return SD.scores(y, Pd.argmax(1))["macro_f1"], theta
 
 
+def device_state():
+    q = "--query-compute-apps=pid,process_name,used_memory"
+    try:
+        apps = subprocess.run(["nvidia-smi", q, "--format=csv,noheader"], capture_output=True, text=True).stdout
+        gpu = subprocess.run(["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total",
+                              "--format=csv,noheader"], capture_output=True, text=True).stdout
+    except FileNotFoundError:
+        apps = gpu = "nvidia-smi unavailable"
+    return dict(gpu=gpu.strip(), other_compute_processes=[l.strip() for l in apps.splitlines() if l.strip()])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("seed", type=int)
-    ap.add_argument("--device", default="cuda")
+    ap.add_argument("--mem-fraction", type=float, default=0.12)
     ap.add_argument("--smoke", action="store_true", help="5,000 training flows, 1 epoch, no outputs kept")
     a = ap.parse_args()
+    torch.set_num_threads(2)
     from xgboost import XGBClassifier
-    from src.models.tree_to_spike import SNNStudent
+    from src.models.tree_to_spike import SNNStudent, quantize_int8_
     from src.training_treespike import distillation_loss, _set_seed
-    from src.models.tree_to_spike import quantize_int8_
     cfg = yaml.safe_load(open(REPO / "experiments/Tree-to-Spike/edgeiiot/config.yaml"))
-    seed, device = a.seed, torch.device(a.device)
+    seed, dev = a.seed, torch.device("cuda")
+    torch.cuda.set_per_process_memory_fraction(a.mem_fraction, dev)
+    torch.use_deterministic_algorithms(True)
+    shared = device_state()
     s = load_stream(seed)
     K = len(s.class_names)
     teacher = XGBClassifier(importance_type="gain")
     teacher.load_model(OUT / f"seed_{seed}/teacher.json")
     tz = np.load(BIG / f"seed_{seed}_teacher.npz")
-    enc = StreamEncoder(teacher, s.X["train"].shape[2])
-    Xtr, Ltr, ytr, Ttr = s.X["train"], s.length["train"], s.y["train"], tz["train_proba"]
+    enc = StreamEncoder(teacher, s.X["train"].shape[2], dev)
+    idx_tr = np.arange(len(s.y["train"]))
     if a.smoke:
-        sub = np.random.default_rng(0).choice(len(ytr), 5000, replace=False)
-        Xtr, Ltr, ytr, Ttr = Xtr[sub], Ltr[sub], ytr[sub], Ttr[sub]
+        idx_tr = np.sort(np.random.default_rng(0).choice(len(idx_tr), 5000, replace=False))
+    # everything onto the GPU once
+    G = lambda x: torch.from_numpy(np.ascontiguousarray(x)).to(dev)
+    L = {k: G(s.length[k].astype(np.int64)) for k in ("train", "val", "test")}
+    S = {}
+    for k in ("train", "val", "test"):
+        Xk = G(s.X[k])
+        S[k] = enc.spikes(Xk, L[k])
+        del Xk
+    chk = np.random.default_rng(1).choice(len(s.y["val"]), 2000, replace=False)
+    if not np.array_equal(S["val"][torch.from_numpy(chk).to(dev)].cpu().numpy(),
+                          enc.spikes_numpy(s.X["val"][chk], s.length["val"][chk])):
+        raise SystemExit("GPU spike trains differ from the NumPy encoder")
+    S["train"], L["train"] = S["train"][G(idx_tr)], L["train"][G(idx_tr)]
+    ytr = G(s.y["train"][idx_tr].astype(np.int64))
+    Ttr = G(tz["train_proba"][idx_tr])
+    del tz
     epochs = 1 if a.smoke else cfg["epochs"]
     _set_seed(seed)
-    st = SNNStudent(enc.out_dim, K, hidden=tuple(cfg["hidden"]), beta=cfg["beta"], leaky=cfg["leaky"]).to(device)
+    st = SNNStudent(enc.out_dim, K, hidden=tuple(cfg["hidden"]), beta=cfg["beta"], leaky=cfg["leaky"]).to(dev)
     opt = torch.optim.Adam(st.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
-    bs, N = cfg["batch_size"], len(ytr)
+    bs, N = cfg["batch_size"], len(idx_tr)
+    ar = torch.arange(P, device=dev)[None, :]
     curve, best, best_state = [], -1.0, None
     t0 = time.time()
     for ep in range(epochs):
         st.train()
-        perm = torch.randperm(N).numpy()
-        run = 0.0
+        perm = torch.randperm(N).to(dev)
+        run, nb = 0.0, 0
         for i in range(0, N, bs):
             idx = perm[i:i + bs]
-            spk = torch.from_numpy(enc.spikes(Xtr[idx], Ltr[idx]).astype(np.float32)).to(device)
-            z, s1n, s2n, _ = unroll(st, spk)
-            valid = torch.from_numpy(np.arange(P)[None, :] < Ltr[idx][:, None]).to(device)
-            yv = torch.from_numpy(ytr[idx]).to(device)[:, None].expand(-1, P)[valid]
-            tp = torch.from_numpy(Ttr[idx]).to(device)[valid]
+            z, s1n, s2n, _ = unroll(st, S["train"][idx].float())
+            valid = ar < L["train"][idx][:, None]
+            yv = ytr[idx][:, None].expand(-1, P)[valid]
             rate = (s1n + s2n)[valid].sum() / (valid.sum() * sum(cfg["hidden"]))
-            loss, parts = distillation_loss(z[valid], yv, tp, rate, tau=cfg["tau"], a_kd=cfg["a_kd"],
-                                            a_rank=cfg["a_rank"], a_sparse=cfg["a_sparse"], a_fp=cfg["a_fp"])
+            loss, _ = distillation_loss(z[valid], yv, Ttr[idx][valid], rate, tau=cfg["tau"], a_kd=cfg["a_kd"],
+                                        a_rank=cfg["a_rank"], a_sparse=cfg["a_sparse"], a_fp=cfg["a_fp"])
             opt.zero_grad(); loss.backward(); opt.step()
-            run += float(loss.item())
+            run += float(loss.item()); nb += 1
         st.eval()
-        Zv, Cv, _ = infer(st, enc, s.X["val"], s.length["val"], device)
+        Zv, Cv, _ = infer(st, S["val"])
         f1, theta = decision_f1(Zv, s.y["val"], s.length["val"], Cv)
-        curve.append(dict(epoch=ep + 1, loss=run / max(1, (N + bs - 1) // bs), val_macro_f1_at_decision=f1, theta=theta))
+        curve.append(dict(epoch=ep + 1, loss=run / max(1, nb), val_macro_f1_at_decision=f1, theta=theta,
+                          seconds=round(time.time() - t0, 1)))
         print(curve[-1], flush=True)
         if f1 > best:
             best, best_state = f1, {k: v.detach().clone() for k, v in st.state_dict().items()}
@@ -150,12 +205,18 @@ def main():
     res = dict(seed=seed, channels=enc.out_dim, kept_features=[s.features[j] for j in enc.feats],
                edges_per_feature=[int(len(e)) for e in enc.edges], curve=curve,
                selected_epoch=int(max(curve, key=lambda c: c["val_macro_f1_at_decision"])["epoch"]),
-               train_seconds=round(time.time() - t0, 1), smoke=a.smoke)
+               train_seconds=round(time.time() - t0, 1), smoke=a.smoke,
+               execution=dict(shared_gpu_with="revision-2 training queue (steps 5 and 6), PI decision 2026-11-17",
+                              device_at_start=shared, memory_fraction=a.mem_fraction, torch_threads=2,
+                              data_loader_workers=0, deterministic_algorithms=True,
+                              cudnn_deterministic=bool(torch.backends.cudnn.deterministic),
+                              max_gpu_memory_allocated_GB=round(torch.cuda.max_memory_allocated(dev) / 2 ** 30, 2),
+                              note="sharing the device changes neither job's results; B2 counts operations, not time"))
     if a.smoke:
         print(json.dumps(res, indent=1)); return
     out = {}
     for split in ("val", "test"):
-        Z, C, I = infer(st, enc, s.X[split], s.length[split], device)
+        Z, C, I = infer(st, S[split])
         out.update({f"{split}_logits": Z.astype(np.float32), f"{split}_cum_sops": C.astype(np.float32),
                     f"{split}_in_spikes": I.astype(np.float32)})
     np.savez(BIG / f"seed_{seed}_student.npz", **out)
