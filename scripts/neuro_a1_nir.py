@@ -94,6 +94,11 @@ def run_graph(net, st, T, out_key):
     out = []
     for i in range(0, len(st), CHUNK):
         s = torch.from_numpy(st[i:i + CHUNK].astype(np.int64))
+        # with no state passed, snnTorch's Leaky falls back on its own stored membrane: reset it per chunk,
+        # or each chunk starts from the previous chunk's final state
+        for node in net.execution_order:
+            if isinstance(node.elem, snn.SpikingNeuron):
+                node.elem.reset_mem()
         state, acc = None, 0.0
         for t in range(T):
             _, state = net((s == t).float(), state)
