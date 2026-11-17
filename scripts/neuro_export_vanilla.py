@@ -38,27 +38,31 @@ def main():
     rec = json.loads((rd / "results.json").read_text())
     cfg = rec["config"]
     b = get_dataset(ds, **BF._dataset_kwargs_for(ds, "LeakyParallel", "latency", cfg))
+    # The record was evaluated on CUDA with the bundle's test loader (batch 128); LeakyParallel's
+    # nn.RNN runs through cuDNN there, and the CPU replay does not reproduce it (Edge-IIoTset:
+    # 77.55 vs 77.04). Replay exactly as src/training._eval ran, on the (shared) GPU.
+    dev = torch.device("cuda:0")
+    torch.cuda.set_per_process_memory_fraction(0.05, dev)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
     X = torch.cat([x for x, _ in b.test_loader]).float()
     y = torch.cat([t for _, t in b.test_loader]).numpy()
     T = cfg["num_steps"]
     m = SNN(num_features=b.num_features, hidden_size=cfg["hidden_size"], num_classes=b.num_classes,
-            neuron_name="LeakyParallel", num_steps=T)
-    m.load_state_dict(torch.load(rd / "checkpoint.pt", map_location="cpu"))
+            neuron_name="LeakyParallel", num_steps=T).to(dev)
+    m.load_state_dict(torch.load(rd / "checkpoint.pt", map_location=dev))
     m.eval()
     enc = get_encoder("latency")
     preds, hid, outc = [], [], []
     with torch.no_grad():
-        for i in range(0, len(X), 8192):
-            sp = enc(X[i:i + 8192], T)
-            stack, _, hidden, _ = m._output_spike_train(sp)
-            h = m.lp(sp)
-            preds.append(stack.sum(0).argmax(1).numpy())
-            hid.append(h.sum((0, 2)).numpy()); outc.append(stack.sum((0, 2)).numpy())
-            with torch.no_grad():
-                if i == 0:
-                    logits = m(sp)[0]
-                    if not torch.equal(logits.argmax(1), stack.sum(0).argmax(1)):
-                        raise SystemExit("replay readout differs from forward()")
+        for xb, _ in b.test_loader:
+            sp = enc(xb.to(dev), T)
+            logits = m(sp)[0]
+            stack, _, _, _ = m._output_spike_train(sp)
+            if not torch.equal(logits.argmax(1), stack.sum(0).argmax(1)):
+                raise SystemExit("replay readout differs from forward()")
+            preds.append(logits.argmax(1).cpu().numpy())
+            hid.append(m.lp(sp).sum((0, 2)).cpu().numpy()); outc.append(stack.sum((0, 2)).cpu().numpy())
     pred = np.concatenate(preds)
     got = compute_metrics(y, pred, class_names=b.class_names)["f1_macro"]
     if abs(got - rec["test_plus"]["metrics"]["f1_macro"]) > 1e-12:
@@ -69,11 +73,13 @@ def main():
     xs = X[samp].clamp(0, 1)
     times = torch.floor((1.0 - xs) * (T - 1)).long().clamp(0, T - 1)
     times = torch.where(xs > 0.01, times, torch.full_like(times, -1)).numpy().astype(np.int8)
-    sp = enc(X[samp], T)
+    sp = enc(X[samp], T)                      # encoder on CPU: the same float32 floor as on the GPU (checked below)
     chk = (torch.arange(T).view(T, 1, 1) == torch.from_numpy(times.astype(np.int64)).unsqueeze(0)).float()
     if not torch.equal(chk, sp):
         raise SystemExit("spike-time export does not reproduce the latency encoder")
-    sd = {k: v.detach().numpy() for k, v in m.state_dict().items()}
+    if not torch.equal(enc(X[samp].to(dev), T).cpu(), sp):
+        raise SystemExit("latency encoder differs between CPU and GPU")
+    sd = {k: v.detach().cpu().numpy() for k, v in m.state_dict().items()}
     whh = sd["lp.rnn.weight_hh_l0"]
     if np.abs(whh - np.diag(np.diag(whh))).max() > 0:
         raise SystemExit("weight_hh is not diagonal")
