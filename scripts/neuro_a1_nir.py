@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 import torch
 import snntorch as snn
+import snntorch.utils  # snn.utils is a submodule: import it explicitly
 from snntorch.export_nir import export_to_nir
 from snntorch.import_nir import import_from_nir
 import nir
