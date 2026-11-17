@@ -104,12 +104,19 @@ def run_graph(net, st, T, out_key):
 
 
 def restore_subtract(net):
-    """Replace every imported snn.Leaky (reset 'zero', no delay) by snnTorch's default subtractive delayed reset."""
+    """Replace every imported snn.Leaky (reset 'zero', no delay) by snnTorch's default subtractive delayed reset.
+
+    nirtorch's GraphExecutor runs the modules held by its graph nodes (node.elem), so the new module
+    goes there as well as onto the executor; setting reset_mechanism on the imported module is not
+    enough (snnTorch binds the zero-reset update function at construction)."""
     n = 0
-    for name, m in list(net.named_children()):
+    for node in net.execution_order:
+        m = node.elem
         if isinstance(m, snn.Leaky):
-            setattr(net, name, snn.Leaky(beta=m.beta.detach().clone(), threshold=m.threshold.detach().clone(),
-                                         reset_mechanism="subtract", init_hidden=False))
+            new = snn.Leaky(beta=m.beta.detach().clone(), threshold=m.threshold.detach().clone(),
+                            reset_mechanism="subtract", reset_delay=True, init_hidden=False)
+            node.elem = new
+            setattr(net, node.name, new)
             n += 1
     return n
 
@@ -134,7 +141,7 @@ def main():
         g2 = nir.read(str(OUT / f"{ds}.nir"))
         lifs = [k for k, v in g2.nodes.items() if isinstance(v, nir.LIF)]
         out_key = [a for a, b in g2.edges if b == "output"][0]
-        net = import_from_nir(g2)
+        net = import_from_nir(g2).eval()
         imported_lifs = {k: lif_desc(m) for k, m in net.named_children() if isinstance(m, snn.Leaky)}
         imp = run_graph(net, st, T, out_key)
         n_restored = restore_subtract(net)

@@ -271,3 +271,10 @@ SNN had been run on any path.
 4. **B2 teacher curve** (descriptive): the per-packet teacher's test macro-F1 after k = 1..32
    packets on all five seeds (a flow that has ended keeps its last decision), as the baseline
    curve for the go/no-go figure (`results/neuro/b2/teacher_curve*.csv`).
+
+*Note added after the A2 Vanilla and A3 results (descriptive, not a change to any rule).* Lava's
+Vanilla agrees with the integer NumPy Vanilla on 89.9% to 98.9% of the sample (Lava's 12-bit
+leak against the 8-bit leak of the integer rule, compounded by the hidden layer having no reset),
+so the integer full-test macro-F1 is not exactly the accuracy of the network SANA-FE measured.
+`scripts/neuro_lava_fulltest.py` runs the bit-exact emulation of Lava's arithmetic on the whole
+test split for both models and reports that macro-F1 beside the pre-registered pairing.

@@ -113,6 +113,7 @@ def main():
     f_rec = rec["test_plus"]["metrics"]["f1_macro"]
     fmax = float_vanilla(v, st[samp], T)
     np.savez_compressed(INP / f"{ds}_vanilla_int_seed42.npz", int_pred_full=ipred, labels_full=y, sample=samp,
+                        spike_times_full=st.astype(np.int8),
                         int_pred=soc.argmax(1), int_out_counts=soc, int_hidden_counts=shc, s_h=s_h, s_o=s_o,
                         float_max_abs_v_sample=fmax, **{f"P_{k}": np.asarray(val) for k, val in P.items()})
     r = dict(dataset=ds, seed=42, T=T, Q=Q, leak_mul=P["mul"], leak_mul_out=P["mul_o"], theta_h=P["th_h"],
