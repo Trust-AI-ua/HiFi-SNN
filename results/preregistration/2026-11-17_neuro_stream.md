@@ -278,3 +278,48 @@ leak against the 8-bit leak of the integer rule, compounded by the hidden layer 
 so the integer full-test macro-F1 is not exactly the accuracy of the network SANA-FE measured.
 `scripts/neuro_lava_fulltest.py` runs the bit-exact emulation of Lava's arithmetic on the whole
 test split for both models and reports that macro-F1 beside the pre-registered pairing.
+
+## Amendment 5 (2026-11-17, PI instruction, before any frontier run): energy-accuracy frontier, exploratory
+
+Written after A3 and after the variants' training records (macro-F1 of the float models) were
+known; no variant had been through Lava or SANA-FE, and no variant's energy was known.
+
+**Variants.** Trained seed-42 Tree-to-Spike models, no retraining, chosen as the settings that
+spend less energy by construction:
+- **T10:** the window sweep at T = 10 (`results/ladder/<ds>/T10`).
+- **uniform:** uniform channel allocation (`results/encoder_ablation/<ds>/uniform`).
+- **Reduced channels:** every one-factor setting with fewer encoder channels than the production
+  encoder on all four datasets, namely prune quantile 0.40 (`q40`), pop_max 2 (`M2`), and
+  pop_max 1 with the production pruning (`prune_only`), all under `results/ladder/<ds>/`.
+  `tree_only` (pop_max 1, no pruning) is not included: it has as many channels as production
+  or more.
+
+CIC-IoT2023's variants were trained under the 10-epoch protocol, while its production model uses
+the 20-epoch block; that dataset's frontier compares unequal training and is labelled so.
+
+**Chain.** Unchanged from A2 and A3:
+- `scripts/neuro_export_variants.py`: one teacher refit per dataset, checked against each
+  variant's record; integer-encoder and float-student guards;
+- Lava fixed point with the subtractive reset on the stratified 2,000-flow sample, equal bit for
+  bit to the emulation;
+- SANA-FE, full window, one layer per core, with the amendment-2 gate (energy only if every flow's
+  per-layer spikes and readout equal Lava's);
+- `scripts/neuro_frontier.py`.
+
+No early exit for the variants: no exit gate was calibrated for them.
+
+**Accuracy.** For every row, including Tree-to-Spike with the full window and with early exit and
+the fixed-point Vanilla: the test macro-F1 of the simulated network, from the bit-exact emulation
+of Lava's arithmetic on the whole test split (`scripts/neuro_lava_fulltest.py`, extended to the
+C1-gate exit).
+
+**Reported** (`scripts/neuro_frontier_summary.py`, `results/neuro/frontier/FRONTIER.md`), per
+dataset:
+- energy and latency per inference (mean, SD) and the simulated macro-F1;
+- the host encoder's comparisons, separately;
+- the Pareto set over (energy, macro-F1) among all rows;
+- for each Tree-to-Spike row, whether it **dominates the fixed-point Vanilla**: higher simulated
+  macro-F1 and mean energy no higher.
+
+The analysis is descriptive. The frontier is reported whatever it shows, and a dominance claim
+in the paper is made only where this check holds.
