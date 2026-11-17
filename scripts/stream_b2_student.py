@@ -140,7 +140,7 @@ def main():
     from src.models.tree_to_spike import SNNStudent, quantize_int8_
     from src.training_treespike import distillation_loss, _set_seed
     cfg = yaml.safe_load(open(REPO / "experiments/Tree-to-Spike/edgeiiot/config.yaml"))
-    seed, dev = a.seed, torch.device("cuda")
+    seed, dev = a.seed, torch.device("cuda:0")
     torch.cuda.set_per_process_memory_fraction(a.mem_fraction, dev)
     torch.use_deterministic_algorithms(True)
     shared = device_state()
