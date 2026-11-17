@@ -33,6 +33,7 @@ from src import stream_decision as SD  # noqa: E402
 OUT = REPO / "results/neuro/b2"
 BIG = REPO / "dataset/edge-iiotset/_stream/b2"
 TARGETS = [0.001, 0.0025, 0.005, 0.01, 0.02]
+ARTIFACT = ["DDoS_ICMP", "DDoS_TCP", "Port_Scanning", "DDoS_UDP"]      # amendment 3
 P = 32
 
 
@@ -75,12 +76,15 @@ def run_model(name, Zv, Zt, s, cost_v, cost_t):
     res = dict(model=name, theta=theta, taus=taus.tolist(), gate=table,
                argmax_test=SD.scores(yt, Pt.argmax(1)), mean_packets=float((ft + 1).mean()),
                mean_cost_test=float(cost_t[np.arange(len(ft)), ft].mean()), at={})
-    preds = {}
+    preds, thr = {}, {}
     for f in TARGETS:
         t = SD.threshold_for(Pv[yv == 0, 0], f)
         p = SD.thresholded(Pt, t)
         res["at"][f"{100 * f:g}"] = dict(threshold=t, val=SD.scores(yv, SD.thresholded(Pv, t)), test=SD.scores(yt, p))
-        preds[f] = p
+        preds[f], thr[f] = p, t
+    # amendment 3, item 3: decision forced after packet 1, at the matched threshold
+    p1 = SD.thresholded(pt[:, 0], thr[0.01])
+    res["dr_after_packet_1_matched"] = 100 * float((p1[yt != 0] != 0).mean())
     return res, ft, preds
 
 
@@ -161,6 +165,50 @@ def main():
         r_c["config"] = best
         r_c["comparisons_per_packet"] = comparisons_per_eval(qb, X_eval)
         res["compact_gbdt"] = r_c
+    # ---- amendment 3 (secondary, descriptive) ----
+    from sklearn.metrics import f1_score
+    names = s.class_names
+    models = {"t2s_stream": (f_snn, pr_snn[0.01]), "tree_per_packet": (f_tree, pr_tree[0.01])}
+    if "compact_gbdt" in res:
+        models["compact_gbdt"] = (f_c, pr_c[0.01])
+    a3 = dict(artifact_classes=ARTIFACT, per_class={}, without_artifacts={})
+    for m, (first, pred) in models.items():
+        pc = {}
+        for c in range(1, len(names)):
+            mc = yt == c
+            det = mc & (pred != 0)
+            pc[names[c]] = dict(n=int(mc.sum()), dr=100 * float(det.sum() / max(1, mc.sum())), p2d=p2d(first, det))
+        a3["per_class"][m] = pc
+    keep = ~np.isin(yt, [names.index(c) for c in ARTIFACT])
+    labels = [c for c in range(len(names)) if names[c] not in ARTIFACT]
+    both = keep & att & (pr_snn[0.01] != 0) & (pr_tree[0.01] != 0)
+    for m, (first, pred) in models.items():
+        yk, pk = yt[keep], pred[keep]
+        a3["without_artifacts"][m] = dict(
+            macro_f1=100 * f1_score(yk, pk, labels=labels, average="macro"),
+            far=100 * float((pk[yk == 0] != 0).mean()), dr=100 * float((pk[yk != 0] != 0).mean()),
+            p2d_both=p2d(first, both))
+    st_k = steps[keep]
+    a3["without_artifacts"]["t2s_stream"]["sops_per_packet"] = float(sops_exec[keep].sum() / st_k.sum())
+    Xk = s.X["test"][keep]
+    Xk = Xk[rng.choice(len(Xk), min(len(Xk), 20000), replace=False), 0]
+    a3["without_artifacts"]["tree_per_packet"]["comparisons_per_packet"] = comparisons_per_eval(teacher, Xk)
+    if "compact_gbdt" in res:
+        a3["without_artifacts"]["compact_gbdt"]["comparisons_per_packet"] = comparisons_per_eval(qb, Xk)
+    # host-stack check: benign vs attack from the first packet's length alone
+    j = s.features.index("len_min")
+    lv, lt = s.X["val"][:, 0, j], s.X["test"][:, 0, j]
+    av = s.y["val"] != 0
+    share = pd.Series(av).groupby(lv).mean()
+    prior = float(av.mean())
+    sv = pd.Series(lv).map(share).to_numpy()
+    stt = pd.Series(lt).map(share).fillna(prior).to_numpy()
+    t = SD.threshold_for(1.0 - sv[~av], 0.01)
+    flag_t = (1.0 - stt) < t
+    a3["host_stack_check"] = dict(first_packet_length_rule=dict(far=100 * float(flag_t[yt == 0].mean()),
+                                                                dr=100 * float(flag_t[yt != 0].mean())),
+                                  dr_after_packet_1_matched={m: res[m]["dr_after_packet_1_matched"] for m in models})
+    res["amendment_3"] = a3
     res["feature_update_note"] = ("19 running statistics per packet, paid by every model: about 12 additions, "
                                   "4 comparisons (min, max), 3 divisions and 2 square roots")
     (OUT / f"seed_{seed}/eval.json").write_text(json.dumps(res, indent=1))
