@@ -104,7 +104,8 @@ def main():
         seq = reference(ckpt)
         ref = run_reference(seq, st, T)
         g = export_to_nir(seq, torch.zeros(1, st.shape[1]))
-        nir.write(str(OUT / f"{ds}.nir"), g)
+        # no compression: nir 1.0.8 passes gzip options to h5py for 0-d parameters too, which h5py 3.16 rejects
+        nir.write(str(OUT / f"{ds}.nir"), g, compression=None)
         g2 = nir.read(str(OUT / f"{ds}.nir"))
         lifs = [k for k, v in g2.nodes.items() if isinstance(v, nir.LIF)]
         out_key = [a for a, b in g2.edges if b == "output"][0]
