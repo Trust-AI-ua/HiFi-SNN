@@ -174,8 +174,11 @@ def pack_booster(teacher, n_rounds=None, leaf_bits: int = 16, n_classes: int = 2
 
 
 def predict_packed(packed: dict, X: np.ndarray, n_classes: int, base_score: float = 0.5,
-                   leaf_bits: int = 16) -> np.ndarray:
+                   leaf_bits: int = 16, margin: bool = False) -> np.ndarray:
     """Predictions of the packed artifact: 8-bit thresholds and quantized leaves.
+
+    margin=True returns the summed leaf values (n, k) instead of labels. Multiclass
+    labels take the argmax of these sums, without XGBoost's per-class intercept.
 
     Traverses the dequantized tree frame directly, so what is measured is what
     the packed bytes would compute, not what the native model computes.
@@ -209,6 +212,8 @@ def predict_packed(packed: dict, X: np.ndarray, n_classes: int, base_score: floa
                 go_left = X[sel, j] < r.thr_q
                 nxt = np.where(go_left, r.Yes, r.No)
                 node[sel] = nxt
+    if margin:
+        return out
     if k == 1:
         p = 1.0 / (1.0 + np.exp(-(out[:, 0] + np.log(base_score / (1 - base_score)))))
         return (p >= 0.5).astype(np.int64)
