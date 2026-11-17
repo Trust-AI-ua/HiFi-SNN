@@ -258,6 +258,9 @@ SNN had been run on any path.
      2^16 so SANA-FE's 1/64 grid is below float32 resolution; per-flow hidden and output spike
      counts compared with the GPU float replay (match rate reported, not a gate). Paired with
      the float record's macro-F1 and labelled "float spike activity".
+     *Correction before any vanilla_float run:* SANA-FE casts v * 64 to a 32-bit int, and
+     Edge-IIoTset's float hidden potentials reach about 1,356, so the scale is 2^16 or the
+     largest power of two keeping |v| * 64 within 2^30 (2^13 for Edge-IIoTset), recorded per row.
    The Tree-to-Spike versus Vanilla energy comparison in the paper uses (b).
 2. **P6, step 3 restored as a contingency.** The zero-reset retrain (dropped in amendment 2) is
    run only if INRC or the Loihi 2 neuron documentation shows that Loihi 2 cannot run the

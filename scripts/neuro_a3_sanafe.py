@@ -23,7 +23,8 @@ threshold 0, saturate: the ReLU of LeakyParallel); output = loihi_lif_delayed. T
                  per-layer spikes and output spike counts must equal Lava's. Paired with the integer
                  Vanilla's full-test macro-F1.
   vanilla_float  (secondary, "float spike activity") the float weights, biases and thresholds
-                 scaled by 2^16, so the 1/64 grid is below float32 resolution; compared per flow
+                 scaled by 2^16 (less where the potentials would overflow SANA-FE's int cast;
+                 recorded per row), so the 1/64 grid is far below a unit; compared per flow
                  with the GPU float replay's hidden and output spike counts (reported, not a gate).
                  Paired with the float record's macro-F1.
 
@@ -173,9 +174,8 @@ def main():
                           thr=float(vl[0]["vth"]), soma="loihi_lif", attrs=hid),
                      dict(W=vl[1]["W"].astype(np.float64), bias=vl[1]["bias_eff"] / 64.0, leak=(4096 - vdv) / 4096,
                           thr=float(vl[1]["vth"]), soma="loihi_lif_delayed")]
-        G = FLOAT_SCALE
-        if float(vi["float_max_abs_v_sample"]) * G * 64 > 2 ** 30:
-            raise SystemExit(f"{ds}: float potentials too large for the 2^16 scaling (int cast in the 1/64 grid)")
+        # 2^16, or the largest power of two that keeps |v| * 64 within 2^30 (SANA-FE casts v * 64 to int)
+        G = min(FLOAT_SCALE, 2.0 ** math.floor(math.log2(2 ** 30 / (64 * float(vi["float_max_abs_v_sample"])))))
         van_float = [dict(W=v["W_ih"].astype(np.float64) * G, bias=v["b_h"].astype(np.float64) * G,
                           leak=v["beta_h"].astype(np.float64), thr=float(v["thr_h"]) * G, soma="loihi_lif", attrs=hid),
                      dict(W=v["W_out"].astype(np.float64) * G, bias=v["b_out"].astype(np.float64) * G,
@@ -241,6 +241,7 @@ def main():
                              agreement_with_reference=float((d.pred == d.ref_pred).mean()),
                              spikes_per_flow="/".join(f"{d[c].mean():.1f}" for c in d.columns if c.startswith("spikes_l")),
                              exit_theta=theta if name == "t2s_exit" else None,
+                             float_scale=G if name == "vanilla_float" else None,
                              host_encoder_comparisons=enc_ops if name.startswith("t2s") else None,
                              cores="; ".join(f"{k}:{c}" for k, c in plan.items()), seconds=round(time.time() - t0, 1)))
             print(rows[-1], flush=True)
