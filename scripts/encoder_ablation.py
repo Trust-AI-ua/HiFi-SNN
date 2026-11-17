@@ -81,8 +81,6 @@ ARM_LABEL = {"tree": "tree", "quantile": "quantile", "nokd": "no-KD",
 COLOR = {"tree": "#228833", "quantile": "#E69F00", "nokd": "#AA3377",
          "uniform": "#4477AA", "all": "#EE6677"}
 OUT = REPO / "results" / "Journal_results"
-(OUT / "figures").mkdir(parents=True, exist_ok=True)
-(OUT / "tables").mkdir(parents=True, exist_ok=True)
 E_AC = 0.9   # pJ per spiking op (Horowitz 45nm, 32-bit)
 
 
@@ -336,4 +334,6 @@ def main():
 
 
 if __name__ == "__main__":
+    (OUT / "figures").mkdir(parents=True, exist_ok=True)   # moved under the guard: no side effect on import
+    (OUT / "tables").mkdir(parents=True, exist_ok=True)
     main()

@@ -11,6 +11,7 @@ dataset and seed it writes results/neuro/inputs/<ds>_seed<S>.npz with:
   sample        [2000]        the stratified A2/A3 sample (indices into the test split)
   int_counts    [2000, 3]     integer NumPy spikes per layer over the window, on the sample
   W1..W3 int8, b1..b3 (float bias), s1..s3 (weight scales), theta1..3 and bq1..3 (Q = 8)
+  n_edges       [kept features]  number of teacher thresholds per kept feature (host encoder cost)
 Guards: refit teacher equals the stored one; float and integer test macro-F1 equal the record
 and the step-2 record; the integer encoder equals the float encoder.
 
@@ -129,7 +130,7 @@ def main():
     if not np.array_equal(p2, ipred[samp]):
         raise SystemExit("counting integer run disagrees with step 2's integer run")
     sd = {k: v.detach().numpy() for k, v in st.state_dict().items()}
-    extra = {}
+    extra = dict(n_edges=np.array([len(enc.edges_[j]) for j in ienc.feats], np.int64))
     for i, (n, L) in enumerate(zip(("fc1", "fc2", "fc3"), layers), 1):
         extra.update({f"W{i}": L["W"].T.astype(np.int8), f"b{i}": sd[f"{n}.bias"], f"s{i}": np.float64(L["s"]),
                       f"theta{i}": np.int64(L["theta"]), f"bq{i}": L["b"]})

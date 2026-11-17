@@ -34,7 +34,7 @@ from pathlib import Path
 import numpy as np, pandas as pd
 
 REPO = Path(__file__).resolve().parents[1]; sys.path.insert(0, str(REPO))
-OUT = REPO/"results"/"deployment"; OUT.mkdir(parents=True, exist_ok=True)
+OUT = REPO/"results"/"deployment"
 warnings.filterwarnings("ignore")
 
 DATASETS = ["kddcup99","nslkdd","ctu13","iscxids2012","cicids2017","cse-cic-ids2018",
@@ -103,6 +103,7 @@ def _flush(rows):
 
 
 if __name__ == "__main__":
+    OUT.mkdir(parents=True, exist_ok=True)   # moved under the guard: no side effect on import
     ap = argparse.ArgumentParser(); ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--datasets", nargs="+", default=DATASETS); a = ap.parse_args()
     from src.data import get_dataset

@@ -29,7 +29,6 @@ DS = ["kddcup99", "nslkdd", "cicids2017", "ctu13", "iscxids2012", "cse-cic-ids20
 SEEDS = [42, 43, 44]
 WARMUP, REPS = 20, 200
 DEV = torch.device("cpu")
-torch.set_num_threads(1)
 
 
 def mean(xs):
@@ -171,4 +170,5 @@ def main():
 
 
 if __name__ == "__main__":
+    torch.set_num_threads(1)   # moved under the guard: no side effect on import
     main()

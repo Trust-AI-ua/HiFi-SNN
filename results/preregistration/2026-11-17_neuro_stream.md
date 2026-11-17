@@ -190,3 +190,22 @@ victim. The labeling rule becomes:
 Also recorded: `Vulnerability scanner attack.pcap` is damaged at byte 111,714,300 of
 140,377,652 (a record header claims a 136 MB packet); the 265,827 frames before it are used
 and the remainder is not recovered (`*.truncated.json` beside the packet file).
+
+## Amendment 2 (2026-11-17, PI instructions, before any A2 or A3 result was computed)
+
+- **Labels.** In the paper the rules here are P5 (R7), P6 (R8) and P7 (R9); the full map is
+  `results/preregistration/RULES.md`. Internal labels are unchanged in these files.
+- **P5 is the A2 result.** The custom subtractive-reset process matching Lava's own arithmetic
+  bit for bit (a toy check) is an implementation check, not the result. The result is
+  agreement with integer NumPy on the 2,000-flow sample against P5.
+- **P6, step 3 removed.** The zero-reset retrain is dropped; it is not queued. The paper
+  describes the subtractive reset as a custom neuron model in Lava's fixed-point simulation,
+  and claims Loihi 2 support only after INRC documentation confirms it.
+- **A3, consistency gate.** Before any SANA-FE energy number is used, SANA-FE's per-layer spike
+  counts are compared with Lava's (the P5-passing variant) for the same inputs, flow by flow.
+  SANA-FE simulates its own neuron model; energy is reported only for a network whose spike
+  counts match Lava's, and the match rate is reported with the energy.
+- **B1 appendix.** The shortcut screen's flags are reported in an appendix table (state, feature,
+  NMI, the classes ruled out or in with their P(active | class), and a one-line reason), with
+  the class counts and one-packet shares.
+- **Neuro-environment runs** go through `scripts/neuro_guard.py` (results/neuro/DEVIATIONS.md, D1).
