@@ -11,7 +11,9 @@ Everything else (decay rounding, saturation, wrap of u) is copied from
 lava.proc.lif.models.AbstractPyLifModelFixed. CPU fixed-point model only (select_tag
 "fixed_pt"); no Loihi 2 microcode is written here.
 
-Also: emulate(), a batched NumPy emulation of the same arithmetic (and of Lava's standard
+ReluLIFReset (amendment 4): the Vanilla SNN's hidden neuron (no reset, floor at zero).
+
+Also: emulate() and emulate_vanilla(), batched NumPy emulations of the same arithmetic (and of Lava's standard
 LIFReset with zero reset), used to check the Lava runs and to attribute disagreement.
 """
 from __future__ import annotations
@@ -148,3 +150,108 @@ def emulate(layers, st, T, du=4095, dv=410, reset="subtract"):
             cnt[:, i] += s.sum(1)
         acc = acc + v[-1]
     return acc, cnt, vmax
+
+
+# ------------------------------------------------------------------ Vanilla SNN (amendment 4)
+class ReluLIFReset(AbstractProcess):
+    """LeakyParallel's hidden neuron in Lava's fixed-point arithmetic: no reset, potential floored
+    at zero (the ReLU of nn.RNN), spike when v > vth_eff. Same u/v/bias/decay arithmetic as
+    SubLIFReset and the same periodic state reset."""
+
+    def __init__(self, *, shape, du=0, dv=0, bias_mant=0, bias_exp=0, vth=10, reset_interval=1, reset_offset=0,
+                 name=None):
+        super().__init__(shape=shape, name=name)
+        self.a_in = InPort(shape=shape)
+        self.s_out = OutPort(shape=shape)
+        self.u = Var(shape=shape, init=0)
+        self.v = Var(shape=shape, init=0)
+        self.du = Var(shape=(1,), init=du)
+        self.dv = Var(shape=(1,), init=dv)
+        self.bias_mant = Var(shape=shape, init=bias_mant)
+        self.bias_exp = Var(shape=shape, init=bias_exp)
+        self.vth = Var(shape=(1,), init=vth)
+        self.proc_params["reset_interval"] = reset_interval
+        self.proc_params["reset_offset"] = reset_offset
+
+
+@implements(proc=ReluLIFReset, protocol=LoihiProtocol)
+@requires(CPU)
+@tag("fixed_pt")
+class PyReluLIFResetModelFixed(AbstractPyLifModelFixed):
+    s_out: PyOutPort = LavaPyType(PyOutPort.VEC_DENSE, np.int32, precision=24)
+    vth: int = LavaPyType(int, np.int32, precision=17)
+
+    def __init__(self, proc_params):
+        super().__init__(proc_params)
+        self.effective_vth = 0
+        self.reset_interval = proc_params["reset_interval"]
+        self.reset_offset = proc_params["reset_offset"] % self.reset_interval
+
+    def scale_threshold(self):
+        self.effective_vth = np.left_shift(self.vth, self.vth_shift)
+        self.isthrscaled = True
+
+    def spiking_activation(self):
+        return self.v > self.effective_vth
+
+    def reset_voltage(self, spike_vector):
+        pass                                      # no reset
+
+    def run_spk(self):
+        a_in_data = self.a_in.recv()
+        if (self.time_step % self.reset_interval) == self.reset_offset:
+            self.u *= 0
+            self.v *= 0
+        self.scale_bias()
+        if not self.isthrscaled:
+            self.scale_threshold()
+        decay_const_u = self.du + self.ds_offset
+        decayed_curr = np.int64(self.u) * (self.decay_unity - decay_const_u)
+        decayed_curr = np.int32(np.sign(decayed_curr) * np.right_shift(np.abs(decayed_curr), self.decay_shift))
+        decayed_curr += np.left_shift(a_in_data, self.act_shift)
+        wrapped = np.where(decayed_curr > self.max_uv_val, decayed_curr - 2 * self.max_uv_val, decayed_curr)
+        wrapped = np.where(wrapped <= -self.max_uv_val, decayed_curr + 2 * self.max_uv_val, wrapped)
+        self.u[:] = wrapped
+        decay_const_v = self.dv + self.dm_offset
+        dv_ = np.int64(self.v) * (self.decay_unity - decay_const_v)
+        dv_ = np.int32(np.sign(dv_) * np.right_shift(np.abs(dv_), self.decay_shift))
+        upd = np.int64(dv_) + self.u + self.effective_bias
+        self.v[:] = np.clip(upd, 0, np.int32(self.max_uv_val) - 1)       # the ReLU floor, then Lava's 24-bit ceiling
+        s = self.spiking_activation()
+        self.s_out.send(s)
+
+
+def emulate_vanilla(layers, st, T, du=4095, dv=614):
+    """Batched emulation of the Lava Vanilla network (ReluLIFReset hidden, SubLIFReset output) in
+    aligned time. st: [B, F] spike times (-1 = none). Returns output spike counts [B, K], per-layer
+    spike counts [B, 2] and the largest |v|."""
+    B = st.shape[0]
+    M = 2 ** 23
+    u = [np.zeros((B, L["W"].shape[0]), np.int64) for L in layers]
+    v = [np.zeros_like(x) for x in u]
+    r = np.zeros_like(v[1])
+    oc = np.zeros_like(v[1])
+    cnt = np.zeros((B, 2), np.int64)
+    vmax = 0
+    for t in range(T):
+        s = (st == t).astype(np.int64)
+        for i, L in enumerate(layers):
+            a = s @ L["W"].T.astype(np.int64)
+            uu = _decay(u[i], du + 1) + (a << 6)
+            uu = np.where(uu > M, uu - 2 * M, uu)
+            uu = np.where(uu <= -M, uu + 2 * M, uu)
+            u[i] = uu
+            th = L["vth"] << 6
+            vv = _decay(v[i], dv) + u[i] + L["bias_eff"]
+            if i == 0:
+                vv = np.clip(vv, 0, M - 1)
+            else:
+                vv = np.clip(vv - r * th, -M + 1, M - 1)
+            vmax = max(vmax, int(np.abs(vv).max()))
+            s = (vv > th).astype(np.int64)
+            if i == 1:
+                r = s
+                oc += s
+            v[i] = vv
+            cnt[:, i] += s.sum(1)
+    return oc, cnt, vmax

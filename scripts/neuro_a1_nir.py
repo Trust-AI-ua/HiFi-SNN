@@ -37,6 +37,31 @@ INP = REPO / "results/neuro/inputs"
 OUT = REPO / "results/neuro/a1_nir"
 DS = ["ciciot2023", "ciciomt2024", "edgeiiot", "toniot"]
 CHUNK = 65536
+WORKAROUNDS = ("export_to_nir(..., ignore_dims=[0]): without it the Input node keeps the batch dimension ([1, C]) "
+               "and NIR 1.0.8's reader rejects the graph (type mismatch with the first Affine)",
+               "LIF parameters broadcast to one value per neuron (well_typed): snnTorch 0.9.4 exports them as scalars, "
+               "from which NIR 1.0.8's reader cannot infer the node's type; values unchanged",
+               "nir.write(..., compression=None): nir 1.0.8 passes gzip options to h5py for 0-d parameters, which "
+               "h5py 3.16 rejects")
+
+
+def well_typed(g):
+    """snnTorch 0.9.4 exports LIF parameters as 0-d arrays, which NIR 1.0.8's reader cannot type
+    (it infers the node's shape from them). Broadcast each LIF parameter to one value per neuron
+    (the size of the Affine feeding it); the dynamics are unchanged."""
+    import dataclasses
+    import numpy as np
+    import nir
+    nodes = dict(g.nodes)
+    for k, n in g.nodes.items():
+        if isinstance(n, nir.LIF):
+            pre = [a for a, b in g.edges if b == k]
+            size = g.nodes[pre[0]].weight.shape[0]
+            kw = {f.name: getattr(n, f.name) for f in dataclasses.fields(n) if f.init and f.name not in ("input_type", "output_type", "metadata")}
+            kw = {a: (np.broadcast_to(np.asarray(v), (size,)).copy() if np.size(v) == 1 else np.asarray(v))
+                  for a, v in kw.items()}
+            nodes[k] = nir.LIF(**kw, metadata=n.metadata)
+    return nir.NIRGraph(nodes=nodes, edges=list(g.edges), metadata=getattr(g, "metadata", {}) or {})
 
 
 def reference(ckpt: dict) -> torch.nn.Sequential:
@@ -103,7 +128,7 @@ def main():
         ckpt = torch.load(REPO / f"results/Tree-to-Spike/{ds}/seed_42/checkpoint.pt", map_location="cpu")
         seq = reference(ckpt)
         ref = run_reference(seq, st, T)
-        g = export_to_nir(seq, torch.zeros(1, st.shape[1]))
+        g = well_typed(export_to_nir(seq, torch.zeros(1, st.shape[1]), ignore_dims=[0]))
         # no compression: nir 1.0.8 passes gzip options to h5py for 0-d parameters too, which h5py 3.16 rejects
         nir.write(str(OUT / f"{ds}.nir"), g, compression=None)
         g2 = nir.read(str(OUT / f"{ds}.nir"))
@@ -122,10 +147,10 @@ def main():
                  reference_vs_production=dict(agreement=float(np.mean(pr == flog.argmax(1))),
                                               max_abs_readout=float(np.abs(ref - flog).max())),
                  nir_nodes={k: type(v).__name__ for k, v in g2.nodes.items()},
-                 nir_lif={k: dict(tau=np.asarray(g2.nodes[k].tau).tolist(), r=np.asarray(g2.nodes[k].r).tolist(),
-                                  v_threshold=np.asarray(g2.nodes[k].v_threshold).tolist(),
-                                  v_reset=np.asarray(g2.nodes[k].v_reset).tolist()) for k in lifs},
+                 nir_lif={k: {f: sorted(set(np.asarray(getattr(g2.nodes[k], f)).ravel().tolist()))
+                              for f in ("tau", "r", "v_threshold", "v_reset")} for k in lifs},   # distinct values
                  affine_parameters_bit_exact=bool(params_equal), imported_lif=imported_lifs,
+                 export_workarounds=list(WORKAROUNDS),
                  imported=dict(agreement=float(np.mean(imp.argmax(1) == pr)), max_abs_readout=float(np.abs(imp - ref).max())),
                  restored=dict(n_lif_restored=n_restored, agreement=float(np.mean(res.argmax(1) == pr)),
                                max_abs_readout=float(np.abs(res - ref).max())))

@@ -16,16 +16,22 @@ Layer k's bias is switched on at step k, when its first input arrives (SANA-FE d
 per layer), matching Lava's per-layer reset offsets. Consistency gate (amendment 2): per flow,
 SANA-FE's spikes per layer in the aligned windows and its readout must equal Lava's; energy is
 reported with the match rate and only if it is 100% (otherwise the run stops).
-Vanilla SNN: hidden layer = built-in loihi_lif, no reset, clipped at 0 (reverse threshold 0,
-saturate: the ReLU of LeakyParallel), per-neuron leak; output = loihi_lif_delayed; weights,
-biases and thresholds in units of each layer's int8 scale (max |W| / 127, unrounded). No Lava
-reference exists for it; its predictions and hidden spike counts are compared with the trained
-float model and reported.
+Vanilla SNN (amendment 4): hidden layer = built-in loihi_lif, no reset, clipped at 0 (reverse
+threshold 0, saturate: the ReLU of LeakyParallel); output = loihi_lif_delayed. Two pairings:
+  vanilla_fixed  (primary) the fixed-point Vanilla of scripts/neuro_vanilla_int.py in Lava's
+                 integer units (scripts/neuro_a2_vanilla.py), gated like Tree-to-Spike: every flow's
+                 per-layer spikes and output spike counts must equal Lava's. Paired with the integer
+                 Vanilla's full-test macro-F1.
+  vanilla_float  (secondary, "float spike activity") the float weights, biases and thresholds
+                 scaled by 2^16, so the 1/64 grid is below float32 resolution; compared per flow
+                 with the GPU float replay's hidden and output spike counts (reported, not a gate).
+                 Paired with the float record's macro-F1.
 
 Each flow runs from a reset chip for its input steps plus one step per layer (fill and drain
 included in energy and latency). Mappings: base = one layer per core; split = each hidden
 layer across two cores (sensitivity). Variants: t2s_full, t2s_exit (C1-gate exit step of step 4,
-full window where the gate disables exit), vanilla_full.
+full window where the gate disables exit), vanilla_fixed, vanilla_float. Each row carries the
+macro-F1 it is paired with (full test) and the macro-F1 of SANA-FE's own predictions on the sample.
 
     .venv-neuro/bin/python scripts/neuro_a3_sanafe.py <zero|subtract> [datasets...]
 Output: results/neuro/a3_sanafe/{per_flow_<ds>.csv, energy_sanafe.csv, mapping.json}
@@ -49,6 +55,7 @@ OUT = REPO / "results/neuro/a3_sanafe"
 ARCH = REPO / "src/sanafe_plugin/build/loihi_delayed.yaml"
 DS = ["ciciot2023", "ciciomt2024", "edgeiiot", "toniot"]
 CAL_ERR_ENERGY = 0.10   # SANA-FE's reported energy error against first-generation Loihi (about 10%)
+FLOAT_SCALE = 2.0 ** 16  # vanilla_float: units below float32 resolution on SANA-FE's 1/64 grid
 
 
 def build(layers, n_in, mapping):
@@ -139,6 +146,8 @@ def main():
     if not json.loads((OUT / "install_check.json").read_text())["passed"]:
         raise SystemExit("SANA-FE installation check has not passed")
     from neuro_a2_lava import lava_params, DU, DV
+    from neuro_a2_vanilla import vanilla_lava_params
+    from sklearn.metrics import f1_score
     from src.lava_sublif.sublif import emulate
     rows, maps = [], {}
     for ds in (sys.argv[2:] or DS):
@@ -154,12 +163,27 @@ def main():
         attrs = {} if variant == "subtract" else {"reset_mode": "hard"}
         t2s = [dict(W=L["W"].astype(np.float64), bias=L["bias_eff"] / 64.0, leak=(4096 - DV) / 4096, thr=float(L["vth"]),
                     soma=soma, attrs=attrs) for L in lp]
-        sc = [float(np.abs(v["W_ih"]).max()) / 127, float(np.abs(v["W_out"]).max()) / 127]
-        van = [dict(W=v["W_ih"] / sc[0], bias=v["b_h"] / sc[0], leak=v["beta_h"], thr=float(v["thr_h"]) / sc[0],
-                    soma="loihi_lif", attrs=dict(reset_mode="none", reverse_threshold=0.0, reverse_reset=0.0,
-                                                 reverse_reset_mode="saturate")),
-               dict(W=v["W_out"] / sc[1], bias=v["b_out"] / sc[1], leak=float(v["beta_out"]), thr=float(v["thr_out"]) / sc[1],
-                    soma="loihi_lif_delayed")]
+        vi = np.load(INP / f"{ds}_vanilla_int_seed42.npz")
+        lv = np.load(REPO / f"results/neuro/a2_lava/{ds}_vanilla_perflow.npz")
+        vj = json.loads((REPO / f"results/neuro/a2_lava/vanilla_int_{ds}.json").read_text())
+        rint = json.loads((REPO / f"results/journal_r2/integer/{ds}/seed_42.json").read_text())
+        hid = dict(reset_mode="none", reverse_threshold=0.0, reverse_reset=0.0, reverse_reset_mode="saturate")
+        vl, _, vdv = vanilla_lava_params(v, vi)
+        van_fixed = [dict(W=vl[0]["W"].astype(np.float64), bias=vl[0]["bias_eff"] / 64.0, leak=(4096 - vdv) / 4096,
+                          thr=float(vl[0]["vth"]), soma="loihi_lif", attrs=hid),
+                     dict(W=vl[1]["W"].astype(np.float64), bias=vl[1]["bias_eff"] / 64.0, leak=(4096 - vdv) / 4096,
+                          thr=float(vl[1]["vth"]), soma="loihi_lif_delayed")]
+        G = FLOAT_SCALE
+        if float(vi["float_max_abs_v_sample"]) * G * 64 > 2 ** 30:
+            raise SystemExit(f"{ds}: float potentials too large for the 2^16 scaling (int cast in the 1/64 grid)")
+        van_float = [dict(W=v["W_ih"].astype(np.float64) * G, bias=v["b_h"].astype(np.float64) * G,
+                          leak=v["beta_h"].astype(np.float64), thr=float(v["thr_h"]) * G, soma="loihi_lif", attrs=hid),
+                     dict(W=v["W_out"].astype(np.float64) * G, bias=v["b_out"].astype(np.float64) * G,
+                          leak=float(v["beta_out"]), thr=float(v["thr_out"]) * G, soma="loihi_lif_delayed")]
+        paired = {"t2s_full": (rint["integer"]["tts_q8_leak8"]["macro_f1"], "integer NumPy Tree-to-Spike (Q8, 8-bit leak), full test"),
+                  "t2s_exit": (None, "C1-gate exit: see results/journal_r2/exit_calibration"),
+                  "vanilla_fixed": (vj["macro_f1_int_full_test"], "integer NumPy Vanilla (Q8, 8-bit leak), full test"),
+                  "vanilla_float": (vj["macro_f1_float_record"], "float Vanilla record (float spike activity), full test")}
         ex, theta = exit_steps(ds, z)
         e_acc_exit = None
         if theta is not None:   # Lava reference for the truncated windows: the emulation, checked equal to Lava at T
@@ -168,7 +192,8 @@ def main():
         runs = [("t2s_full", "base", t2s, st, np.full(len(samp), T), "potential"),
                 ("t2s_full", "split", t2s, st, np.full(len(samp), T), "potential"),
                 ("t2s_exit", "base", t2s, st, ex, "potential"),
-                ("vanilla_full", "base", van, v["spike_times"].astype(np.int64), np.full(len(v["labels"]), int(v["T"])), "spikes")]
+                ("vanilla_fixed", "base", van_fixed, v["spike_times"].astype(np.int64), np.full(len(v["labels"]), int(v["T"])), "spikes"),
+                ("vanilla_float", "base", van_float, v["spike_times"].astype(np.int64), np.full(len(v["labels"]), int(v["T"])), "spikes")]
         per = []
         for name, mapping, layers, sts, steps, readout in runs:
             t0 = time.time()
@@ -187,8 +212,11 @@ def main():
                         ea, ec, _ = e_acc_exit[i]
                         m = bool(np.array_equal(al, ec[0]) and np.array_equal(np.round(vec * 64), ea[0]))
                         ref = int(ea[0].argmax())
+                elif name == "vanilla_fixed":
+                    m = bool(np.array_equal(al, lv["counts"][i]) and np.array_equal(vec, lv["out_counts"][i]))
+                    ref = int(lv["pred"][i])
                 else:
-                    m = bool(al[0] == v["hidden_counts"][i]); ref = int(v["pred"][i])
+                    m = bool(al[0] == v["hidden_counts"][i] and al[1] == v["out_counts"][i]); ref = int(v["pred"][i])
                 match.append(m)
                 per.append(dict(dataset=ds, variant=name, mapping=mapping, flow=i, steps=int(steps[i]), energy_J=e,
                                 latency_s=lat, pred=pred, ref_pred=ref, matches_reference=m,
@@ -196,11 +224,15 @@ def main():
                                 **{f"spikes_total_l{k + 1}": int(c) for k, c in enumerate(tot)}))
             d = pd.DataFrame([p for p in per if p["variant"] == name and p["mapping"] == mapping])
             rate = float(np.mean(match))
-            if name.startswith("t2s") and rate < 1.0:
+            if name != "vanilla_float" and rate < 1.0:
                 pd.DataFrame(per).to_csv(OUT / f"per_flow_{ds}.csv", index=False)
                 raise SystemExit(f"{ds}/{name}/{mapping}: SANA-FE matches Lava on {100 * rate:.2f}% of flows; "
                                  "energy not reported (amendment 2)")
-            rows.append(dict(dataset=ds, variant=name, mapping=mapping, lava_variant=variant if name.startswith("t2s") else None,
+            ylab = z["labels"][samp] if name.startswith("t2s") else v["labels"]
+            rows.append(dict(dataset=ds, variant=name, mapping=mapping,
+                             lava_variant=variant if name.startswith("t2s") else ("vanilla" if name == "vanilla_fixed" else None),
+                             paired_macro_f1=paired[name][0], paired_macro_f1_source=paired[name][1],
+                             sanafe_sample_macro_f1=100 * f1_score(ylab, d.pred, average="macro"),
                              n=len(d), mean_steps=d.steps.mean(), reference_match_rate=rate,
                              energy_nJ_mean=1e9 * d.energy_J.mean(), energy_nJ_sd=1e9 * d.energy_J.std(),
                              energy_nJ_cal_low=1e9 * d.energy_J.mean() * (1 - CAL_ERR_ENERGY),

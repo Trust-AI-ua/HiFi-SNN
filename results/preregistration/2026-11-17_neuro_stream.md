@@ -235,3 +235,36 @@ one packet). These classes may be decided after one packet by any model.
    packet 1 at the matched point.
 
 Reported beside the primary results in `results/neuro/b2/SUMMARY.md`.
+
+## Amendment 4 (2026-11-17, PI instruction, before any fixed-point Vanilla result)
+
+Written after A2 (all four datasets) and A3 for Tree-to-Spike were in; no fixed-point Vanilla
+SNN had been run on any path.
+
+1. **Vanilla SNN pairing in A3.** A first A3 run simulated the Vanilla SNN with its float
+   parameters on SANA-FE's 1/64 grid (82.8% to 87.8% of flows with the float model's hidden
+   spike count); that pairs an energy with no measured accuracy and is superseded, not reported.
+   Two pairings replace it:
+   - **(b), primary: fixed-point Vanilla through the same chain as Tree-to-Spike.** Integer
+     NumPy (`scripts/neuro_vanilla_int.py`: per-tensor int8 weights by the int8_grid rule,
+     Q = 8, 8-bit leak round(256 beta), the ReLU floor of LeakyParallel, delayed subtractive
+     reset at the output, readout by output spike count) -> Lava fixed point
+     (`scripts/neuro_a2_vanilla.py`: hidden ReluLIFReset, output SubLIFReset, dv =
+     round(4096 (1 - beta))) -> SANA-FE (`vanilla_fixed`) with the amendment-2 gate: energy only
+     if every flow's per-layer spikes and output spike counts equal Lava's. Reported with the
+     integer Vanilla's full-test macro-F1 next to the float record. Lava-versus-integer
+     agreement is reported against the P5 thresholds, descriptively (P5 is the Tree-to-Spike rule).
+   - **(a), secondary: float spike activity** (`vanilla_float`). The float parameters scaled by
+     2^16 so SANA-FE's 1/64 grid is below float32 resolution; per-flow hidden and output spike
+     counts compared with the GPU float replay (match rate reported, not a gate). Paired with
+     the float record's macro-F1 and labelled "float spike activity".
+   The Tree-to-Spike versus Vanilla energy comparison in the paper uses (b).
+2. **P6, step 3 restored as a contingency.** The zero-reset retrain (dropped in amendment 2) is
+   run only if INRC or the Loihi 2 neuron documentation shows that Loihi 2 cannot run the
+   delayed subtractive reset. Otherwise it is not run.
+3. **A2 per-class disagreements** (descriptive): for each dataset and reset variant, the true
+   classes of the flows on which Lava and integer NumPy disagree, and whether each disagreement
+   makes the prediction right or wrong (`results/neuro/a2_lava/disagreements_by_class.md`).
+4. **B2 teacher curve** (descriptive): the per-packet teacher's test macro-F1 after k = 1..32
+   packets on all five seeds (a flow that has ended keeps its last decision), as the baseline
+   curve for the go/no-go figure (`results/neuro/b2/teacher_curve*.csv`).
