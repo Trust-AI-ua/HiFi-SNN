@@ -54,7 +54,8 @@ def main():
     loader = lambda c: tuple(sorted({"batch_size": c["batch_size"], "val_fraction": c["val_fraction"], "seed": SEED,
                                      **{o: c[o] for o in ("subsample_fraction", "test_fraction", "label_mode")
                                         if o in c and o in lp and c[o] is not None}}.items()))
-    teacher_keys = lambda c: tuple(sorted((k, v) for k, v in c.items() if k.startswith("teacher") or k == "class_weighted"))
+    teacher_keys = lambda c: tuple(sorted([(k, v) for k, v in c.items() if k.startswith("teacher")]
+                                          + [("class_weighted", bool(c.get("class_weighted") or False))]))
     if len({loader(c) for c in cfgs.values()}) != 1 or len({teacher_keys(c) for c in cfgs.values()}) != 1:
         raise SystemExit("variants differ in loader or teacher settings; export them separately")
     c0 = next(iter(cfgs.values()))
