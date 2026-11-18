@@ -91,7 +91,7 @@ def factorial():
     import r2_train_cell as C
     cells, issues = [], []
     for ds in ("edgeiiot", "ciciomt2024"):
-        new_ref = None
+        new_ref = {}
         for enc, kd, T in itertools.product(("tree", "raw"), ("kd", "nokd"), (20, 25)):
             reused = T == 20 and (enc, kd) in REUSE
             base = REUSE[(enc, kd)].format(ds=ds) if reused else f"results/journal_r2/factorial/{ds}/{enc}_{kd}_T{T}"
@@ -100,8 +100,8 @@ def factorial():
                 if not p.exists():
                     continue
                 f1, far, r = metrics(p)
-                if not reused and new_ref is None:
-                    new_ref = r
+                if not reused and s not in new_ref:
+                    new_ref[s] = r                     # the data split depends on the seed: compare like with like
                 cells.append(dict(dataset=ds, encoder=enc, distillation=kd, T=T, seed=s, macro_f1=f1, far=far,
                                   reused=reused, source=base, _rec=r))
         # reuse check
@@ -112,10 +112,11 @@ def factorial():
             got = norm_cfg(c["_rec"]["config"])
             diff = {k: (got.get(k), want.get(k)) for k in set(got) | set(want)
                     if k not in ("subsample_fraction", "label_mode", "dataset", "test_fraction") and got.get(k) != want.get(k)}
-            if new_ref is not None:
+            ref = new_ref.get(c["seed"])
+            if ref is not None:
                 for k in ("splits", "class_counts_train"):
-                    if c["_rec"]["data"].get(k) != new_ref["data"].get(k):
-                        diff[f"data.{k}"] = "differs from the new cells"
+                    if c["_rec"]["data"].get(k) != ref["data"].get(k):
+                        diff[f"data.{k}"] = "differs from the new cells of the same seed"
             else:
                 diff.setdefault("data", "no new cell yet to compare the recorded data with")
             c["reuse_ok"] = not diff
