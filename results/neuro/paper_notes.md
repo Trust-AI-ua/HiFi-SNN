@@ -44,3 +44,28 @@
   the CSV features.
 - **A1 (NIR):** report the export workarounds (batch dimension, scalar LIF parameters, h5py
   compression) as interoperability findings for snnTorch 0.9.4 / NIR 1.0.8.
+- **Energy claim (replaces "accuracy at similar energy").** Use the macro-F1 of the simulated
+  networks (results/neuro/frontier/FRONTIER.md). With the integer-reference pairing the PI's
+  draft reads: on a Loihi-calibrated model, Tree-to-Spike uses 1.4 to 2.1 times the energy per
+  inference of the fixed-point conventional SNN over the full window, and is 2.4 to 28.1 macro-F1
+  points more accurate. With the simulated-network macro-F1 (the network whose energy was
+  measured) the gain is 2.2 to 22.0 points. Use that pairing, as amendment 5 does. Validated
+  early exit brings Tree-to-Spike below the conventional SNN on CICIoMT2024 (246 against 423 nJ)
+  and level on CIC-IoT2023 (437 against 446 nJ). Type every number from numbers.tex.
+- **TON-IoT exception, stated plainly.** There the gain is about 2.2 to 2.4 points at about twice
+  the energy, so the conventional SNN is a reasonable choice when energy matters most.
+- **CICIoMT2024 and P5.** It fails P5 under the two-sided rule (|change in macro-F1| <= 0.5). The
+  change is in Lava's favour: Lava is right on two Spoofing flows that the integer reference gets
+  wrong. On the whole test split the simulated network and the integer reference differ by 0.02
+  points.
+- **Full-test scores of the simulated networks** come from the NumPy emulation of Lava's
+  arithmetic, which matches Lava bit for bit on the 2,000-flow sample. Label them as such; Lava
+  itself was run on the sample only.
+- **NIR reset.** NIR 1.0's LIF, CubaLIF and IF nodes reset to v_reset (a reset to a potential);
+  there is no subtractive reset in the specification (nir/ir/neuron.py, nir 1.0.8). An snnTorch
+  model therefore comes back from NIR with a zero reset. Restoring the subtractive reset gives
+  100% agreement on all four datasets; the imported model agrees on 39% to 97%. Pair this with the
+  Lava zero-reset result as one porting lesson: reset semantics decide fidelity.
+- **Step 5 wording** (wait for CICIoMT2024): training variance alone is about as large as
+  data-split variance, and each about as large as the published SD. With five runs per arm the
+  ordering is noise. Differences under about 3 points on CIC-IoT2023 cannot be resolved.

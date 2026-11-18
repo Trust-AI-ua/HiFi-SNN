@@ -323,3 +323,22 @@ dataset:
 
 The analysis is descriptive. The frontier is reported whatever it shows, and a dominance claim
 in the paper is made only where this check holds.
+
+### Amendment 5b (2026-11-17, PI instruction, before any frontier result)
+
+No variant had been through Lava or SANA-FE when this was written.
+
+- **Window sweep completed.** T = 40 and T = 80 (`results/ladder/<ds>/T40`, `T80`) are added to
+  the frontier beside T = 10. The T = 20 point is the production model, already in the table.
+  Lava's per-flow slot is lengthened to max(32, T + 8) steps for the longer windows (the
+  arithmetic is unchanged; the slot only has to hold the window and the synaptic delays).
+- **Training protocol.** All ladder and encoder-ablation variants, the window sweep included,
+  are 10-epoch runs. On TON-IoT, Edge-IIoTset and CICIoMT2024 this is the production schedule.
+  On CIC-IoT2023 the production model uses the 20-epoch block, so that dataset's frontier
+  compares unequal training.
+- **Teacher reproduction.** Some ladder runs were made by `scripts/run_ladder.py` with
+  OMP_NUM_THREADS = 16 // workers, which changes the XGBoost teacher. Where the default refit
+  does not reproduce a variant's stored teacher, the export refits under the thread cap that
+  does (`neuro_export_variants.py --omp N`, recorded per row). The teacher guard (test macro-F1
+  equal to the record's) is unchanged, and a variant whose teacher cannot be reproduced is left
+  out and reported as such.

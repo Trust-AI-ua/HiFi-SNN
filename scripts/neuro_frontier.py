@@ -34,6 +34,7 @@ CH = 20000
 
 
 def main():
+    import neuro_a2_lava as A2
     from neuro_a2_lava import lava_params, run_lava, DU, DV
     from neuro_a3_sanafe import build, simulate
     from src.lava_sublif.sublif import emulate
@@ -46,6 +47,7 @@ def main():
         st_all, y_all = z["spike_times"].astype(np.int64), z["labels"]
         st, y = st_all[samp], y_all[samp]
         lp, info = lava_params(z)
+        A2.SLOT = max(32, T + 8)          # one slot per flow must hold the window plus the three synaptic delays
         acc, cnt, sec = run_lava(lp, st, T, "subtract")
         e_acc, e_cnt, vmax = emulate(lp, st, T, du=DU, dv=DV, reset="subtract")
         if not (np.array_equal(acc, e_acc) and np.array_equal(cnt, e_cnt)):
@@ -72,7 +74,8 @@ def main():
             raise SystemExit(f"{ds}/{tag}: full-test emulation differs from Lava on the sample")
         f1 = lambda yy, p: 100 * f1_score(yy, p, average="macro")
         enc_ops = int(sum(math.ceil(math.log2(e + 1)) for e in z["n_edges"]))
-        r = dict(dataset=ds, variant=tag, run_dir=str(z["run_dir"]), T=T, channels=int(st.shape[1]), n_sample=int(len(samp)),
+        r = dict(dataset=ds, variant=tag, run_dir=str(z["run_dir"]), T=T, lava_slot=A2.SLOT,
+                 teacher_omp_num_threads=str(z["omp_num_threads"]) if "omp_num_threads" in z.files else "None", channels=int(st.shape[1]), n_sample=int(len(samp)),
                  sanafe_match_rate=rate, energy_nJ_mean=1e9 * d.energy_J.mean(), energy_nJ_sd=1e9 * d.energy_J.std(),
                  latency_us_mean=1e6 * d.latency_s.mean(), latency_us_sd=1e6 * d.latency_s.std(),
                  spikes_per_flow="/".join(f"{d[c].mean():.1f}" for c in d.columns if c.startswith("spikes_l")),

@@ -11,6 +11,11 @@ float encoder and that the float student reproduces the record; the integer path
 has no step-2 record for variants, so its macro-F1 is stored rather than checked.
 
     .venv/bin/python scripts/neuro_export_variants.py <dataset> <tag>=<results subdir> [...]
+    OMP_NUM_THREADS=N .venv/bin/python scripts/neuro_export_variants.py --omp N <dataset> <tag>=<dir> [...]
+Some ladder runs were trained by scripts/run_ladder.py with OMP_NUM_THREADS = 16 // workers, and
+XGBoost (n_jobs = 4) then fits a different teacher. For those, the second form refits under the
+thread cap the record was made with; the teacher guard (test macro-F1 equal to the record's) is
+unchanged and decides. The cap is stored in the output (omp_num_threads).
 Output: results/neuro/inputs/<ds>_<tag>_seed42.npz (the keys of neuro_export.py, plus run_dir,
 float_f1, int_f1)
 """
@@ -34,8 +39,11 @@ SEED = 42
 
 
 def main():
-    if any(os.environ.get(v) for v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")):
-        raise SystemExit("thread variables are set; the teacher would not be the production teacher")
+    omp = None
+    if "--omp" in sys.argv:
+        i = sys.argv.index("--omp"); omp = sys.argv[i + 1]; del sys.argv[i:i + 2]
+    if os.environ.get("OMP_NUM_THREADS") != omp or any(os.environ.get(v) for v in ("MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")):
+        raise SystemExit("thread variables must be unset (production teacher), or OMP_NUM_THREADS must equal --omp")
     import r2_integer_inference as RI
     from neuro_export import stratified_sample, int_counts
     from src.data import get_dataset, DATASET_LOADERS
@@ -104,7 +112,7 @@ def main():
                             float_logits=logits, int_pred=ipred, sample=samp, int_counts=cnt,
                             class_names=np.array(b.class_names), T=np.int64(T), beta=np.float64(cfg["beta"]),
                             run_dir=variants[t], float_f1=100 * score(yte, logits.argmax(1)),
-                            int_f1=100 * score(yte, ipred), **extra)
+                            int_f1=100 * score(yte, ipred), omp_num_threads=str(omp), **extra)
         print(f"[done] {ds}/{t}: C={stimes.shape[1]} T={T} float F1 {100 * score(yte, logits.argmax(1)):.2f} "
               f"int F1 {100 * score(yte, ipred):.2f}", flush=True)
 

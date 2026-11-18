@@ -67,3 +67,12 @@ model must use the device it was evaluated on.
   flagged two new scripts copied in under a second before the run started (the guard's
   one-second margin). No tracked content changed; the run had failed on its own error.
   The two sessions agreed that only this session edits, runs or commits track A/B.
+
+## D5. Guard failures from this session's own commits (2026-11-17)
+
+The guarded full-test scoring (`neuro_lava_fulltest.py`, with the early-exit extension) failed its
+guard. That was not because of the run: during it, this session committed `.gitignore`,
+`scripts/neuro_export_variants.py` and `scripts/neuro_frontier_runner.sh`, and the run rewrote its
+own tracked output `results/neuro/a2_lava/lava_fulltest.csv`. The guard now accepts changes to tracked
+files inside a run's declared outputs and lists them; the scoring is rerun under the guard after the
+frontier. Rule kept: no commits while a guarded run is active.

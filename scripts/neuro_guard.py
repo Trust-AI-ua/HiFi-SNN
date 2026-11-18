@@ -8,7 +8,8 @@ system Python, isolated:
 
 Fails (exit 3) before the run if any tracked file is modified, staged or deleted
 (`git status --porcelain --untracked-files=no` not empty). After the run, fails if
-  * any tracked file is modified, staged or deleted;
+  * any tracked file outside the allowed prefixes is modified, staged or deleted (a rerun may
+    update the run's own tracked outputs; those changes are listed, and committed or not by hand);
   * `git status --porcelain --ignored` lists a path that is new since the start and lies
     outside the allowed prefixes;
   * any file under the repository (ignored files included) changed during the run outside the
@@ -69,8 +70,12 @@ def main():
     rc = subprocess.call(cmd, cwd=REPO)
     bad = []
     tracked = porcelain("--untracked-files=no")
+    own = [l for l in tracked if l[3:].strip('"').startswith(allowed)]
+    tracked = [l for l in tracked if l not in own]
     if tracked:
         bad.append("tracked files modified: " + ", ".join(tracked))
+    if own:
+        print("[neuro_guard] tracked outputs of this run changed: " + ", ".join(l[3:] for l in own), file=sys.stderr)
     new = [l for l in set(porcelain("--ignored")) - before
            if not l[3:].strip('"').startswith(allowed + CONCURRENT)]
     if new:
