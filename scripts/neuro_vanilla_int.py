@@ -14,7 +14,7 @@ bq = round(b / s 2^Q); theta = round(thr / s 2^Q). Writes results/neuro/inputs/<
 (full-test integer predictions, sample predictions and spike counts, the integer parameters) and
 results/neuro/a2_lava/vanilla_int_<ds>.json (full-test macro-F1, float record and integer).
 
-    .venv/bin/python scripts/neuro_vanilla_int.py <dataset>
+    .venv/bin/python scripts/neuro_vanilla_int.py <dataset> [seed]   (default 42; amendment 6 adds 43-46)
 """
 from __future__ import annotations
 
@@ -67,15 +67,16 @@ def float_vanilla(v, st, T):
 
 def main():
     ds = sys.argv[1]
+    seed = int(sys.argv[2]) if len(sys.argv) > 2 else 42
     import torch
     import backfill_snn_metrics as BF
     from src.data import get_dataset
     from src.encoding import get_encoder
     from src.metrics import compute_metrics
-    rd = REPO / f"results/{ds}/SNN_LeakyParallel/latency/seed_42"
+    rd = REPO / f"results/{ds}/SNN_LeakyParallel/latency/seed_{seed}"
     rec = json.loads((rd / "results.json").read_text())
     cfg = rec["config"]
-    v = dict(np.load(INP / f"{ds}_vanilla_seed42.npz"))
+    v = dict(np.load(INP / f"{ds}_vanilla_seed{seed}.npz"))
     T = int(v["T"])
     b = get_dataset(ds, **BF._dataset_kwargs_for(ds, "LeakyParallel", "latency", cfg))
     X = torch.cat([x for x, _ in b.test_loader]).float()
@@ -87,7 +88,7 @@ def main():
     chk = enc(X[:4096], T)
     if not torch.equal(chk, (torch.arange(T).view(T, 1, 1) == torch.from_numpy(st[:4096]).unsqueeze(0)).float()):
         raise SystemExit("spike times do not reproduce the latency encoder")
-    t2s = np.load(INP / f"{ds}_seed42.npz")
+    t2s = np.load(INP / f"{ds}_seed{seed}.npz")
     same = len(t2s["labels"]) == len(y) and np.array_equal(t2s["labels"], y)
     if bool(same) != bool(v["same_split_as_t2s"]):
         raise SystemExit("split check differs from the Vanilla export")
@@ -112,11 +113,11 @@ def main():
     f1 = lambda p: compute_metrics(y, p, class_names=b.class_names)["f1_macro"]
     f_rec = rec["test_plus"]["metrics"]["f1_macro"]
     fmax = float_vanilla(v, st[samp], T)
-    np.savez_compressed(INP / f"{ds}_vanilla_int_seed42.npz", int_pred_full=ipred, labels_full=y, sample=samp,
+    np.savez_compressed(INP / f"{ds}_vanilla_int_seed{seed}.npz", int_pred_full=ipred, labels_full=y, sample=samp,
                         spike_times_full=st.astype(np.int8),
                         int_pred=soc.argmax(1), int_out_counts=soc, int_hidden_counts=shc, s_h=s_h, s_o=s_o,
                         float_max_abs_v_sample=fmax, **{f"P_{k}": np.asarray(val) for k, val in P.items()})
-    r = dict(dataset=ds, seed=42, T=T, Q=Q, leak_mul=P["mul"], leak_mul_out=P["mul_o"], theta_h=P["th_h"],
+    r = dict(dataset=ds, seed=seed, T=T, Q=Q, leak_mul=P["mul"], leak_mul_out=P["mul_o"], theta_h=P["th_h"],
              theta_o=P["th_o"], max_abs_v_int=vmax, float_max_abs_v_sample=fmax,
              macro_f1_float_record=100 * f_rec, macro_f1_int_full_test=100 * f1(ipred),
              delta_f1_int_minus_float=100 * (f1(ipred) - f_rec),
@@ -125,7 +126,7 @@ def main():
              out_spikes_per_flow_sample=dict(int=float(soc.sum(1).mean()), float=float(v["out_counts"].mean())))
     out = REPO / "results/neuro/a2_lava"
     out.mkdir(parents=True, exist_ok=True)
-    (out / f"vanilla_int_{ds}.json").write_text(json.dumps(r, indent=1))
+    (out / (f"vanilla_int_{ds}.json" if seed == 42 else f"vanilla_int_{ds}_seed{seed}.json")).write_text(json.dumps(r, indent=1))
     print(json.dumps(r), flush=True)
 
 

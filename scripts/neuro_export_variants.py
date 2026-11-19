@@ -35,10 +35,13 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO)); sys.path.insert(0, str(REPO / "scripts"))
 OUT = REPO / "results/neuro/inputs"
-SEED = 42
+SEED = 42                  # --seed S overrides (amendment 6)
 
 
 def main():
+    global SEED
+    if "--seed" in sys.argv:
+        i = sys.argv.index("--seed"); SEED = int(sys.argv[i + 1]); del sys.argv[i:i + 2]
     omp = None
     if "--omp" in sys.argv:
         i = sys.argv.index("--omp"); omp = sys.argv[i + 1]; del sys.argv[i:i + 2]

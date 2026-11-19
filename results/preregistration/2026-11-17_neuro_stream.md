@@ -342,3 +342,33 @@ No variant had been through Lava or SANA-FE when this was written.
   does (`neuro_export_variants.py --omp N`, recorded per row). The teacher guard (test macro-F1
   equal to the record's) is unchanged, and a variant whose teacher cannot be reproduced is left
   out and reported as such.
+
+## Amendment 6 (2026-11-19, PI instruction, before any seed other than 42 was run through the chain): five-seed confirmation of the frontier dominance results
+
+The two dominance results of amendment 5 are single seed-42 results. The Edge-IIoTset one was picked
+as the cheapest of 28 variants that beats the conventional SNN, which is a selection effect. They
+are checked on seeds 42 to 46, seed by seed.
+
+**Comparisons**, each Tree-to-Spike row against the fixed-point Vanilla SNN of the same seed:
+- **Edge-IIoTset:** Tree-to-Spike T = 10 (`results/ladder/edgeiiot/T10`, the five-seed window sweep;
+  10-epoch runs, the production schedule for this dataset).
+- **CICIoMT2024:** Tree-to-Spike with C1-gate early exit, using each seed's calibrated gate.
+  On seed 45 calibration disabled exit (`gate_c1` = None), so that seed's exit row is the full
+  window, as in A3. This was known before any run.
+
+**Chain:** unchanged, per seed (`scripts/neuro_confirm.py`):
+- exports with that seed's teacher, guards and stratified 2,000-flow sample;
+- Lava fixed point equal bit for bit to the emulation;
+- SANA-FE with the amendment-2 gate;
+- macro-F1 of the simulated network on the whole test split;
+- the Vanilla SNN through the amendment-4 chain (GPU replay of the record, integer port, Lava, SANA-FE).
+
+Seed 42 is rerun and must reproduce the frontier and A3 values.
+
+**Rule** (amendment 5's, judged on the five-seed means): the Tree-to-Spike row dominates if its mean
+simulated macro-F1 is higher and its mean energy per inference is no higher. Per-seed wins (both
+conditions on that seed) are reported beside it. The analysis is still exploratory. The paper makes
+a dominance claim only where it holds on the five-seed means, and reports the per-seed count with it.
+
+**Context rows** (descriptive, same seeds): Tree-to-Spike over the full window on both datasets, and
+Edge-IIoTset's early exit on the seeds where its gate is enabled.

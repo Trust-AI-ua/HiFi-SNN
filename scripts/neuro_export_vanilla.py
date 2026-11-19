@@ -11,7 +11,7 @@ reproduces the record's test macro-F1, and writes results/neuro/inputs/<ds>_vani
 The sample: the Tree-to-Spike sample indices if the two test splits are identical (same labels
 in the same order), otherwise the same stratified rule (scripts/neuro_export.py) on this split.
 
-    .venv/bin/python scripts/neuro_export_vanilla.py <dataset>
+    .venv/bin/python scripts/neuro_export_vanilla.py <dataset> [seed]   (default 42; amendment 6 adds 43-46)
 """
 from __future__ import annotations
 
@@ -28,13 +28,14 @@ sys.path.insert(0, str(REPO)); sys.path.insert(0, str(REPO / "scripts"))
 
 def main():
     ds = sys.argv[1]
+    seed = int(sys.argv[2]) if len(sys.argv) > 2 else 42
     import backfill_snn_metrics as BF
     from neuro_export import stratified_sample
     from src.data import get_dataset
     from src.encoding import get_encoder
     from src.metrics import compute_metrics
     from src.models import SNN
-    rd = REPO / f"results/{ds}/SNN_LeakyParallel/latency/seed_42"
+    rd = REPO / f"results/{ds}/SNN_LeakyParallel/latency/seed_{seed}"
     rec = json.loads((rd / "results.json").read_text())
     cfg = rec["config"]
     b = get_dataset(ds, **BF._dataset_kwargs_for(ds, "LeakyParallel", "latency", cfg))
@@ -67,7 +68,7 @@ def main():
     got = compute_metrics(y, pred, class_names=b.class_names)["f1_macro"]
     if abs(got - rec["test_plus"]["metrics"]["f1_macro"]) > 1e-12:
         raise SystemExit(f"{ds}: Vanilla replay {got!r} is not the record {rec['test_plus']['metrics']['f1_macro']!r}")
-    t2s = np.load(REPO / f"results/neuro/inputs/{ds}_seed42.npz")
+    t2s = np.load(REPO / f"results/neuro/inputs/{ds}_seed{seed}.npz")
     same = len(t2s["labels"]) == len(y) and np.array_equal(t2s["labels"], y)
     samp = t2s["sample"] if same else stratified_sample(y)
     xs = X[samp].clamp(0, 1)
@@ -83,7 +84,7 @@ def main():
     whh = sd["lp.rnn.weight_hh_l0"]
     if np.abs(whh - np.diag(np.diag(whh))).max() > 0:
         raise SystemExit("weight_hh is not diagonal")
-    np.savez_compressed(REPO / f"results/neuro/inputs/{ds}_vanilla_seed42.npz", spike_times=times, labels=y[samp],
+    np.savez_compressed(REPO / f"results/neuro/inputs/{ds}_vanilla_seed{seed}.npz", spike_times=times, labels=y[samp],
                         pred=pred[samp], hidden_counts=np.concatenate(hid)[samp], out_counts=np.concatenate(outc)[samp],
                         W_ih=sd["lp.rnn.weight_ih_l0"], b_h=sd["lp.rnn.bias_ih_l0"] + sd["lp.rnn.bias_hh_l0"],
                         beta_h=np.diag(whh), thr_h=np.float64(sd["lp.threshold"]), W_out=sd["fc.weight"],
