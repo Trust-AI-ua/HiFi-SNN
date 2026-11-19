@@ -69,3 +69,50 @@
 - **Step 5 wording** (wait for CICIoMT2024): training variance alone is about as large as
   data-split variance, and each about as large as the published SD. With five runs per arm the
   ordering is noise. Differences under about 3 points on CIC-IoT2023 cannot be resolved.
+- **Pairing (PI, 2026-11-18): the simulated network's macro-F1 throughout**, wherever energy or the
+  neuromorphic chain is discussed. The integer-reference scores are not used beside energy.
+- **Fixed-point robustness, seed 42 on both sides** (float record to simulated network, full test):
+  - Vanilla on Edge-IIoTset: 77.04 to 62.12 (-14.92).
+  - Tree-to-Spike on Edge-IIoTset: 84.14 to 84.11 (-0.03). Do not use 83.94, which is the
+    five-seed float mean.
+  - Other datasets: Tree-to-Spike +0.05 / -0.23 / -0.10 (TON-IoT / CICIoMT2024 / CIC-IoT2023);
+    Vanilla -0.42 / +0.49 / -0.38.
+  - Drop the -20.92 (the integer reference's loss).
+- **Fidelity section, one sentence:** Lava's fixed-point Vanilla agrees with the integer reference
+  on only 88% to 99% of the full test (the 12-bit against the 8-bit leak, compounded because the
+  hidden layer never resets), so the Vanilla energy is paired with the simulated network's own score.
+- **Energy table caption:** "seed 42". Never compare its macro-F1 with the five-seed means
+  (CIC-IoT2023: 79.18 here against 75.20).
+- **Ratios:**
+  - TON-IoT: 2.07 times Vanilla's energy over the full window and 1.64 with early exit (871
+    against 532 nJ), for about 2.2 points.
+  - Edge-IIoTset: 1.40 times, early exit disabled, for 22.0 points.
+- **Latency sentence:** over the full window Tree-to-Spike is faster than Vanilla on the simulated
+  chip on Edge-IIoTset (58.6 against 63.6 µs) and CICIoMT2024 (51.0 against 58.7). On CIC-IoT2023
+  it is marginally faster (57.2 against 58.3). On TON-IoT it is slower (85.5 against 67.9), where
+  its hidden layers spike most (147 / 502 spikes per flow). Steps (20 against 25) and spike
+  traffic both set latency.
+- **Step 5 sentence:** "Training-seed and data-sampling variation contribute comparably (SD 2.9 to
+  3.4 macro-F1 points each), and rerunning the seed-42 configuration reproduces the stored result
+  exactly." (TNNLS R2 #6.)
+- **Framing (PI, 2026-11-18).** Vanilla's fixed-point collapse is one dataset (Edge-IIoTset) and is a
+  supporting, worst-case-robustness result, not a general property. Wording: "In the fixed-point
+  neuromorphic chain, Tree-to-Spike moves by at most 0.23 macro-F1 points on all four benchmarks,
+  whereas the conventional SNN loses 14.92 points on Edge-IIoTset."
+- **Headline results:**
+  1. The encoder gain over conventional SNNs (\JNDiffTtsVanIotMean, IoT mean of five-seed float
+     scores; the factorial ablation is pending).
+  2. Energy with early exit on the simulated chip: better than Vanilla on all three measures on
+     CICIoMT2024, and level on energy with 16.1 points more accuracy on CIC-IoT2023.
+  3. Fidelity: the NIR round trip and Lava with the subtractive reset, plus the reset lesson.
+- **Fidelity wording precision:**
+  - The NIR round trip is exact in predictions (100% agreement, identical macro-F1 on all four
+    datasets), not bit-exact in the readout: the largest readout difference is 0.45 (CIC-IoT2023),
+    from float64 against float32 state.
+  - The 99.4% to 99.85% Lava agreement is on the 2,000-flow sample. On the whole test split the
+    bit-exact emulation agrees with the integer reference on 99.58% to 99.98%.
+- **Energy: two models, one direction.** The manuscript's analytic model gives Tree-to-Spike
+  \JNTtsOverVanTotalMin to \JNTtsOverVanTotalMax times Vanilla's total energy (five-seed means).
+  SANA-FE gives 1.4 to 2.1 times over the full window (seed 42). Present them together: the
+  simulated chip confirms the analytic model's direction at a somewhat lower ratio. Early exit is
+  what changes the comparison on CICIoMT2024 and CIC-IoT2023.

@@ -1,0 +1,64 @@
+# Energy-accuracy frontier (exploratory, amendment 5)
+
+SANA-FE energy and latency per inference (2,000-flow sample, mean ± SD; about 10% calibration caveat), and test macro-F1 of the simulated network (bit-exact emulation of Lava's arithmetic, whole test split). Host encoder comparisons are not in the energy.
+
+## toniot
+
+| Network | Channels | Steps | Energy (nJ) | Latency (µs) | Macro-F1 (simulated) | Encoder comparisons | Pareto | Dominates Vanilla |
+|---|--:|--:|--:|--:|--:|--:|---|---|
+| Vanilla, fixed point |  | 25.0 | 532 ± 19 | 67.9 ± 0.8 | 90.56 |  | yes |  |
+| T2S variant: T = 10 | 70 | 10.0 | 733 ± 25 | 57.0 ± 2.6 | 93.61 | 122 | yes | no |
+| T2S, early exit (C1 gate) | 70 | 16.0 | 871 ± 202 | 68.5 ± 15.4 | 92.76 | 123 |  | no |
+| T2S variant: prune q = 0.40 | 56 | 20.0 | 933 ± 34 | 71.7 ± 2.6 | 92.83 | 101 |  | no |
+| T2S variant: uniform allocation | 69 | 20.0 | 996 ± 40 | 81.2 ± 2.3 | 92.06 | 138 |  | no |
+| T2S variant: pop_max 1 (prune q = 0.20) | 55 | 20.0 | 997 ± 39 | 81.6 ± 2.6 | 91.28 | 123 |  | no |
+| T2S variant: pop_max 2 | 64 | 20.0 | 1016 ± 38 | 80.4 ± 2.6 | 92.98 | 122 |  | no |
+| T2S, full window | 70 | 20.0 | 1101 ± 38 | 85.5 ± 3.5 | 92.76 | 123 |  | no |
+| T2S variant: T = 40 | 70 | 40.0 | 1629 ± 74 | 128.5 ± 4.5 | 93.31 | 122 |  | no |
+| T2S variant: T = 80 | 70 | 80.0 | 2598 ± 54 | 205.3 ± 4.4 | 92.57 | 122 |  | no |
+
+## edgeiiot
+
+| Network | Channels | Steps | Energy (nJ) | Latency (µs) | Macro-F1 (simulated) | Encoder comparisons | Pareto | Dominates Vanilla |
+|---|--:|--:|--:|--:|--:|--:|---|---|
+| T2S variant: T = 10 | 38 | 10.0 | 430 ± 45 | 31.4 ± 2.6 | 81.36 | 82 | yes | **yes** |
+| Vanilla, fixed point |  | 25.0 | 521 ± 53 | 63.6 ± 2.9 | 62.12 |  |  |  |
+| T2S variant: prune q = 0.40 | 30 | 20.0 | 674 ± 61 | 52.8 ± 4.1 | 83.33 | 66 | yes | no |
+| T2S variant: pop_max 2 | 34 | 20.0 | 707 ± 65 | 57.3 ± 4.1 | 83.23 | 82 |  | no |
+| T2S variant: pop_max 1 (prune q = 0.20) | 32 | 20.0 | 714 ± 86 | 59.2 ± 5.5 | 80.82 | 82 |  | no |
+| T2S, full window | 38 | 20.0 | 732 ± 87 | 58.6 ± 5.6 | 84.11 | 82 | yes | no |
+| T2S, early exit (C1 gate) | 38 | 20.0 | 732 ± 87 | 58.6 ± 5.6 | 84.11 | 82 | yes | no |
+| T2S variant: uniform allocation | 40 | 20.0 | 759 ± 102 | 63.7 ± 6.1 | 83.77 | 91 |  | no |
+| T2S variant: T = 40 | 38 | 40.0 | 1215 ± 121 | 103.4 ± 8.8 | 85.09 | 82 | yes | no |
+| T2S variant: T = 80 | 38 | 80.0 | 1935 ± 172 | 170.9 ± 10.2 | 85.82 | 82 | yes | no |
+
+## ciciomt2024
+
+| Network | Channels | Steps | Energy (nJ) | Latency (µs) | Macro-F1 (simulated) | Encoder comparisons | Pareto | Dominates Vanilla |
+|---|--:|--:|--:|--:|--:|--:|---|---|
+| T2S, early exit (C1 gate) | 37 | 6.0 | 246 ± 79 | 20.9 ± 6.1 | 89.80 | 226 | yes | **yes** |
+| Vanilla, fixed point |  | 25.0 | 423 ± 60 | 58.7 ± 3.4 | 73.98 |  |  |  |
+| T2S variant: T = 10 | 37 | 10.0 | 425 ± 32 | 34.5 ± 1.7 | 91.65 | 226 | yes | no |
+| T2S variant: pop_max 2 | 35 | 20.0 | 573 ± 36 | 48.1 ± 1.5 | 84.93 | 224 |  | no |
+| T2S, full window | 37 | 20.0 | 602 ± 42 | 51.0 ± 1.9 | 90.73 | 226 |  | no |
+| T2S variant: pop_max 1 (prune q = 0.20) | 33 | 20.0 | 604 ± 39 | 50.7 ± 1.8 | 89.12 | 226 |  | no |
+| T2S variant: prune q = 0.40 | 29 | 20.0 | 613 ± 30 | 51.5 ± 1.7 | 84.63 | 167 |  | no |
+| T2S variant: uniform allocation | 42 | 20.0 | 622 ± 60 | 53.2 ± 2.8 | 90.13 | 254 |  | no |
+| T2S variant: T = 40 | 37 | 40.0 | 1064 ± 39 | 93.0 ± 2.5 | 93.78 | 226 | yes | no |
+| T2S variant: T = 80 | 37 | 80.0 | 1962 ± 97 | 171.4 ± 7.3 | 94.35 | 226 | yes | no |
+
+## ciciot2023
+
+| Network | Channels | Steps | Energy (nJ) | Latency (µs) | Macro-F1 (simulated) | Encoder comparisons | Pareto | Dominates Vanilla |
+|---|--:|--:|--:|--:|--:|--:|---|---|
+| T2S, early exit (C1 gate) | 37 | 11.2 | 437 ± 138 | 33.0 ± 10.4 | 78.55 | 174 | yes | **yes** |
+| Vanilla, fixed point |  | 25.0 | 446 ± 42 | 58.3 ± 2.4 | 62.48 |  |  |  |
+| T2S variant: T = 10 | 37 | 10.0 | 512 ± 28 | 38.6 ± 1.9 | 67.91 | 174 |  | no |
+| T2S variant: pop_max 1 (prune q = 0.20) | 31 | 20.0 | 649 ± 35 | 52.7 ± 2.0 | 70.14 | 174 |  | no |
+| T2S variant: pop_max 2 | 32 | 20.0 | 673 ± 34 | 54.5 ± 1.9 | 71.23 | 174 |  | no |
+| T2S, full window | 37 | 20.0 | 758 ± 43 | 57.2 ± 3.0 | 79.18 | 174 | yes | no |
+| T2S variant: prune q = 0.40 | 29 | 20.0 | 780 ± 34 | 60.4 ± 2.6 | 77.07 | 138 |  | no |
+| T2S variant: uniform allocation | 39 | 20.0 | 786 ± 44 | 60.4 ± 3.5 | 71.70 | 196 |  | no |
+| T2S variant: T = 40 | 37 | 40.0 | 1504 ± 61 | 123.7 ± 4.5 | 71.34 | 174 |  | no |
+| T2S variant: T = 80 | 37 | 80.0 | 2334 ± 117 | 195.9 ± 9.8 | 71.39 | 174 |  | no |
+

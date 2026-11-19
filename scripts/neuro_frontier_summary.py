@@ -29,7 +29,8 @@ FR = REPO / "results/neuro/frontier"
 DS = ["toniot", "edgeiiot", "ciciomt2024", "ciciot2023"]
 NAMES = {"t2s_full": "T2S, full window", "t2s_exit": "T2S, early exit (C1 gate)", "vanilla_fixed": "Vanilla, fixed point",
          "T10": "T2S variant: T = 10", "uniform": "T2S variant: uniform allocation", "q40": "T2S variant: prune q = 0.40",
-         "M2": "T2S variant: pop_max 2", "prune_only": "T2S variant: pop_max 1 (prune q = 0.20)"}
+         "M2": "T2S variant: pop_max 2", "prune_only": "T2S variant: pop_max 1 (prune q = 0.20)",
+         "T40": "T2S variant: T = 40", "T80": "T2S variant: T = 80"}
 
 
 def main():
