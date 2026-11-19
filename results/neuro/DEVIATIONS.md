@@ -76,3 +76,22 @@ guard. That was not because of the run: during it, this session committed `.giti
 own tracked output `results/neuro/a2_lava/lava_fulltest.csv`. The guard now accepts changes to tracked
 files inside a run's declared outputs and lists them; the scoring is rerun under the guard after the
 frontier. Rule kept: no commits while a guarded run is active.
+
+## D6. Guard flags on the Edge-IIoTset seed-42 confirmation (2026-11-19)
+
+The amendment-6 confirmation of Edge-IIoTset at seed 42 (`neuro_confirm.py edgeiiot 42 T10 vanilla t2s`)
+failed its guard twice. Neither failure came from the run.
+
+- First run: the guard flagged `results/neuro/a2_lava/vanilla_int_edgeiiot_seed46.json`, an output of the
+  seed-46 export chain. That export finished within the guard's one-second start margin, so the file
+  counted as changed during the run.
+- Second run: the guard flagged `latency.csv`, `latency_run1.csv`, `time.log` and `time_run1.log` in
+  `results/deployment/valsel_latency/`. This session's compact-GBDT timing script (`r2_gbdt_latency.py`)
+  wrote them during the run.
+
+Both runs gave the same rows: SANA-FE energy per inference and simulated test macro-F1 for T = 10, the
+full window, the exit row and fixed-point Vanilla. These are identical to the frontier and A3 seed-42
+values (`results/neuro/confirm/CONFIRM.md`, seed-42 check). A third run, with nothing else writing to the
+repository, passed its guard (`results/neuro/logs/confirm_edgeiiot_42_rerun2.log`, 2026-11-19 23:03 to
+23:18); the reported rows are from it and are identical to the first two. Rule kept: no other process of
+this session writes to the repository while a guarded run is active.
