@@ -434,3 +434,70 @@ roughly 10% calibration error.
 - `results/neuro/confirm/CONFIRM.md`, with the amendment-6 sections unchanged;
 - one CSV, `results/neuro/confirm/confirm_a7.csv`, with a row per dataset, seed and network: energy,
   latency, simulated macro-F1, mean steps (sample and full test), exit gate.
+
+## Amendment 8 (2026-11-20): stagewise predictions, a validation-tuned fixed-point Vanilla SNN, prevalence-weighted energy, encoder collisions
+
+Written before any test-split result of the stages below that amendments 4 and 6 did not already
+report, and before any run of a tuned Vanilla SNN. Known when this was written:
+- the amendment-4/6 test macro-F1 on Edge-IIoTset, seeds 42 to 46: float record, integer (Q = 8), Lava;
+- the validation-split stagewise run of Edge-IIoTset seed 42 only (`scripts/neuro_stagewise.py`):
+  float (GPU) 77.21, float64 77.80, projected weights 56.69, projected weights with the 12-bit leak 56.57,
+  integer Q = 8 55.93, Lava 62.38, Lava without saturation 62.38 (no flow saturates);
+- the Vanilla weight statistics, seeds 42 to 46: max |W_ih| 10.4 to 16.4 against a median of about 0.1;
+  under the per-tensor max-abs int8 rule 23 to 36% of the input weights round to zero.
+
+**Part 1, stagewise predictions (descriptive).** `scripts/neuro_stagewise.py`, Edge-IIoTset, seeds 42 to
+46, validation and test splits, every flow. Vanilla stages: float (GPU, the record's path), float64,
+projected weights, projected weights with Lava's 12-bit leak, integer Q = 8 (amendment 4), Lava (bit-exact
+emulation), Lava without saturation. Tree-to-Spike production student and the T = 10 student (test only):
+float (QAT, weights on the int8 grid), integer Q = 8, Lava. Checks on the test split: the float stage
+reproduces the record, integer Q = 8 equals the amendment-4 predictions, and the Lava stage equals the
+confirmation's full-test macro-F1 and Lava/SANA-FE's predictions on the 2,000-flow sample. Reported per
+stage: macro-F1, per-class F1, agreement with the float record, and the Tree-to-Spike minus Vanilla gap at
+each matched stage (float, integer, Lava).
+
+**Part 2, validation-tuned fixed-point Vanilla SNN.** Primary on Edge-IIoTset; secondary on CICIoMT2024
+(the other five-seed energy claim), same protocol. Unchanged: checkpoint, architecture, latency encoder,
+T = 25, spike-count readout, Lava chain. No retraining. The only change is the per-tensor weight scale:
+s = P_p(|W|) / 127, weights beyond it saturating at +-127, thresholds and biases rescaled with s by the
+existing rule (`vanilla_lava_params`).
+- Candidates: p in {100 (the amendment-4 rule), 99.99, 99.9, 99.5, 99}, the same p for both weight
+  tensors. A candidate outside Lava's ranges (bias exponent above 7, vth outside 1 to 131071) is
+  reported as inadmissible and skipped.
+- Selection, per seed: the highest validation macro-F1 of the Lava emulation on the whole validation
+  split; ties go to the larger p. The selection is written to
+  `results/neuro/review/a8_tuned_vanilla/selection.json` before any test evaluation, and only the selected
+  candidate is evaluated on test.
+- The selected network goes through the amendment-6 chain under `scripts/neuro_guard.py`: Lava on the
+  seed's 2,000-flow sample, equal bit for bit to the emulation; SANA-FE with the amendment-2 gate; energy
+  and latency per inference; full-test macro-F1 and per-class F1; prediction agreement with the float
+  record and with the original fixed-point Vanilla; footprint (int8 weight bytes, nonzero synapses).
+- Reported: original and tuned Vanilla side by side on all five seeds; recovery = (tuned - original) /
+  (float - original), five-seed mean, "most of the loss" meaning recovery >= 0.5; the amendment-5 rule
+  re-applied on five-seed means to the Tree-to-Spike rows with a five-seed energy claim (Edge-IIoTset
+  T = 10, CICIoMT2024 early exit) against the tuned Vanilla.
+- Selection budget: the student's integer conversion had no post-training selection (fixed rule, QAT
+  weights). Five candidates for the Vanilla SNN are therefore more selection than the student had; any
+  bias favours the baseline.
+
+**Part 3, prevalence-weighted and paired energy (existing traces, no new runs).** Edge-IIoTset T = 10 and
+CICIoMT2024 early exit, each against the fixed-point Vanilla, seeds 42 to 46. The 2,000-flow sample is
+stratified, so its plain mean weights rare classes up. Reported: the sample mean; the prevalence-weighted
+mean, sum over classes of (test-set share) x (class mean on the sample); the per-flow paired difference
+on the same flows (identical sample indices, checked), plain and prevalence-weighted, with per-class
+means; for CICIoMT2024, mean exit step per class, and the share of the advantage from the traffic mix
+(sample minus prevalence-weighted difference) and from gate admission (seed 45, gate disabled). The
+dominance verdicts of amendments 6 and 7 are not changed by this part; it is reported beside them.
+
+**Part 4, encoder tables and multichannel collisions.** Production encoders, four datasets, seeds 42 to
+46, and the T = 10 encoders of Edge-IIoTset and TON-IoT. The teacher is refitted uncapped and must give
+the stored teacher macro-F1; otherwise the record's own thread cap is used, and the guard decides. Per
+retained feature: id, ordered thresholds, importance, channels and offsets, T, and the level-to-spike-time
+rule. A feature's level k (0 to |E_j|) emits one spike time per channel; two levels collide when their
+tuples are identical. Reported: share of retained features with at least one collision (beside the
+|E_j| >= T criterion behind the 45.9% figure), share of level distinctions lost, and the share of
+test-set feature values that fall in a merged tuple.
+
+**Part 5:** existing records assembled under `results/neuro/review/`; no new numbers.
+
+Not in this amendment: a capture- or device-disjoint split, and any physical-chip measurement.
