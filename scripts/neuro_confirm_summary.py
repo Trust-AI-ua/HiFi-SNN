@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Amendment 6 summary: five-seed confirmation of the frontier dominance results. Runs in .venv.
+"""Amendments 6 and 7 summary: five-seed chip simulation against the fixed-point Vanilla SNN. Runs in .venv.
 
 Comparisons (seed by seed, each against the fixed-point Vanilla SNN of the same seed):
-  Edge-IIoTset  Tree-to-Spike T = 10 (window-sweep variant)
-  CICIoMT2024   Tree-to-Spike with C1-gate early exit (full window where a seed's gate disables exit)
+  amendment 6  Edge-IIoTset  Tree-to-Spike T = 10 (window-sweep variant)
+               CICIoMT2024   Tree-to-Spike with C1-gate early exit (full window where a seed's gate disables exit)
+  amendment 7  TON-IoT       Tree-to-Spike full window, C1-gate early exit, T = 10
+               CIC-IoT2023   Tree-to-Spike full window, C1-gate early exit (full window on seed 43)
 Dominance (amendment 5's rule, on five-seed means): simulated test macro-F1 higher and mean SANA-FE
 energy per inference no higher. Per-seed wins are reported. Context rows (descriptive): the other
 Tree-to-Spike rows run for the same seeds. Seed 42 is rerun and checked against the frontier/A3 values.
 
     .venv/bin/python scripts/neuro_confirm_summary.py
-Output: results/neuro/confirm/confirm.csv, CONFIRM.md
+Output: results/neuro/confirm/confirm.csv, CONFIRM.md, confirm_a7.csv (amendment 7 rows)
 """
 from __future__ import annotations
 
@@ -22,7 +24,9 @@ import pandas as pd
 REPO = Path(__file__).resolve().parents[1]
 C = REPO / "results/neuro/confirm"
 SEEDS = list(range(42, 47))
-TESTS = {"edgeiiot": "T10", "ciciomt2024": "t2s_exit"}
+TESTS = {"edgeiiot": ["T10"], "ciciomt2024": ["t2s_exit"],                       # amendment 6
+         "toniot": ["t2s_full", "t2s_exit", "T10"], "ciciot2023": ["t2s_full", "t2s_exit"]}   # amendment 7
+AMEND = {"edgeiiot": 6, "ciciomt2024": 6, "toniot": 7, "ciciot2023": 7}
 NAMES = {"T10": "T2S, T = 10", "t2s_exit": "T2S, early exit (C1 gate)", "t2s_full": "T2S, full window (T = 20)",
          "vanilla_fixed": "Vanilla, fixed point"}
 
@@ -49,37 +53,41 @@ def seed42_check(df):
 def main():
     df = pd.DataFrame([json.loads(p.read_text()) for p in sorted(C.glob("*_seed*_*.json"))])
     df.to_csv(C / "confirm.csv", index=False)
-    md = ["# Amendment 6: five-seed confirmation of the frontier dominance results", "",
+    md = ["# Amendments 6 and 7: five-seed chip simulation against the fixed-point Vanilla SNN", "",
           "SANA-FE energy and latency per inference (each seed's 2,000-flow sample; about 10% calibration caveat) and test "
           "macro-F1 of the simulated network (bit-exact emulation of Lava's arithmetic, whole test split). "
           "Each Tree-to-Spike row is compared with the fixed-point Vanilla SNN of the same seed.", ""]
-    for ds, test in TESTS.items():
+    for ds, tests in TESTS.items():
         d = df[df.dataset == ds]
-        md += [f"## {ds}: {NAMES[test]} against the fixed-point Vanilla", "",
-               "| Seed | " + " | ".join(f"{NAMES[r]} energy (nJ) / macro-F1" for r in (test, "vanilla_fixed")) + " | Win |", "|--:|--:|--:|---|"]
-        wins, have = 0, []
-        for s in SEEDS:
-            a = d[(d.seed == s) & (d.row == test)]; v = d[(d.seed == s) & (d.row == "vanilla_fixed")]
-            if not len(a) or not len(v):
-                md.append(f"| {s} | pending | pending | |"); continue
-            a, v = a.iloc[0], v.iloc[0]
-            w = bool(a.simulated_macro_f1_full_test > v.simulated_macro_f1_full_test and a.energy_nJ_mean <= v.energy_nJ_mean)
-            wins += w; have.append(s)
-            gate = "" if test != "t2s_exit" else (" (gate disabled: full window)" if pd.isna(a.get("exit_gate")) else f" (gate {a.exit_gate})")
-            md.append(f"| {s} | {a.energy_nJ_mean:.0f} / {a.simulated_macro_f1_full_test:.2f}{gate} | "
-                      f"{v.energy_nJ_mean:.0f} / {v.simulated_macro_f1_full_test:.2f} | {'yes' if w else 'no'} |")
-        if len(have) == len(SEEDS):
-            g = lambda r, k: d[(d.row == r) & d.seed.isin(have)][k]
-            ea, ev = g(test, "energy_nJ_mean"), g("vanilla_fixed", "energy_nJ_mean")
-            fa, fv = g(test, "simulated_macro_f1_full_test"), g("vanilla_fixed", "simulated_macro_f1_full_test")
-            dom = fa.mean() > fv.mean() and ea.mean() <= ev.mean()
-            md += ["", f"Five-seed means: {NAMES[test]} {ea.mean():.0f} ± {ea.std(ddof=1):.0f} nJ, {fa.mean():.2f} ± {fa.std(ddof=1):.2f}; "
-                   f"Vanilla {ev.mean():.0f} ± {ev.std(ddof=1):.0f} nJ, {fv.mean():.2f} ± {fv.std(ddof=1):.2f}. "
-                   f"Energy ratio {ea.mean() / ev.mean():.2f}; macro-F1 difference {fa.mean() - fv.mean():+.2f}.", "",
-                   f"**Dominance on five-seed means: {'yes' if dom else 'no'}.** Per-seed wins: {wins} of {len(have)}.", ""]
-        else:
-            md += ["", f"**Incomplete: {len(have)} of {len(SEEDS)} seeds.**", ""]
-        ctx = d[~d.row.isin([test, "vanilla_fixed"])]
+        if not len(d):
+            continue
+        for test in tests:
+            md += [f"## {ds}: {NAMES[test]} against the fixed-point Vanilla (amendment {AMEND[ds]})", "",
+                   "| Seed | " + " | ".join(f"{NAMES[r]} energy (nJ) / macro-F1" for r in (test, "vanilla_fixed")) + " | Win |", "|--:|--:|--:|---|"]
+            wins, have = 0, []
+            for s in SEEDS:
+                a = d[(d.seed == s) & (d.row == test)]; v = d[(d.seed == s) & (d.row == "vanilla_fixed")]
+                if not len(a) or not len(v):
+                    md.append(f"| {s} | pending | pending | |"); continue
+                a, v = a.iloc[0], v.iloc[0]
+                w = bool(a.simulated_macro_f1_full_test > v.simulated_macro_f1_full_test and a.energy_nJ_mean <= v.energy_nJ_mean)
+                wins += w; have.append(s)
+                gate = "" if test != "t2s_exit" else (" (gate disabled: full window)" if pd.isna(a.get("exit_gate")) else f" (gate {a.exit_gate})")
+                md.append(f"| {s} | {a.energy_nJ_mean:.0f} / {a.simulated_macro_f1_full_test:.2f}{gate} | "
+                          f"{v.energy_nJ_mean:.0f} / {v.simulated_macro_f1_full_test:.2f} | {'yes' if w else 'no'} |")
+            if len(have) == len(SEEDS):
+                g = lambda r, k: d[(d.row == r) & d.seed.isin(have)][k]
+                ea, ev = g(test, "energy_nJ_mean"), g("vanilla_fixed", "energy_nJ_mean")
+                fa, fv = g(test, "simulated_macro_f1_full_test"), g("vanilla_fixed", "simulated_macro_f1_full_test")
+                dom = fa.mean() > fv.mean() and ea.mean() <= ev.mean()
+                md += ["", f"Five-seed means: {NAMES[test]} {ea.mean():.0f} ± {ea.std(ddof=1):.0f} nJ, {fa.mean():.2f} ± {fa.std(ddof=1):.2f}; "
+                       f"Vanilla {ev.mean():.0f} ± {ev.std(ddof=1):.0f} nJ, {fv.mean():.2f} ± {fv.std(ddof=1):.2f}. "
+                       f"Energy ratio {ea.mean() / ev.mean():.2f} (margin {100 * (1 - ea.mean() / ev.mean()):+.1f}% of Vanilla's energy; "
+                       f"SANA-FE calibration error about 10%); macro-F1 difference {fa.mean() - fv.mean():+.2f}.", "",
+                       f"**Dominance on five-seed means: {'yes' if dom else 'no'}.** Per-seed wins: {wins} of {len(have)}.", ""]
+            else:
+                md += ["", f"**Incomplete: {len(have)} of {len(SEEDS)} seeds.**", ""]
+        ctx = d[~d.row.isin(tests + ["vanilla_fixed"])]
         if len(ctx):
             md += ["Context (descriptive), mean over the seeds run:", "", "| Row | Seeds | Energy (nJ) | Latency (µs) | Macro-F1 |", "|---|--:|--:|--:|--:|"]
             for r, g in ctx.groupby("row"):
@@ -88,6 +96,11 @@ def main():
             md.append("")
     md += ["## Seed 42 rerun against the frontier and A3 values", ""] + [f"- {x}" for x in seed42_check(df)] + [""]
     (C / "CONFIRM.md").write_text("\n".join(md) + "\n")
+    a7 = df[df.dataset.isin([k for k, v in AMEND.items() if v == 7])]
+    if len(a7):
+        cols = ["dataset", "seed", "row", "energy_nJ_mean", "energy_nJ_sd", "latency_us_mean", "latency_us_sd",
+                "simulated_macro_f1_full_test", "mean_steps", "mean_steps_full_test", "exit_gate", "T", "sanafe_match_rate", "n_sample"]
+        a7.reindex(columns=cols).sort_values(["dataset", "seed", "row"]).to_csv(C / "confirm_a7.csv", index=False)
     print("\n".join(md))
 
 
