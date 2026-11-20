@@ -27,6 +27,22 @@ SEEDS = list(range(42, 47))
 TESTS = {"edgeiiot": ["T10"], "ciciomt2024": ["t2s_exit"],                       # amendment 6
          "toniot": ["t2s_full", "t2s_exit", "T10"], "ciciot2023": ["t2s_full", "t2s_exit"]}   # amendment 7
 AMEND = {"edgeiiot": 6, "ciciomt2024": 6, "toniot": 7, "ciciot2023": 7}
+ROWS = {"toniot": ["T10", "t2s_full", "t2s_exit", "vanilla_fixed"], "ciciot2023": ["t2s_full", "t2s_exit", "vanilla_fixed"]}
+A7_DONE = REPO / "results/neuro/logs/confirm_a7.done"
+
+
+def a7_status():
+    """Amendment 7: (dataset, seed) -> last recorded outcome in the runner's log: 'ok' or 'failed (...)'. A run cut
+    short (spike-match gate, Lava/emulation mismatch, a guard failure, any exit other than 0, a failed export) is a
+    failed run. Amendment 6 is not read from its log: its seed-42 Edge-IIoTset history is in D6."""
+    import re
+    st = {}
+    if A7_DONE.exists():
+        for line in A7_DONE.read_text().splitlines():
+            m = re.match(r"^(\w+) (\d+) (?:confirm exit (\d+)|(.*failed))", line)
+            if m:
+                st[(m[1], int(m[2]))] = "ok" if m[3] == "0" else f"failed ({'exit ' + m[3] if m[3] else m[4]})"
+    return st
 NAMES = {"T10": "T2S, T = 10", "t2s_exit": "T2S, early exit (C1 gate)", "t2s_full": "T2S, full window (T = 20)",
          "vanilla_fixed": "Vanilla, fixed point"}
 
@@ -52,6 +68,19 @@ def seed42_check(df):
 
 def main():
     df = pd.DataFrame([json.loads(p.read_text()) for p in sorted(C.glob("*_seed*_*.json"))])
+    status = a7_status()
+
+    def state(ds, s, r):
+        """'ok', 'failed (...)' or 'pending' for one row. Amendment 7: a row is used only if its run ended with exit 0."""
+        have = len(df[(df.dataset == ds) & (df.seed == s) & (df.row == r)])
+        if AMEND[ds] == 6:
+            return "ok" if have else "pending"
+        st = status.get((ds, s))
+        if st is None:
+            return "pending"
+        if st != "ok":
+            return st
+        return "ok" if have else "failed (run finished without this row)"
     df.to_csv(C / "confirm.csv", index=False)
     md = ["# Amendments 6 and 7: five-seed chip simulation against the fixed-point Vanilla SNN", "",
           "SANA-FE energy and latency per inference (each seed's 2,000-flow sample; about 10% calibration caveat) and test "
@@ -64,18 +93,24 @@ def main():
         for test in tests:
             md += [f"## {ds}: {NAMES[test]} against the fixed-point Vanilla (amendment {AMEND[ds]})", "",
                    "| Seed | " + " | ".join(f"{NAMES[r]} energy (nJ) / macro-F1" for r in (test, "vanilla_fixed")) + " | Win |", "|--:|--:|--:|---|"]
-            wins, have = 0, []
+            wins, have, failed = 0, [], []
             for s in SEEDS:
+                sa, sv = state(ds, s, test), state(ds, s, "vanilla_fixed")
+                if sa != "ok" or sv != "ok":
+                    if "failed" in sa or "failed" in sv:
+                        failed.append(s)
+                    md.append(f"| {s} | {sa} | {sv} | {'no (failed run)' if s in failed else ''} |"); continue
                 a = d[(d.seed == s) & (d.row == test)]; v = d[(d.seed == s) & (d.row == "vanilla_fixed")]
-                if not len(a) or not len(v):
-                    md.append(f"| {s} | pending | pending | |"); continue
                 a, v = a.iloc[0], v.iloc[0]
                 w = bool(a.simulated_macro_f1_full_test > v.simulated_macro_f1_full_test and a.energy_nJ_mean <= v.energy_nJ_mean)
                 wins += w; have.append(s)
                 gate = "" if test != "t2s_exit" else (" (gate disabled: full window)" if pd.isna(a.get("exit_gate")) else f" (gate {a.exit_gate})")
                 md.append(f"| {s} | {a.energy_nJ_mean:.0f} / {a.simulated_macro_f1_full_test:.2f}{gate} | "
                           f"{v.energy_nJ_mean:.0f} / {v.simulated_macro_f1_full_test:.2f} | {'yes' if w else 'no'} |")
-            if len(have) == len(SEEDS):
+            if failed:
+                md += ["", f"**Dominance not established: seed(s) {', '.join(map(str, failed))} failed. A failed run counts as "
+                       f"failed, not as a missing seed; no five-seed mean is reported until it is rerun.** Per-seed wins: {wins} of {len(SEEDS)}.", ""]
+            elif len(have) == len(SEEDS):
                 g = lambda r, k: d[(d.row == r) & d.seed.isin(have)][k]
                 ea, ev = g(test, "energy_nJ_mean"), g("vanilla_fixed", "energy_nJ_mean")
                 fa, fv = g(test, "simulated_macro_f1_full_test"), g("vanilla_fixed", "simulated_macro_f1_full_test")
@@ -96,11 +131,17 @@ def main():
             md.append("")
     md += ["## Seed 42 rerun against the frontier and A3 values", ""] + [f"- {x}" for x in seed42_check(df)] + [""]
     (C / "CONFIRM.md").write_text("\n".join(md) + "\n")
-    a7 = df[df.dataset.isin([k for k, v in AMEND.items() if v == 7])]
-    if len(a7):
-        cols = ["dataset", "seed", "row", "energy_nJ_mean", "energy_nJ_sd", "latency_us_mean", "latency_us_sd",
-                "simulated_macro_f1_full_test", "mean_steps", "mean_steps_full_test", "exit_gate", "T", "sanafe_match_rate", "n_sample"]
-        a7.reindex(columns=cols).sort_values(["dataset", "seed", "row"]).to_csv(C / "confirm_a7.csv", index=False)
+    cols = ["dataset", "seed", "row", "status", "energy_nJ_mean", "energy_nJ_sd", "latency_us_mean", "latency_us_sd",
+            "simulated_macro_f1_full_test", "mean_steps", "mean_steps_full_test", "exit_gate", "T", "sanafe_match_rate", "n_sample"]
+    out = []
+    for ds in ROWS:
+        for s in SEEDS:
+            for r in ROWS[ds]:
+                st = state(ds, s, r)
+                got = df[(df.dataset == ds) & (df.seed == s) & (df.row == r)]
+                rec = got.iloc[0].to_dict() if (st == "ok" and len(got)) else dict(dataset=ds, seed=s, row=r)
+                out.append({**{c: rec.get(c) for c in cols}, "status": st})
+    pd.DataFrame(out, columns=cols).to_csv(C / "confirm_a7.csv", index=False)
     print("\n".join(md))
 
 
