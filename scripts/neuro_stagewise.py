@@ -16,8 +16,10 @@ Vanilla SNN (SNN_LeakyParallel, latency; readout = output spike count over T = 2
                     and Lava's predictions on the 2,000-flow sample)
   lava_nosat        diagnostic: lava with the 24-bit membrane saturation removed
 Tree-to-Spike (production student, and the T = 10 student where exported; test split only; readout = summed
-output membrane): float (QAT checkpoint, weights already on the int8 grid, so float = projected weights),
-integer_q8 (revision 2, step 2), lava (bit-exact emulation; checked as above).
+output membrane): fp32 (production student only: before the post-training per-tensor int8 projection,
+quantize_int8_, the same max-abs rule as the Vanilla SNN's projection; checked to project exactly onto the deployed
+checkpoint and to reproduce the M3 fp32 macro-F1), float (the deployed checkpoint = projected weights, float
+dynamics), integer_q8 (revision 2, step 2), lava (bit-exact emulation; checked as above).
 
     .venv/bin/python scripts/neuro_stagewise.py <dataset> <seed> <val|test>
 Output: results/neuro/review/p1_stagewise/<ds>_seed<S>_<split>.npz (pred_<model>_<stage>, score_<model>_<stage>,
@@ -163,6 +165,32 @@ def vanilla_split(ds, seed, split):
     return st, y, oc, T, list(b.class_names)
 
 
+def student_fp32(ds, seed, z, sts, T):
+    """The production student before the post-training int8 projection (quantize_int8_): checkpoint_fp32.pt of the
+    byte-identical diagnostic copy (results/diagnostics/val_curves/Tree-to-Spike/<ds>/runs/seed_<S>); checked to
+    project exactly onto the deployed checkpoint. Returns test logits (mean output membrane)."""
+    import torch
+    from src.models.tree_to_spike import SNNStudent, quantize_int8_
+    rd = REPO / f"results/diagnostics/val_curves/Tree-to-Spike/{ds}/runs/seed_{seed}"
+    prod = REPO / f"results/Tree-to-Spike/{ds}/seed_{seed}/checkpoint.pt"
+    if (rd / "checkpoint.pt").read_bytes() != prod.read_bytes():
+        raise SystemExit("diagnostic checkpoint is not the production checkpoint")
+    cfg = json.loads((REPO / f"results/Tree-to-Spike/{ds}/seed_{seed}/results.json").read_text())["config"]
+    mk = lambda: SNNStudent(sts.shape[1], len(z["class_names"]), hidden=tuple(cfg["hidden"]), beta=cfg["beta"], leaky=cfg["leaky"])
+    st = mk(); st.load_state_dict(torch.load(rd / "checkpoint_fp32.pt", map_location="cpu")); st.eval()
+    q = mk(); q.load_state_dict(torch.load(rd / "checkpoint_fp32.pt", map_location="cpu")); quantize_int8_(q)
+    dep = torch.load(prod, map_location="cpu")
+    if any(not torch.allclose(q.state_dict()[k], dep[k], rtol=1e-6, atol=1e-9) for k in dep):
+        raise SystemExit("projecting checkpoint_fp32.pt does not give the deployed checkpoint")
+    out = []
+    with torch.no_grad():
+        for i in range(0, len(sts), CH):
+            x = torch.from_numpy(sts[i:i + CH])
+            sp = (torch.arange(T).view(T, 1, 1) == x.unsqueeze(0)).float()
+            out.append(st(sp)[0].numpy())
+    return np.concatenate(out).astype(np.float32)
+
+
 def vanilla_params(v, wclip=(100.0, 100.0)):
     """Integer weights and scales for the Vanilla network; wclip = |W| percentile per tensor that maps to 127
     (100 = max |W|, the amendment-4 rule; below 100 the weights beyond it saturate at +-127)."""
@@ -235,6 +263,12 @@ def main():
             if not np.array_equal(acc.argmax(1)[z["sample"]], pf.pred.values):
                 raise SystemExit(f"{tag}: lava emulation differs from Lava/SANA-FE on the sample")
             same = np.array_equal(ys, y)
+            if tag == "t2s":
+                lg = student_fp32(ds, seed, z, sts, zt)
+                pred["t2s_fp32"], score["t2s_fp32"] = lg.argmax(1), lg
+                ref32 = json.loads((REPO / f"results/diagnostics/val_curves/Tree-to-Spike/{ds}/runs/seed_{seed}/test_fp32_int8.json").read_text())
+                if abs(f1(ys, lg.argmax(1)) - ref32["fp_macro_f1"]) > 1e-9:
+                    raise SystemExit("t2s_fp32 differs from the M3 fp32 record")
             for k, p, sc in (("float", z["float_logits"].argmax(1), z["float_logits"].astype(np.float32)),
                              ("integer_q8", z["int_pred"], None), ("lava", acc.argmax(1), acc.astype(np.float32))):
                 pred[f"{tag}_{k}"] = p

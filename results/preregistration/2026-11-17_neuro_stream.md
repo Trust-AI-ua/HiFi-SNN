@@ -501,3 +501,14 @@ test-set feature values that fall in a merged tuple.
 **Part 5:** existing records assembled under `results/neuro/review/`; no new numbers.
 
 Not in this amendment: a capture- or device-disjoint split, and any physical-chip measurement.
+
+*Correction to amendment 8 (2026-11-20, after the seed-42 test-split stagewise run and the Edge-IIoTset
+validation selection, before any other test-split stage result and before any tuned-Vanilla test result).*
+The production student is not quantization-aware trained. Its weights are projected after training by
+`quantize_int8_` (`src/models/tree_to_spike.py`): per tensor, max-abs, int8, the same rule as the Vanilla SNN's
+projection. Part 1 therefore adds the student's fp32 stage, from `checkpoint_fp32.pt` of the diagnostic copy
+(`results/diagnostics/val_curves/Tree-to-Spike/<ds>/runs/seed_<S>`, whose `checkpoint.pt` is byte-identical to
+the production checkpoint). It is checked to project onto the deployed weights and to reproduce the M3 fp32
+macro-F1. The student's "float" stage is the projected checkpoint. Part 2's budget note should read: the
+student's integer conversion had no post-training selection (the fixed max-abs projection, then the fixed
+Q = 8 rule). The five Vanilla candidates are still more selection than the student had.
