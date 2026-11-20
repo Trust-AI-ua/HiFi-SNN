@@ -383,3 +383,54 @@ a dominance claim only where it holds on the five-seed means, and reports the pe
 
 **Context rows** (descriptive, same seeds): Tree-to-Spike over the full window on both datasets, and
 Edge-IIoTset's early exit on the seeds where its gate is enabled.
+
+## Amendment 7 (2026-11-20, PI instruction, before any seed other than 42 of TON-IoT or CIC-IoT2023 was run through the chain): five-seed chip simulation on TON-IoT and CIC-IoT2023
+
+Amendment 6 confirmed the two dominance results on Edge-IIoTset and CICIoMT2024 over five seeds. TON-IoT
+and CIC-IoT2023 have chip-simulation results for seed 42 only (A3 and the frontier). This amendment gives
+them the same five-seed treatment. Known when this was written: the seed-42 frontier. On TON-IoT no
+Tree-to-Spike row dominates the fixed-point Vanilla; every one spends more energy. On CIC-IoT2023 early
+exit dominates (437 against 446 nJ, 78.55 against 62.48), with an energy margin of about 2%, smaller
+than SANA-FE's calibration error. No seed other than 42 of either dataset had been through Lava or
+SANA-FE, and none of their energies was known.
+
+**Networks**, seeds 42 to 46. Seed 42 is a rerun and must reproduce the frontier and A3 values.
+- **TON-IoT** (10-epoch production schedule):
+  - Tree-to-Spike over the full window (T = 20);
+  - Tree-to-Spike with C1-gate early exit (validation admits the gate on all five seeds);
+  - Tree-to-Spike T = 10 (`results/ladder/toniot/T10`), to check on five seeds whether any
+    Tree-to-Spike row beats the Vanilla SNN there;
+  - the fixed-point Vanilla SNN.
+- **CIC-IoT2023** (20-epoch production checkpoints, `results/Tree-to-Spike/ciciot2023`; Vanilla also
+  20 epochs):
+  - Tree-to-Spike over the full window (T = 20);
+  - Tree-to-Spike with C1-gate early exit, where validation admits the gate: seeds 42, 44, 45 and 46.
+    On seed 43 calibration disabled exit (`gate_c1` = None), so that seed's exit row is the full
+    window, as for CICIoMT2024 seed 45 in amendment 6. This was known before any run;
+  - the fixed-point Vanilla SNN.
+
+**Chain:** unchanged from amendment 6 (`scripts/neuro_confirm.py`, run under `scripts/neuro_guard.py`).
+For each network and seed:
+- exports with that seed's teacher, guards and stratified 2,000-flow sample, then integer inference;
+- Lava fixed point on the sample, equal bit for bit to the emulation;
+- SANA-FE with the amendment-2 gate (every flow's per-layer spikes and readout equal Lava's, or the
+  emulation's for exit windows; otherwise no energy is reported);
+- energy and latency per inference;
+- the test macro-F1 of the simulated network on the whole test split.
+
+The T = 10 export refits the teacher uncapped first. If the guard rejects it, the export is retried
+under the thread caps the ladder runs used (2, 4, 8), as in amendment 5b; the guard decides, and the
+cap is recorded. Exports finish before any guarded run starts.
+
+**Rule** (amendment 5's, judged on the five-seed means): a Tree-to-Spike row dominates the Vanilla
+SNN if its mean simulated macro-F1 is higher and its mean energy per inference is no higher. Per-seed
+wins, where both conditions hold on that seed against that seed's Vanilla, are reported beside it.
+The rule is applied to every Tree-to-Spike row listed above. The analysis stays exploratory: the
+paper claims dominance only where the rule holds on the five-seed means, and reports the per-seed
+count with it. For a CIC-IoT2023 early-exit result, the energy margin is reported next to SANA-FE's
+roughly 10% calibration error.
+
+**Reported:**
+- `results/neuro/confirm/CONFIRM.md`, with the amendment-6 sections unchanged;
+- one CSV, `results/neuro/confirm/confirm_a7.csv`, with a row per dataset, seed and network: energy,
+  latency, simulated macro-F1, mean steps (sample and full test), exit gate.
