@@ -297,6 +297,13 @@ spend less energy by construction:
 CIC-IoT2023's variants were trained under the 10-epoch protocol, while its production model uses
 the 20-epoch block; that dataset's frontier compares unequal training and is labelled so.
 
+> **Correction (2026-11-20, after the frontier results; the text above is left as written).** Not every
+> CIC-IoT2023 variant is a 10-epoch run. The uniform-allocation variant
+> (`results/encoder_ablation/ciciot2023/uniform`) was trained for 20 epochs, like the production model,
+> its early exit and the fixed-point Vanilla SNN (each run's recorded `config.epochs`). The other six
+> CIC-IoT2023 variants (T10, T40, T80, q40, M2, prune_only) are 10-epoch runs. The unequal-training
+> caveat applies to those six, not to uniform allocation.
+
 **Chain.** Unchanged from A2 and A3:
 - `scripts/neuro_export_variants.py`: one teacher refit per dataset, checked against each
   variant's record; integer-encoder and float-student guards;
@@ -336,6 +343,10 @@ No variant had been through Lava or SANA-FE when this was written.
   are 10-epoch runs. On TON-IoT, Edge-IIoTset and CICIoMT2024 this is the production schedule.
   On CIC-IoT2023 the production model uses the 20-epoch block, so that dataset's frontier
   compares unequal training.
+  *Correction (2026-11-20, after the frontier results; the text above is left as written):* on
+  CIC-IoT2023 the encoder-ablation variant in the frontier (uniform allocation) is a 20-epoch run,
+  not a 10-epoch one; the ladder variants (window sweep, q40, M2, prune_only) are 10-epoch runs. See
+  the correction under amendment 5.
 - **Teacher reproduction.** Some ladder runs were made by `scripts/run_ladder.py` with
   OMP_NUM_THREADS = 16 // workers, which changes the XGBoost teacher. Where the default refit
   does not reproduce a variant's stored teacher, the export refits under the thread cap that
